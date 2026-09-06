@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import { parseUnsignedHeader } from "./headers.js";
 
 export const ERROR_RESPONSE_BODY_LIMIT = 16 * 1024;
@@ -47,7 +48,7 @@ export async function bufferResponse(
     ? SUCCESS_RESPONSE_BODY_LIMIT
     : ERROR_RESPONSE_BODY_LIMIT);
   if (!Number.isSafeInteger(limit) || limit <= 0) {
-    throw new TypeError("Response body limit must be a positive integer");
+    throw new TypeError(t("响应大小限制必须为正整数", "Response body limit must be a positive integer"));
   }
   const declaredLength = parseUnsignedHeader(
     response.headers.get("content-length"),
@@ -68,7 +69,7 @@ export async function bufferResponse(
       if (done) break;
       if (!(value instanceof Uint8Array)) {
         await cancelReader(reader);
-        throw createError("Invalid response body stream", {
+        throw createError(t("响应数据流无效", "Invalid response body stream"), {
           status: response.status,
           code: "invalid_response_body",
           kind: "protocol",
@@ -119,7 +120,7 @@ function replayBufferedChunks(chunks) {
  * @param {ResponseErrorFactory} createError
  */
 function responseBodyTooLarge(response, options, createError) {
-  return createError("The server response exceeded the allowed size", {
+  return createError(t("服务器响应超过允许的大小", "The server response exceeded the allowed size"), {
     status: response.status,
     code: "response_body_too_large",
     kind: "protocol",

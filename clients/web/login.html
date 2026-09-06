@@ -12,7 +12,7 @@
 
 <body data-sarmg-scope>
   <main class="login-screen">
-    <form class="content-card login-card" aria-label="Sign in to Dufs" novalidate>
+    <form class="content-card login-card" aria-label="Sign in to Dufs" data-i18n-aria-label-zh="登录 Dufs" novalidate>
       <div class="card-inner">
         <div class="card-row">
           <label class="card-row-label" for="username">
@@ -21,15 +21,13 @@
                 <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
                 <circle cx="12" cy="7" r="4"></circle>
               </svg>
-            </span>
-            Username
-          </label>
+            </span><span data-i18n-zh="用户名">Username</span></label>
           <div class="card-row-content"></div>
         </div>
         <div class="card-row input-row">
           <div class="card-row-content">
             <input class="login-input" id="username" name="username" type="text" maxlength="64"
-              autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Username"
+              autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Username" data-i18n-aria-label-zh="用户名"
               required autofocus>
           </div>
         </div>
@@ -40,16 +38,14 @@
                 <rect width="18" height="11" x="3" y="11" rx="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
-            </span>
-            Password
-          </label>
+            </span><span data-i18n-zh="密码">Password</span></label>
           <div class="card-row-content"></div>
         </div>
         <div class="card-row input-row">
           <div class="card-row-content">
             <input class="login-input" id="password" name="password" type="password"
               data-min-bytes="__MIN_PASSWORD_BYTES__" data-max-bytes="__MAX_PASSWORD_BYTES__"
-              autocomplete="current-password" aria-label="Password" required>
+              autocomplete="current-password" aria-label="Password" data-i18n-aria-label-zh="密码" required>
           </div>
         </div>
         <div class="card-row error-row hidden" role="alert">
@@ -65,12 +61,10 @@
                 <path d="M15 12H3"></path>
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
               </svg>
-            </span>
-            Action
-          </span>
+            </span><span data-i18n-zh="操作">Action</span></span>
           <div class="card-row-content">
             <div class="card-actions">
-              <button class="card-action-button primary" type="submit">Sign in</button>
+              <button class="card-action-button primary" type="submit" data-i18n-zh="登录">Sign in</button>
             </div>
           </div>
         </div>

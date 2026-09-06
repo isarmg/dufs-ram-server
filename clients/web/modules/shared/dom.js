@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** @typedef {{ d: string, fillRule?: string }} IconPath */
@@ -126,7 +127,7 @@ export function createIcon(name, accessibleName = "") {
 
 /** @param {unknown} error */
 export function errorMessage(error) {
-  return error instanceof Error && error.message ? error.message : "Unknown error";
+  return error instanceof Error && error.message ? error.message : t("未知错误", "Unknown error");
 }
 
 /** @param {number} size @returns {[number, string]} */

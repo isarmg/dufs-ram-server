@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import { isValidLogicalPath } from "../shared/path.js";
 
 export const UPLOAD_BATCH_FILE_LIMIT = 512;
@@ -22,10 +23,10 @@ export function prepareUploadSelection(files, options = {}) {
   const pathBytesLimit = options.pathBytesLimit ??
     UPLOAD_BATCH_PATH_BYTES_LIMIT;
   if (!Number.isSafeInteger(fileLimit) || fileLimit <= 0) {
-    throw new TypeError("Upload file limit must be a positive integer");
+    throw new TypeError(t("上传文件数限制必须为正整数", "Upload file limit must be a positive integer"));
   }
   if (!Number.isSafeInteger(pathBytesLimit) || pathBytesLimit <= 0) {
-    throw new TypeError("Upload path byte limit must be a positive integer");
+    throw new TypeError(t("上传路径字节限制必须为正整数", "Upload path byte limit must be a positive integer"));
   }
 
   /** @type {UploadSelectionEntry[]} */
@@ -38,8 +39,8 @@ export function prepareUploadSelection(files, options = {}) {
       return Object.freeze({
         ok: false,
         error:
-          `Select no more than ${fileLimit} files in one batch. ` +
-          "Split larger folders into multiple selections.",
+          t("每批最多选择 {0} 个文件。", "Select no more than {0} files in one batch. ", [fileLimit]) +
+          t("请将较大的文件夹分批选择。", "Split larger folders into multiple selections."),
         entries: Object.freeze([]),
         totalPathBytes,
       });
@@ -48,7 +49,7 @@ export function prepareUploadSelection(files, options = {}) {
     if (!(file instanceof File)) {
       return Object.freeze({
         ok: false,
-        error: "The browser returned an invalid file selection.",
+        error: t("浏览器返回的文件选择无效。", "The browser returned an invalid file selection."),
         entries: Object.freeze([]),
         totalPathBytes,
       });
@@ -60,7 +61,7 @@ export function prepareUploadSelection(files, options = {}) {
     ) {
       return Object.freeze({
         ok: false,
-        error: `The selected path ${name || "(empty)"} is not supported.`,
+        error: t("不支持所选路径 {0}。", "The selected path {0} is not supported.", [name || "(empty)"]),
         entries: Object.freeze([]),
         totalPathBytes,
       });
@@ -70,8 +71,8 @@ export function prepareUploadSelection(files, options = {}) {
       return Object.freeze({
         ok: false,
         error:
-          `Selected paths exceed the ${pathBytesLimit}-byte batch limit. ` +
-          "Split the selection into smaller batches.",
+          t("所选路径超过每批 {0} 字节的限制。", "Selected paths exceed the {0}-byte batch limit. ", [pathBytesLimit]) +
+          t("请分批选择。", "Split the selection into smaller batches."),
         entries: Object.freeze([]),
         totalPathBytes,
       });

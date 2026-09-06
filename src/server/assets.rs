@@ -21,6 +21,11 @@ struct EmbeddedAsset {
 const PLATFORM_ASSETS: &[EmbeddedAsset] = include!(concat!(env!("OUT_DIR"), "/platform-assets.rs"));
 const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[
     EmbeddedAsset {
+        name: "modules/language.js",
+        contents: include_bytes!("../../clients/web/modules/language.js"),
+        content_type: "application/javascript; charset=UTF-8",
+    },
+    EmbeddedAsset {
         name: "login.js",
         contents: include_bytes!("../../clients/web/login.js"),
         content_type: "application/javascript; charset=UTF-8",

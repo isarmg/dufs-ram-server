@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import {
   RequestError,
   assertResponse,
@@ -141,8 +142,8 @@ export function createDirectoryListing(options) {
   const items = [];
   const loadedNames = new Set();
   const seenCursors = new Set();
-  const showPrevious = createWindowButton("Show previous items");
-  const showNext = createWindowButton("Show next items");
+  const showPrevious = createWindowButton(t("显示前面的项目", "Show previous items"));
+  const showNext = createWindowButton(t("显示后面的项目", "Show next items"));
   loadMore.before(showPrevious, showNext);
 
   function resetListing() {
@@ -174,13 +175,13 @@ export function createDirectoryListing(options) {
     nextCursor = null;
     seenCursors.clear();
     loadMore.disabled = loading;
-    loadMore.textContent = "Refresh";
+    loadMore.textContent = t("刷新", "Refresh");
     loadMore.classList.remove("hidden");
     invalidationMessage = effect === MUTATION_EFFECT.OUTCOME_UNKNOWN
-      ? "Folder contents may have changed; refresh the list before loading more items."
+      ? t("文件夹内容可能已变更，请刷新列表后再加载更多项目。", "Folder contents may have changed; refresh the list before loading more items.")
       : effect === MUTATION_EFFECT.REFRESH_REQUIRED
-        ? "The folder snapshot is stale; refresh the list before another operation."
-        : "Folder contents changed; refresh the list before loading more items.";
+        ? t("文件夹快照已过时，请刷新列表后再操作。", "The folder snapshot is stale; refresh the list before another operation.")
+        : t("文件夹内容已变更，请刷新列表后再加载更多项目。", "Folder contents changed; refresh the list before loading more items.");
     listStatus.textContent = invalidationMessage;
   }
 
@@ -203,7 +204,7 @@ export function createDirectoryListing(options) {
       case MUTATION_EFFECT.NOT_COMMITTED:
         return false;
       default:
-        throw new TypeError("Invalid mutation effect");
+        throw new TypeError(t("变更结果无效", "Invalid mutation effect"));
     }
   }
 
@@ -284,9 +285,9 @@ export function createDirectoryListing(options) {
 
   function renderHead() {
     const headerItems = [
-      { name: "name", colspan: 2, text: "Name" },
-      { name: "mtime", text: "Modified" },
-      { name: "size", text: "Size" },
+      { name: "name", colspan: 2, text: t("名称", "Name") },
+      { name: "mtime", text: t("修改时间", "Modified") },
+      { name: "size", text: t("大小", "Size") },
     ];
     const row = createElement("tr");
     for (const item of headerItems) {
@@ -320,7 +321,7 @@ export function createDirectoryListing(options) {
         text: item.text,
         attributes: {
           href: `?${query}`,
-          "aria-label": `${item.text}, ${active ? "change sort direction" : "sort by this column"}`,
+          "aria-label": `${item.text}, ${active ? t("更改排序方向", "change sort direction") : t("按此列排序", "sort by this column")}`,
         },
       });
       link.append(createElement("span", {
@@ -332,7 +333,7 @@ export function createDirectoryListing(options) {
     }
     row.append(createElement("th", {
       className: "cell-actions",
-      text: "Actions",
+      text: t("操作", "Actions"),
       attributes: { scope: "col" },
     }));
     tableHead.replaceChildren(row);
@@ -347,10 +348,10 @@ export function createDirectoryListing(options) {
     const requestRevision = revision;
     const invokedWithFocus = document.activeElement === loadMore;
     loading = true;
-    loadMore.textContent = "Load more";
+    loadMore.textContent = t("加载更多", "Load more");
     loadMore.disabled = true;
     if (!loaded) loadMore.classList.add("hidden");
-    listStatus.textContent = loaded ? "Loading more…" : "Loading files…";
+    listStatus.textContent = loaded ? t("正在加载更多…", "Loading more…") : t("正在加载文件…", "Loading files…");
 
     try {
       const url = new URL("/__dufs__/api/list", location.origin);
@@ -368,7 +369,7 @@ export function createDirectoryListing(options) {
         if (requestRevision !== revision) return;
         if (response.status === 409 && loaded) {
           resetListing();
-          throw new Error("Folder contents changed. Reload the list and try again.");
+          throw new Error(t("文件夹内容已变更，请重新加载列表后再重试。", "Folder contents changed. Reload the list and try again."));
         }
         try {
           await assertResponse(response, onUnauthorized);
@@ -393,11 +394,11 @@ export function createDirectoryListing(options) {
           seenCursors.has(payload.nextCursor)
         )
       ) {
-        throw new Error("The server repeated a file list cursor");
+        throw new Error(t("服务器重复返回了文件列表游标", "The server repeated a file list cursor"));
       }
       for (const file of payload.paths) {
         if (loadedNames.has(file.name)) {
-          throw new Error("The server repeated a file list item");
+          throw new Error(t("服务器重复返回了文件列表项目", "The server repeated a file list item"));
         }
       }
 
@@ -431,8 +432,8 @@ export function createDirectoryListing(options) {
     } catch (error) {
       if (isAuthenticationError(error)) return;
       listStatus.textContent =
-        `Unable to load the file list: ${errorMessage(error)}`;
-      loadMore.textContent = "Retry";
+        t("无法加载文件列表：{0}", "Unable to load the file list: {0}", [errorMessage(error)]);
+      loadMore.textContent = t("重试", "Retry");
       loadMore.classList.remove("hidden");
       if (invokedWithFocus) loadMore.focus();
     } finally {
@@ -456,7 +457,7 @@ export function createDirectoryListing(options) {
     }
 
     if (invalidated) {
-      loadMore.textContent = "Refresh";
+      loadMore.textContent = t("刷新", "Refresh");
       loadMore.classList.remove("hidden");
       listStatus.textContent = invalidationMessage;
     } else if (nextCursor === null) {
@@ -465,12 +466,12 @@ export function createDirectoryListing(options) {
       }
       loadMore.classList.add("hidden");
       listStatus.textContent = visibleCount > 0
-        ? appendWindowStatus(`All ${visibleCount} items loaded`)
+        ? appendWindowStatus(t("已加载全部 {0} 项", "All {0} items loaded", [visibleCount]))
         : "";
     } else {
       loadMore.classList.toggle("hidden", renderedEnd < items.length);
       listStatus.textContent = appendWindowStatus(
-        `${visibleCount} items loaded`,
+        t("已加载 {0} 项", "{0} items loaded", [visibleCount]),
       );
     }
     showPrevious.classList.toggle("hidden", renderedStart === 0);
@@ -481,8 +482,8 @@ export function createDirectoryListing(options) {
   function appendWindowStatus(status) {
     if (renderedStart === 0 && renderedEnd >= items.length) return status;
     const first = items.length === 0 ? 0 : renderedStart + 1;
-    return `${status}; showing items ${first}–${renderedEnd} ` +
-      `(${renderedVisibleCount} visible) in this window`;
+    return t("{0}；显示第 {1}–{2} 项", "{0}; showing items {1}–{2} ", [status, first, renderedEnd]) +
+      t("（当前窗口可见 {0} 项）", "({0} visible) in this window", [renderedVisibleCount]);
   }
 
   /** @param {number} start */
@@ -626,7 +627,7 @@ export function createDirectoryListing(options) {
         type: "text",
         autocomplete: "off",
         spellcheck: "false",
-        "aria-label": `Rename ${item.name}`,
+        "aria-label": t("重命名 {0}", "Rename {0}", [item.name]),
         "aria-describedby": errorId,
       },
     }));
@@ -702,7 +703,7 @@ export function createDirectoryListing(options) {
       if (keepInvalid) {
         showInlineError(
           editor,
-          "Use one non-empty name without '/' or NUL, at most 255 UTF-8 bytes.",
+          t("名称不能为空，不能包含斜杠或空字符，最多 255 个 UTF-8 字节。", "Use one non-empty name without '/' or NUL, at most 255 UTF-8 bytes."),
         );
         editor.input.focus({ preventScroll: true });
         return false;
@@ -723,7 +724,7 @@ export function createDirectoryListing(options) {
     editor.commitPromise = Promise.resolve()
       .then(() => onRename(editor.index, name, editor.input))
       .catch(error => {
-        showInlineError(editor, `Unable to rename: ${errorMessage(error)}`);
+        showInlineError(editor, t("无法重命名：{0}", "Unable to rename: {0}", [errorMessage(error)]));
         return /** @type {InlineRenameResult} */ ("retry");
       });
     editor.input.disabled = true;
@@ -813,7 +814,7 @@ export function createDirectoryListing(options) {
     await refreshFromFirstPage();
     if (editor.created && params.q && !matchesFilter(finalName, params.q)) {
       listStatus.textContent =
-        `Created "${logicalBasename(finalName)}", but it is hidden by the current filter.`;
+        t("已创建“{0}”，但当前筛选条件将其隐藏。", "Created \"{0}\", but it is hidden by the current filter.", [logicalBasename(finalName)]);
     }
   }
 
@@ -967,8 +968,8 @@ export function createDirectoryListing(options) {
         className: "action-btn",
         attributes: {
           href: url,
-          title: "Download file",
-          "aria-label": `Download file ${file.name}`,
+          title: t("下载文件", "Download file"),
+          "aria-label": t("下载文件 {0}", "Download file {0}", [file.name]),
           download: true,
         },
       });
@@ -979,8 +980,8 @@ export function createDirectoryListing(options) {
       attributes: {
         id: `moveBtn${index}`,
         type: "button",
-        title: "Move",
-        "aria-label": `Move ${file.name}`,
+        title: t("移动", "Move"),
+        "aria-label": t("移动 {0}", "Move {0}", [file.name]),
         "data-action": "move",
         "data-index": index,
       },
@@ -991,8 +992,8 @@ export function createDirectoryListing(options) {
       attributes: {
         id: `deleteBtn${index}`,
         type: "button",
-        title: "Delete",
-        "aria-label": `Delete ${file.name}`,
+        title: t("删除", "Delete"),
+        "aria-label": t("删除 {0}", "Delete {0}", [file.name]),
         "data-action": "delete",
         "data-index": index,
       },
@@ -1003,8 +1004,8 @@ export function createDirectoryListing(options) {
       attributes: {
         id: `renameBtn${index}`,
         type: "button",
-        title: "Rename",
-        "aria-label": `Rename ${file.name}`,
+        title: t("重命名", "Rename"),
+        "aria-label": t("重命名 {0}", "Rename {0}", [file.name]),
         "data-action": "rename",
         "data-index": index,
       },
@@ -1150,7 +1151,7 @@ function validateCreatedItem(file) {
     file.size < 0 ||
     !isCanonicalRevision(file.revision)
   ) {
-    throw new TypeError("Invalid created file list item");
+    throw new TypeError(t("新建文件列表项目无效", "Invalid created file list item"));
   }
   return Object.freeze({ ...file });
 }
@@ -1205,7 +1206,7 @@ function focusElement(element) {
  */
 function validateListingPage(payload) {
   if (!payload || typeof payload !== "object") {
-    throw new Error("Invalid file list response");
+    throw new Error(t("文件列表响应无效", "Invalid file list response"));
   }
   const page = /** @type {Record<string, unknown>} */ (payload);
   const nextCursor = page.next_cursor;
@@ -1221,7 +1222,7 @@ function validateListingPage(payload) {
       )
     )
   ) {
-    throw new Error("Invalid file list response");
+    throw new Error(t("文件列表响应无效", "Invalid file list response"));
   }
   const names = new Set();
   const paths = page.paths.map(candidate => {
@@ -1229,7 +1230,7 @@ function validateListingPage(payload) {
       !candidate ||
       typeof candidate !== "object"
     ) {
-      throw new Error("Invalid file list item");
+      throw new Error(t("文件列表项目无效", "Invalid file list item"));
     }
     const file = /** @type {Record<string, unknown>} */ (candidate);
     if (
@@ -1247,7 +1248,7 @@ function validateListingPage(payload) {
       !isCanonicalRevision(file.revision) ||
       names.has(file.name)
     ) {
-      throw new Error("Invalid file list item");
+      throw new Error(t("文件列表项目无效", "Invalid file list item"));
     }
     names.add(file.name);
     return Object.freeze({

@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 /**
  * A small FIFO with O(1) dequeue and cancellation. Cancelled entries are
  * skipped lazily and storage is compacted occasionally.
@@ -65,7 +66,7 @@ export function createUploadQueue() {
  */
 export function createBoundedHistory(limit, onEvict) {
   if (!Number.isSafeInteger(limit) || limit <= 0) {
-    throw new TypeError("History limit must be a positive integer");
+    throw new TypeError(t("历史记录数量限制必须为正整数", "History limit must be a positive integer"));
   }
   /** @type {T[]} */
   const entries = [];

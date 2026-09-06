@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 export function currentPageUrl() {
   return location.href.split(/[?#]/)[0];
 }
@@ -14,7 +15,7 @@ export function isValidLogicalPath(name) {
 
 /** @param {string} name @param {string} [pageUrl] */
 export function childUrl(name, pageUrl = currentPageUrl()) {
-  if (!isValidLogicalPath(name)) throw new Error("Invalid path");
+  if (!isValidLogicalPath(name)) throw new Error(t("路径无效", "Invalid path"));
   const url = new URL(pageUrl);
   if (!url.pathname.endsWith("/")) url.pathname += "/";
   url.pathname += name.split("/").map(encodeURIComponent).join("/");
@@ -23,7 +24,7 @@ export function childUrl(name, pageUrl = currentPageUrl()) {
 
 /** @param {string} basePath @param {string} name */
 export function logicalChildPath(basePath, name) {
-  if (!isValidLogicalPath(name)) throw new Error("Invalid path");
+  if (!isValidLogicalPath(name)) throw new Error(t("路径无效", "Invalid path"));
   const base = basePath.endsWith("/") ? basePath : `${basePath}/`;
   return `${base}${name}`;
 }

@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import { createElement, createIcon } from "../shared/dom.js";
 
 /**
@@ -34,7 +35,7 @@ export function createUploadView(index, name, url, onCancel) {
     className: "cell-status upload-status",
     attributes: {
       id: `uploadStatus${index}`,
-      "aria-label": `${name}: waiting to upload`,
+      "aria-label": t("{0}：等待上传", "{0}: waiting to upload", [name]),
     },
   }));
   const speedNode = /** @type {HTMLSpanElement} */ (createElement("span", {
@@ -47,15 +48,15 @@ export function createUploadView(index, name, url, onCancel) {
   }));
   const liveNode = /** @type {HTMLSpanElement} */ (createElement("span", {
     className: "visually-hidden",
-    text: `${name}: waiting to upload`,
+    text: t("{0}：等待上传", "{0}: waiting to upload", [name]),
     attributes: { role: "status", "aria-live": "polite" },
   }));
   const cancelButton = /** @type {HTMLButtonElement} */ (createElement("button", {
     className: "upload-cancel",
-    text: "Cancel",
+    text: t("取消", "Cancel"),
     attributes: {
       type: "button",
-      "aria-label": `Cancel upload ${name}`,
+      "aria-label": t("取消上传 {0}", "Cancel upload {0}", [name]),
     },
   }));
   cancelButton.addEventListener("click", onCancel);
@@ -77,10 +78,10 @@ export function renderWaiting(view, name, retry = false) {
   const restoreFocus = view.statusCell.contains(document.activeElement);
   setCancelMode(
     view,
-    "Cancel",
-    `Cancel ${retry ? "queued retry" : "queued upload"} ${name}`,
+    t("取消", "Cancel"),
+    t("取消{0} {1}", "Cancel {0} {1}", [retry ? t("排队重试", "queued retry") : t("排队上传", "queued upload"), name]),
   );
-  const message = retry ? "Waiting to retry" : "Waiting";
+  const message = retry ? t("等待重试", "Waiting to retry") : t("等待中", "Waiting");
   view.statusCell.replaceChildren(
     createElement("span", { text: message }),
     view.cancelButton,
@@ -98,7 +99,7 @@ export function renderWaiting(view, name, retry = false) {
  * @param {boolean} announceNow
  */
 export function renderProgress(view, name, speedText, progressText, announceNow) {
-  setCancelMode(view, "Cancel", `Cancel upload ${name}`);
+  setCancelMode(view, t("取消", "Cancel"), t("取消上传 {0}", "Cancel upload {0}", [name]));
   if (
     !view.statusCell.contains(view.speedNode) ||
     !view.statusCell.contains(view.progressNode) ||
@@ -121,20 +122,20 @@ export function renderProgress(view, name, speedText, progressText, announceNow)
   view.speedNode.textContent = speedText;
   view.progressNode.textContent = progressText;
   if (announceNow) {
-    announce(view, `${name}: ${progressText} uploaded at ${speedText}`);
+    announce(view, t("{0}：已上传 {1}，速度 {2}", "{0}: {1} uploaded at {2}", [name, progressText, speedText]));
   }
 }
 
 /** @param {UploadView} view @param {string} name */
 export function renderCheckpoint(view, name) {
   const restoreFocus = view.statusCell.contains(document.activeElement);
-  setCancelMode(view, "Cancel", `Cancel resume status check for ${name}`);
+  setCancelMode(view, t("取消", "Cancel"), t("取消 {0} 的续传状态核对", "Cancel resume status check for {0}", [name]));
   view.statusCell.replaceChildren(
-    createElement("span", { text: "Checking resume status…" }),
+    createElement("span", { text: t("正在核对续传状态…", "Checking resume status…") }),
     view.cancelButton,
     view.liveNode,
   );
-  announce(view, `${name}: checking resume status`);
+  announce(view, t("{0}：正在核对续传状态", "{0}: checking resume status", [name]));
   restoreReplacedStatusFocus(view, restoreFocus, view.cancelButton);
 }
 
@@ -142,33 +143,33 @@ export function renderCheckpoint(view, name) {
 export function renderCleanup(view, name) {
   const restoreFocus = view.statusCell.contains(document.activeElement);
   view.statusCell.replaceChildren(
-    createElement("span", { text: "Cleaning up staged upload…" }),
+    createElement("span", { text: t("正在清理暂存上传…", "Cleaning up staged upload…") }),
     view.liveNode,
   );
-  announce(view, `${name}: cleaning up staged upload`);
+  announce(view, t("{0}：正在清理暂存上传", "{0}: cleaning up staged upload", [name]));
   restoreReplacedStatusFocus(view, restoreFocus);
 }
 
 /** @param {UploadView} view @param {string} name */
 export function renderSubmitting(view, name) {
   const restoreFocus = view.statusCell.contains(document.activeElement);
-  setCancelMode(view, "Stop waiting", `Stop waiting for upload ${name}`);
+  setCancelMode(view, t("停止等待", "Stop waiting"), t("停止等待上传 {0}", "Stop waiting for upload {0}", [name]));
   view.statusCell.replaceChildren(
-    createElement("span", { text: "Submitting…" }),
+    createElement("span", { text: t("正在提交…", "Submitting…") }),
     view.cancelButton,
     view.liveNode,
   );
-  announce(view, `${name}: upload data sent; waiting for server confirmation`);
+  announce(view, t("{0}：上传数据已发送，等待服务器确认", "{0}: upload data sent; waiting for server confirmation", [name]));
   restoreReplacedStatusFocus(view, restoreFocus, view.cancelButton);
 }
 
 /** @param {UploadView} view @param {string} name */
 export function renderWaitingForOverwrite(view, name) {
   view.statusCell.replaceChildren(
-    createElement("span", { text: "Waiting for overwrite decision…" }),
+    createElement("span", { text: t("等待覆盖决定…", "Waiting for overwrite decision…") }),
     view.liveNode,
   );
-  announce(view, `${name}: waiting for overwrite decision`);
+  announce(view, t("{0}：等待覆盖决定", "{0}: waiting for overwrite decision", [name]));
 }
 
 /** @param {UploadView} view @param {string} name */
@@ -181,7 +182,7 @@ export function renderComplete(view, name) {
     }),
     view.liveNode,
   );
-  announce(view, `${name}: upload complete`);
+  announce(view, t("{0}：上传完成", "{0}: upload complete", [name]));
   restoreReplacedStatusFocus(view, restoreFocus);
 }
 
@@ -221,7 +222,7 @@ export function renderUnknown(view, name, reason, recoveryButton = null) {
   );
   if (recoveryButton) view.statusCell.append(recoveryButton);
   view.statusCell.append(view.liveNode);
-  announce(view, `${name}: upload result unknown; ${reason}`);
+  announce(view, t("{0}：上传结果不确定；{1}", "{0}: upload result unknown; {1}", [name, reason]));
   restoreReplacedStatusFocus(view, restoreFocus, recoveryButton);
 }
 
@@ -229,10 +230,10 @@ export function renderUnknown(view, name, reason, recoveryButton = null) {
 export function renderCancelled(view, name) {
   const restoreFocus = view.statusCell.contains(document.activeElement);
   view.statusCell.replaceChildren(
-    createElement("span", { text: "Cancelled" }),
+    createElement("span", { text: t("已取消", "Cancelled") }),
     view.liveNode,
   );
-  announce(view, `${name}: upload cancelled`);
+  announce(view, t("{0}：上传已取消", "{0}: upload cancelled", [name]));
   restoreReplacedStatusFocus(view, restoreFocus);
 }
 
@@ -240,10 +241,10 @@ export function renderCancelled(view, name) {
 export function renderSkipped(view, name, reason) {
   const restoreFocus = view.statusCell.contains(document.activeElement);
   view.statusCell.replaceChildren(
-    createElement("span", { text: `Skipped (${reason})` }),
+    createElement("span", { text: t("已跳过（{0}）", "Skipped ({0})", [reason]) }),
     view.liveNode,
   );
-  announce(view, `${name}: skipped because the ${reason}`);
+  announce(view, t("{0}：已跳过，原因：{1}", "{0}: skipped because the {1}", [name, reason]));
   restoreReplacedStatusFocus(view, restoreFocus);
 }
 

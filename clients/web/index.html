@@ -14,7 +14,7 @@
   <div class="head">
     <div class="breadcrumb"></div>
     <div class="toolbox">
-      <button class="control upload-file hidden" type="button" aria-label="Upload files" title="Upload files">
+      <button class="control upload-file hidden" type="button" aria-label="Upload files" data-i18n-aria-label-zh="上传文件" title="Upload files" data-i18n-title-zh="上传文件">
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
             <path
               d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
@@ -22,9 +22,9 @@
               d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z" />
           </svg>
       </button>
-      <input class="visually-hidden" type="file" id="file" aria-label="Choose files to upload" name="file"
+      <input class="visually-hidden" type="file" id="file" aria-label="Choose files to upload" data-i18n-aria-label-zh="选择要上传的文件" name="file"
         tabindex="-1" multiple>
-      <button class="control upload-folder hidden" type="button" aria-label="Upload folder" title="Upload folder">
+      <button class="control upload-folder hidden" type="button" aria-label="Upload folder" data-i18n-aria-label-zh="上传文件夹" title="Upload folder" data-i18n-title-zh="上传文件夹">
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
             <path
               d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14H7v-1H1.5a.5.5 0 0 1-.5-.5v-8A.5.5 0 0 1 1.5 4h4.293l1.5 1.5H14.5a.5.5 0 0 1 .5.5v2h1V6a1.5 1.5 0 0 0-1.5-1.5H7.707l-1.5-1.5H1.5z" />
@@ -32,9 +32,9 @@
               d="M12.5 8a.5.5 0 0 1 .354.146l2 2a.5.5 0 0 1-.708.708L13 9.707V15.5a.5.5 0 0 1-1 0V9.707l-1.146 1.147a.5.5 0 0 1-.708-.708l2-2A.5.5 0 0 1 12.5 8z" />
           </svg>
       </button>
-      <input class="visually-hidden" type="file" id="folder" aria-label="Choose a folder to upload" name="folder"
+      <input class="visually-hidden" type="file" id="folder" aria-label="Choose a folder to upload" data-i18n-aria-label-zh="选择要上传的文件夹" name="folder"
         tabindex="-1" webkitdirectory multiple>
-      <button class="control new-folder hidden" type="button" aria-label="New folder" title="New folder">
+      <button class="control new-folder hidden" type="button" aria-label="New folder" data-i18n-aria-label-zh="新建文件夹" title="New folder" data-i18n-title-zh="新建文件夹">
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <path
             d="m.5 3 .04.87a1.99 1.99 0 0 0-.342 1.311l.637 7A2 2 0 0 0 2.826 14H9v-1H2.826a1 1 0 0 1-.995-.91l-.637-7A1 1 0 0 1 2.19 4h11.62a1 1 0 0 1 .996 1.09L14.54 8h1.005l.256-2.819A2 2 0 0 0 13.81 3H9.828a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 6.172 1H2.5a2 2 0 0 0-2 2zm5.672-1a1 1 0 0 1 .707.293L7.586 3H2.19c-.24 0-.47.042-.683.12L1.5 2.98a1 1 0 0 1 1-.98h3.672z" />
@@ -42,7 +42,7 @@
             d="M13.5 10a.5.5 0 0 1 .5.5V12h1.5a.5.5 0 1 1 0 1H14v1.5a.5.5 0 1 1-1 0V13h-1.5a.5.5 0 0 1 0-1H13v-1.5a.5.5 0 0 1 .5-.5z" />
         </svg>
       </button>
-      <button class="control new-file hidden" type="button" aria-label="New empty file" title="New empty file">
+      <button class="control new-file hidden" type="button" aria-label="New empty file" data-i18n-aria-label-zh="新建空文件" title="New empty file" data-i18n-title-zh="新建空文件">
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <path
             d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5z" />
@@ -58,13 +58,13 @@
             d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
         </svg>
       </div>
-      <label class="visually-hidden" for="search">Search files or folders</label>
-      <input id="search" title="Search files or folders" aria-label="Search files or folders" name="q" type="text"
+      <label class="visually-hidden" for="search"><span data-i18n-zh="搜索文件或文件夹">Search files or folders</span></label>
+      <input id="search" title="Search files or folders" data-i18n-title-zh="搜索文件或文件夹" aria-label="Search files or folders" data-i18n-aria-label-zh="搜索文件或文件夹" name="q" type="text"
         maxlength="128" autocomplete="off">
       <input type="submit" hidden />
     </form>
     <div class="toolbox-right">
-      <button class="logout-btn hidden" type="button" title="Sign out" aria-label="Sign out">
+      <button class="logout-btn hidden" type="button" title="Sign out" data-i18n-title-zh="退出" aria-label="Sign out" data-i18n-aria-label-zh="退出">
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <path fill-rule="evenodd" d="M10 3.5a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 1 1 0v2A1.5 1.5 0 0 1 9.5 14h-8A1.5 1.5 0 0 1 0 12.5v-9A1.5 1.5 0 0 1 1.5 2h8A1.5 1.5 0 0 1 11 3.5v2a.5.5 0 0 1-1 0z"/>
           <path fill-rule="evenodd" d="M4.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H14.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708z"/>
@@ -78,16 +78,16 @@
       <div class="operation-status hidden" role="status" aria-live="polite"></div>
       <div class="upload-queue-message hidden" role="alert" aria-live="assertive"></div>
       <div class="empty-folder hidden" role="status" aria-live="polite"></div>
-      <table class="uploaders-table hidden" aria-label="Upload queue">
+      <table class="uploaders-table hidden" aria-label="Upload queue" data-i18n-aria-label-zh="上传队列">
         <caption class="upload-history-status hidden" role="status" aria-live="polite"></caption>
         <thead>
           <tr>
-            <th class="cell-name" colspan="2">Name</th>
-            <th class="cell-status">Upload status</th>
+            <th class="cell-name" colspan="2"><span data-i18n-zh="名称">Name</span></th>
+            <th class="cell-status"><span data-i18n-zh="上传状态">Upload status</span></th>
           </tr>
         </thead>
       </table>
-      <table class="paths-table hidden" aria-label="File list">
+      <table class="paths-table hidden" aria-label="File list" data-i18n-aria-label-zh="文件列表">
         <thead>
         </thead>
         <tbody>
@@ -95,7 +95,7 @@
       </table>
       <div class="list-pagination">
         <div class="list-status" role="status" aria-live="polite"></div>
-        <button class="load-more hidden" type="button">Load more</button>
+        <button class="load-more hidden" type="button"><span data-i18n-zh="加载更多">Load more</span></button>
       </div>
     </div>
   </div>
@@ -109,10 +109,10 @@
         <input id="action-dialog-input" type="text" autocomplete="off">
       </div>
       <div class="action-dialog-actions">
-        <button class="action-dialog-cancel" type="button">Cancel</button>
+        <button class="action-dialog-cancel" type="button"><span data-i18n-zh="取消">Cancel</span></button>
         <button class="action-dialog-alternate" type="submit" value="alternate"
-          hidden>Skip</button>
-        <button class="action-dialog-confirm" type="submit" value="confirm">Confirm</button>
+          hidden><span data-i18n-zh="跳过">Skip</span></button>
+        <button class="action-dialog-confirm" type="submit" value="confirm"><span data-i18n-zh="确认">Confirm</span></button>
       </div>
     </form>
   </dialog>

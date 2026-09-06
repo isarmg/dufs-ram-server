@@ -2,6 +2,7 @@ export { createAdministratorApiClient, isAdministratorPassword } from "@sarmg/ad
 export { isAdministratorSession, isAdministratorLoginRequest, isErrorEnvelope } from "@sarmg/contracts";
 export { ApiClientError } from "@sarmg/http-client";
 export { configureNativeWorkspace } from "./shell/native-workspace.js";
+export { t, getLocale, initializeLanguage, switchLanguage, languageLabel, createLanguageControl, validationMessage } from "./shell/i18n.js";
 import "@sarmg/design-tokens/tokens.css";
 import "@sarmg/design-tokens/tokens.dark.css";
 import "@sarmg/design-tokens/reset.css";

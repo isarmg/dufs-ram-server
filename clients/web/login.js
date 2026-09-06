@@ -1,3 +1,6 @@
+import { t, validationMessage } from "./dist/platform.js";
+import { localizeStaticPage } from "./modules/language.js";
+localizeStaticPage(true);
 import { isAdministratorLoginRequest, isAdministratorPassword } from "./dist/platform.js";
 import { administratorApi, authenticationErrorMessage } from "./modules/platform-session.js";
 
@@ -8,6 +11,10 @@ const submit = /** @type {HTMLButtonElement} */ (document.querySelector('button[
 const errorRow = /** @type {HTMLElement} */ (document.querySelector(".error-row"));
 const errorText = /** @type {HTMLElement} */ (document.querySelector(".login-error"));
 let pending = false;
+for (const input of [username, password]) {
+  input.addEventListener("invalid", () => input.setCustomValidity(validationMessage(input)));
+  input.addEventListener("input", () => input.setCustomValidity(""));
+}
 
 form.addEventListener("submit", event => {
   event.preventDefault();
@@ -18,7 +25,7 @@ form.addEventListener("submit", event => {
   }
   if (!isAdministratorLoginRequest({ username: username.value, password: password.value }) || !isAdministratorPassword(password.value)) {
     password.value = "";
-    setError("Enter a valid administrator username and password.");
+    setError(t("请输入有效的管理员用户名和密码。", "Enter a valid administrator username and password."));
     password.focus();
     return;
   }

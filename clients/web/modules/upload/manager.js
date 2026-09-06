@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import { createElement, errorMessage, formatFileSize } from "../shared/dom.js";
 import { MUTATION_EFFECT } from "../shared/mutation_effect.js";
 import { platformErrorCode } from "../http/platform-error.js";
@@ -67,11 +68,11 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 export const UPLOAD_PENDING_ROW_LIMIT = 512;
 export const UPLOAD_TERMINAL_ROW_LIMIT = 200;
 const UPLOAD_RECOVERY_LABELS = Object.freeze({
-  retry: "Retry upload",
-  query_upload: "Check upload status",
+  retry: t("重试上传", "Retry upload"),
+  query_upload: t("核对上传状态", "Check upload status"),
 });
 const UNKNOWN_UPLOAD_RESULT_MESSAGE =
-  `Upload data was sent, but the server did not confirm the result. ${RESULT_UNKNOWN_MESSAGE}`;
+  t("上传数据已发送，但服务器未确认结果。{0}", "Upload data was sent, but the server did not confirm the result. {0}", [RESULT_UNKNOWN_MESSAGE]);
 
 /** @typedef {"new" | "queued" | "running" | "completed" | "failed" | "unknown" | "cancelled"} UploadLifecycleState */
 /** @typedef {"new" | "transferring" | "checking" | "submitting" | "awaiting-confirmation" | "completed" | "failed" | "unknown" | "cancelled"} UploadPhase */
@@ -251,8 +252,8 @@ export function createUploadManager(options) {
   function renderHistoryStatus() {
     const hiddenCount = terminalHistory.evicted;
     historyStatus.textContent = hiddenCount > 0
-      ? `${hiddenCount} older upload result${hiddenCount === 1 ? "" : "s"} hidden; ` +
-        `showing the most recent ${terminalHistory.size}.`
+      ? t("已隐藏 {0} 条较早的上传结果；", "{0} older upload result{1} hidden; ", [hiddenCount, hiddenCount === 1 ? "" : "s"]) +
+        t("显示最近 {0} 条。", "showing the most recent {0}.", [terminalHistory.size])
       : "";
     historyStatus.classList.toggle("hidden", hiddenCount === 0);
     if (restoreHistoryFocusAfterRender) {
@@ -284,7 +285,7 @@ export function createUploadManager(options) {
   function releasePreflightRows(reservation) {
     if (!reservation?.active) return;
     if (preflightReservedRows < reservation.count) {
-      throw new Error("Upload preflight reservation accounting underflowed");
+      throw new Error(t("上传预留计数下溢", "Upload preflight reservation accounting underflowed"));
     }
     preflightReservedRows -= reservation.count;
     reservation.active = false;
@@ -302,7 +303,7 @@ export function createUploadManager(options) {
       admittedRows > reservation.count ||
       preflightReservedRows < reservation.count
     ) {
-      throw new Error("Upload preflight reservation is invalid");
+      throw new Error(t("上传预留无效", "Upload preflight reservation is invalid"));
     }
     const remainingReserved = preflightReservedRows - reservation.count;
     if (
@@ -319,8 +320,8 @@ export function createUploadManager(options) {
 
   function showPendingLimitMessage() {
     queueMessage.textContent =
-      `At most ${UPLOAD_PENDING_ROW_LIMIT} uploads may be pending at once. ` +
-      "Wait for pending uploads to finish before adding or retrying more.";
+      t("最多同时等待 {0} 个上传。", "At most {0} uploads may be pending at once. ", [UPLOAD_PENDING_ROW_LIMIT]) +
+      t("请等待上传完成后再添加或重试。", "Wait for pending uploads to finish before adding or retrying more.");
     queueMessage.classList.remove("hidden");
   }
 
@@ -346,7 +347,7 @@ export function createUploadManager(options) {
     if (queueState !== "paused-auth") queueState = "paused-unknown";
     window.removeEventListener("beforeunload", beforeUnload);
     queueMessage.textContent =
-      `Upload result for ${uploader.name} is unknown. The remaining upload queue is paused; refresh the folder before selecting files again.`;
+      t("{0} 的上传结果不确定，剩余队列已暂停。请刷新文件夹后再选择文件。", "Upload result for {0} is unknown. The remaining upload queue is paused; refresh the folder before selecting files again.", [uploader.name]);
     queueMessage.classList.remove("hidden");
   }
 
@@ -490,7 +491,7 @@ export function createUploadManager(options) {
       renderProgress(
         this.view,
         this.name,
-        "Waiting for data",
+        t("等待数据", "Waiting for data"),
         "0% --:--:--",
         true,
       );
@@ -560,7 +561,7 @@ export function createUploadManager(options) {
       );
       if (detail.status && detail.status !== request.status) {
         this.unknown(
-          `Invalid error response: problem status does not match HTTP status. ${RESULT_UNKNOWN_MESSAGE}`,
+          t("错误响应无效：问题状态与 HTTP 状态不一致。{0}", "Invalid error response: problem status does not match HTTP status. {0}", [RESULT_UNKNOWN_MESSAGE]),
           detail.recovery === "query_upload" ? "query_upload" : "",
           responseRetryAfter(request, detail.retryAfter),
         );
@@ -587,9 +588,9 @@ export function createUploadManager(options) {
         const staged = classification.kind === "awaiting-confirmation";
         if (!targetChange.replaceable) {
           if (staged) {
-            void this.discardStaged("destination cannot be replaced");
+            void this.discardStaged(t("目标无法替换", "destination cannot be replaced"));
           } else {
-            this.skipConflict("destination cannot be replaced");
+            this.skipConflict(t("目标无法替换", "destination cannot be replaced"));
           }
           return;
         }
@@ -635,7 +636,7 @@ export function createUploadManager(options) {
         return;
       }
       this.unknown(
-        `The server returned an inconsistent upload response (HTTP ${request.status}). ${RESULT_UNKNOWN_MESSAGE}`,
+        t("服务器返回的上传响应不一致（HTTP {0}）。{1}", "The server returned an inconsistent upload response (HTTP {0}). {1}", [request.status, RESULT_UNKNOWN_MESSAGE]),
         detail.recovery === "query_upload" ? "query_upload" : "",
         responseRetryAfter(request, detail.retryAfter),
       );
@@ -652,13 +653,13 @@ export function createUploadManager(options) {
       this.phase = "awaiting-confirmation";
       renderWaitingForOverwrite(this.view, this.name);
       const choice = await dialogs.chooseAction({
-        title: "Upload destination changed",
+        title: t("上传目标已变更", "Upload destination changed"),
         message: staged
-          ? `"${this.name}" now exists or changed while its data was uploaded. The uploaded data is staged; overwrite the current destination, skip this file, or cancel the remaining queued files.`
-          : `"${this.name}" now exists or changed before its data was sent. Overwrite the current destination, skip this file, or cancel the remaining queued files.`,
-        confirmText: "Overwrite",
-        alternateText: "Skip file",
-        cancelText: "Cancel remaining",
+          ? t("上传“{0}”的数据时，目标已存在或发生变化。数据已暂存，请选择覆盖当前目标、跳过此文件或取消剩余队列。", "\"{0}\" now exists or changed while its data was uploaded. The uploaded data is staged; overwrite the current destination, skip this file, or cancel the remaining queued files.", [this.name])
+          : t("发送“{0}”的数据前，目标已存在或发生变化。请选择覆盖当前目标、跳过此文件或取消剩余队列。", "\"{0}\" now exists or changed before its data was sent. Overwrite the current destination, skip this file, or cancel the remaining queued files.", [this.name]),
+        confirmText: t("覆盖", "Overwrite"),
+        alternateText: t("跳过文件", "Skip file"),
+        cancelText: t("取消剩余队列", "Cancel remaining"),
         danger: true,
         returnFocus: this.view.row.querySelector("a"),
       });
@@ -689,12 +690,12 @@ export function createUploadManager(options) {
     /** @param {boolean} staged */
     retryMissingTarget(staged) {
       if (staged) {
-        void this.discardStaged("destination was removed", true);
+        void this.discardStaged(t("目标已移除", "destination was removed"), true);
         return;
       }
       if (this.missingTargetRetryUsed) {
         this.fail(
-          "The upload destination kept changing; check its status before trying again",
+          t("上传目标持续变化，请先核对状态再重试", "The upload destination kept changing; check its status before trying again"),
           "query_upload",
         );
         return;
@@ -707,7 +708,7 @@ export function createUploadManager(options) {
     publishStaged() {
       if (this.targetRevision === null) {
         this.fail(
-          "The staged upload has no safe target revision; discard it before retrying",
+          t("暂存上传缺少安全的目标修订，请先丢弃再重试", "The staged upload has no safe target revision; discard it before retrying"),
           "query_upload",
         );
         return;
@@ -757,7 +758,7 @@ export function createUploadManager(options) {
      * @param {boolean} [restartAfterDiscard]
      */
     async discardStaged(
-      skipReason = "destination exists",
+      skipReason = t("目标已存在", "destination exists"),
       restartAfterDiscard = false,
     ) {
       this.phase = "checking";
@@ -778,7 +779,7 @@ export function createUploadManager(options) {
           },
           {
             timeoutMs: STATUS_TIMEOUT_MS,
-            timeoutMessage: "Staged-upload cleanup timed out",
+            timeoutMessage: t("暂存上传清理超时", "Staged-upload cleanup timed out"),
             outcomeUnknown: true,
             resultId: this.uploadId,
           },
@@ -808,7 +809,7 @@ export function createUploadManager(options) {
           headers: { [UPLOAD_ID_HEADER]: this.uploadId },
         }, {
           timeoutMs: STATUS_TIMEOUT_MS,
-          timeoutMessage: "Staged-upload cleanup check timed out",
+          timeoutMessage: t("暂存上传清理核对超时", "Staged-upload cleanup check timed out"),
         });
         const classification = classifyUploadResponse({
           phase: "checkpoint",
@@ -848,8 +849,8 @@ export function createUploadManager(options) {
       }
       this.fail(
         restartAfterDiscard
-          ? "The destination was not overwritten, but staged-upload cleanup could not be confirmed; check its status before retrying"
-          : "File was not overwritten, but cleanup of its staged upload could not be confirmed; the server will expire it automatically",
+          ? t("目标未被覆盖，但无法确认暂存上传是否已清理；请先核对状态再重试", "The destination was not overwritten, but staged-upload cleanup could not be confirmed; check its status before retrying")
+          : t("文件未被覆盖，但无法确认暂存上传是否已清理；服务器将自动使其过期", "File was not overwritten, but cleanup of its staged upload could not be confirmed; the server will expire it automatically"),
         restartAfterDiscard ? "retry" : "",
       );
     }
@@ -866,7 +867,7 @@ export function createUploadManager(options) {
     }
 
     /** @param {string} [reason] */
-    skipConflict(reason = "destination exists") {
+    skipConflict(reason = t("目标已存在", "destination exists")) {
       if (this.state !== "running") return;
       this.clearTimeouts();
       this.clearRecovery();
@@ -895,7 +896,7 @@ export function createUploadManager(options) {
       }
       if (cancelled > 0) {
         queueMessage.textContent =
-          `Cancelled ${cancelled} remaining queued upload${cancelled === 1 ? "" : "s"}. Uploads already in progress were not interrupted.`;
+          t("已取消剩余 {0} 个排队上传。进行中的上传未被中断。", "Cancelled {0} remaining queued upload{1}. Uploads already in progress were not interrupted.", [cancelled, cancelled === 1 ? "" : "s"]);
         queueMessage.classList.remove("hidden");
       }
       runQueue();
@@ -907,14 +908,14 @@ export function createUploadManager(options) {
       if (outcomeUnknown) {
         this.unknown(UNKNOWN_UPLOAD_RESULT_MESSAGE, "query_upload");
       } else {
-        this.fail("Network connection lost", "retry");
+        this.fail(t("网络连接中断", "Network connection lost"), "retry");
       }
     }
 
     handleAbort() {
       const outcomeUnknown = this.abortOutcomeUnknown || this.requestDispatched;
       const reason = this.abortReason ||
-        (outcomeUnknown ? UNKNOWN_UPLOAD_RESULT_MESSAGE : "Upload cancelled");
+        (outcomeUnknown ? UNKNOWN_UPLOAD_RESULT_MESSAGE : t("上传已取消", "Upload cancelled"));
       this.clearTimeouts();
       if (outcomeUnknown) {
         this.unknown(reason, "query_upload");
@@ -927,7 +928,7 @@ export function createUploadManager(options) {
       if (this.state !== "running") return;
       this.clearTimeouts();
       this.unknown(
-        "The server response exceeded the allowed size",
+        t("服务器响应超过允许的大小", "The server response exceeded the allowed size"),
         "query_upload",
       );
     }
@@ -956,7 +957,7 @@ export function createUploadManager(options) {
       }
       if (knownTargets.has(this.name)) {
         queueMessage.textContent =
-          `Another upload already targets ${this.name}. Wait for it to finish before retrying this upload.`;
+          t("已有其他上传以 {0} 为目标，请等待其完成后再重试。", "Another upload already targets {0}. Wait for it to finish before retrying this upload.", [this.name]);
         queueMessage.classList.remove("hidden");
         return;
       }
@@ -992,7 +993,7 @@ export function createUploadManager(options) {
           headers: { [UPLOAD_ID_HEADER]: this.uploadId },
         }, {
           timeoutMs: STATUS_TIMEOUT_MS,
-          timeoutMessage: "Resume status check timed out",
+          timeoutMessage: t("续传状态核对超时", "Resume status check timed out"),
         });
         const classification = classifyUploadResponse({
           phase: "checkpoint",
@@ -1021,7 +1022,7 @@ export function createUploadManager(options) {
             return;
           }
           this.fail(
-            "The upload session cannot be resumed; start a new upload session",
+            t("上传会话无法续传，请启动新的上传会话", "The upload session cannot be resumed; start a new upload session"),
             "retry",
           );
           return;
@@ -1045,7 +1046,7 @@ export function createUploadManager(options) {
             classification.protocol?.offset !== this.file.size
           ) {
             this.unknown(
-              `The server returned an invalid overwrite checkpoint. ${RESULT_UNKNOWN_MESSAGE}`,
+              t("服务器返回的覆盖检查点无效。{0}", "The server returned an invalid overwrite checkpoint. {0}", [RESULT_UNKNOWN_MESSAGE]),
               "query_upload",
             );
             return;
@@ -1058,13 +1059,13 @@ export function createUploadManager(options) {
           }
           if (revision === null) {
             this.unknown(
-              `The server returned an invalid overwrite checkpoint. ${RESULT_UNKNOWN_MESSAGE}`,
+              t("服务器返回的覆盖检查点无效。{0}", "The server returned an invalid overwrite checkpoint. {0}", [RESULT_UNKNOWN_MESSAGE]),
               "query_upload",
             );
             return;
           }
           if (!replaceable) {
-            void this.discardStaged("destination cannot be replaced");
+            void this.discardStaged(t("目标无法替换", "destination cannot be replaced"));
             return;
           }
           void this.resolveDestinationConflict(revision, true);
@@ -1074,7 +1075,7 @@ export function createUploadManager(options) {
           const offset = classification.protocol?.offset;
           if (typeof offset !== "number" || !Number.isSafeInteger(offset)) {
             this.unknown(
-              `The server returned an inconsistent upload checkpoint. ${RESULT_UNKNOWN_MESSAGE}`,
+              t("服务器返回的上传检查点不一致。{0}", "The server returned an inconsistent upload checkpoint. {0}", [RESULT_UNKNOWN_MESSAGE]),
               "query_upload",
             );
             return;
@@ -1091,7 +1092,7 @@ export function createUploadManager(options) {
             return;
           }
           this.fail(
-            "Upload remains resumable from the confirmed checkpoint",
+            t("上传仍可从已确认的检查点续传", "Upload remains resumable from the confirmed checkpoint"),
             "retry",
           );
           return;
@@ -1100,20 +1101,20 @@ export function createUploadManager(options) {
           if ([429, 503].includes(response.status)) {
             this.unknown(
               response.status === 429
-                ? "Upload status queries are temporarily busy. Check the upload status again before trying to upload"
-                : "Upload status is temporarily unavailable. Check the upload status again before trying to upload",
+                ? t("上传状态查询繁忙，请再次核对状态后再上传", "Upload status queries are temporarily busy. Check the upload status again before trying to upload")
+                : t("上传状态暂不可用，请再次核对状态后再上传", "Upload status is temporarily unavailable. Check the upload status again before trying to upload"),
               "query_upload",
               response.headers.get("Retry-After"),
             );
             return;
           }
           this.unknown(
-            "The server recorded an uncertain publication outcome. Refresh the folder and inspect the target before selecting the file again",
+            t("服务器记录的发布结果不确定。请刷新文件夹核对目标后再选择文件", "The server recorded an uncertain publication outcome. Refresh the folder and inspect the target before selecting the file again"),
           );
           return;
         }
         this.unknown(
-          `Upload status could not be safely interpreted (HTTP ${response.status})`,
+          t("无法安全解读上传状态（HTTP {0}）", "Upload status could not be safely interpreted (HTTP {0})", [response.status]),
           "query_upload",
         );
       } catch (error) {
@@ -1214,7 +1215,7 @@ export function createUploadManager(options) {
       this.clearRecovery();
       this.state = "failed";
       this.phase = "failed";
-      const message = reason || "Upload failed";
+      const message = reason || t("上传失败", "Upload failed");
       const recoveryButton = this.createRecoveryButton(recovery, retryAfter);
       renderFailure(this.view, this.name, message, recoveryButton);
       retainTerminalRow(
@@ -1290,7 +1291,7 @@ export function createUploadManager(options) {
       const delaySeconds = normalizeRetryAfter(retryAfter);
       if (delaySeconds === null || delaySeconds === 0) return recoveryButton;
       recoveryButton.setAttribute("disabled", "");
-      recoveryButton.title = `${label} after ${delaySeconds} seconds`;
+      recoveryButton.title = t("{1} 秒后{0}", "{0} after {1} seconds", [label, delaySeconds]);
       const delayMs = delaySeconds * 1000;
       if (delayMs > MAX_TIMER_DELAY_MS) {
         this.recoveryAvailableAt = Number.POSITIVE_INFINITY;
@@ -1329,10 +1330,10 @@ export function createUploadManager(options) {
       if (this.state !== "running" || !this.abortController) return;
       if (this.requestDispatched) {
         this.abortReason =
-          `Upload cancellation was requested, but the server result is unknown. ${RESULT_UNKNOWN_MESSAGE}`;
+          t("已请求取消上传，但服务器结果不确定。{0}", "Upload cancellation was requested, but the server result is unknown. {0}", [RESULT_UNKNOWN_MESSAGE]);
         this.abortOutcomeUnknown = true;
       } else {
-        this.abortReason = "Upload cancelled";
+        this.abortReason = t("上传已取消", "Upload cancelled");
         this.abortOutcomeUnknown = false;
       }
       this.abortController.abort();
@@ -1348,7 +1349,7 @@ export function createUploadManager(options) {
       this.abortOutcomeUnknown = false;
       this.lastProgressAt = Date.now();
       this.totalTimer = window.setTimeout(() => {
-        this.abortReason = "Upload exceeded the maximum duration";
+        this.abortReason = t("上传超过最长允许时间", "Upload exceeded the maximum duration");
         this.abortOutcomeUnknown = true;
         controller.abort();
       }, TOTAL_TIMEOUT_MS);
@@ -1365,7 +1366,7 @@ export function createUploadManager(options) {
           this.scheduleIdleTimeout(controller, remaining);
           return;
         }
-        this.abortReason = "Upload made no progress for too long";
+        this.abortReason = t("上传长时间没有进展", "Upload made no progress for too long");
         this.abortOutcomeUnknown = true;
         controller.abort();
       }, delay);
@@ -1405,7 +1406,7 @@ export function createUploadManager(options) {
       },
       {
         timeoutMs: STATUS_TIMEOUT_MS,
-        timeoutMessage: "Upload conflict check timed out",
+        timeoutMessage: t("上传冲突核对超时", "Upload conflict check timed out"),
         outcomeUnknown: false,
       },
     );
@@ -1448,8 +1449,8 @@ export function createUploadManager(options) {
     }
     if (accepted.length === 0) {
       queueMessage.textContent = duplicateName
-        ? `Skipped duplicate upload target ${duplicateName}. Refresh the folder before replacing the same target again.`
-        : "No files were selected.";
+        ? t("已跳过重复上传目标 {0}。请刷新文件夹后再替换同一目标。", "Skipped duplicate upload target {0}. Refresh the folder before replacing the same target again.", [duplicateName])
+        : t("未选择文件。", "No files were selected.");
       queueMessage.classList.remove("hidden");
       return;
     }
@@ -1463,7 +1464,7 @@ export function createUploadManager(options) {
     );
     if (absolutePathBytes > UPLOAD_BATCH_PATH_BYTES_LIMIT) {
       queueMessage.textContent =
-        `Selected upload destinations exceed the ${UPLOAD_BATCH_PATH_BYTES_LIMIT}-byte batch limit in this folder. Split the selection into smaller batches.`;
+        t("所选上传目标超过本文件夹每批 {0} 字节的限制，请分批选择。", "Selected upload destinations exceed the {0}-byte batch limit in this folder. Split the selection into smaller batches.", [UPLOAD_BATCH_PATH_BYTES_LIMIT]);
       queueMessage.classList.remove("hidden");
       return;
     }
@@ -1477,7 +1478,7 @@ export function createUploadManager(options) {
         return;
       }
       queueMessage.textContent =
-        `Unable to check upload destinations: ${errorMessage(error)}`;
+        t("无法核对上传目标：{0}", "Unable to check upload destinations: {0}", [errorMessage(error)]);
       queueMessage.classList.remove("hidden");
       return;
     }
@@ -1502,16 +1503,12 @@ export function createUploadManager(options) {
     let skippedConflicts = false;
     if (conflicts.length > 0) {
       const choice = await dialogs.chooseAction({
-        title: "Existing upload destinations",
+        title: t("已存在的上传目标", "Existing upload destinations"),
         message:
-          `${formatNameSummary(conflicts.map(value => value.entry.name))} ${
-            conflicts.length === 1 ? "already exists" : "already exist"
-          }. Overwrite only if unchanged since this check, skip ${
-            conflicts.length === 1 ? "this file" : "these files"
-          }, or cancel the batch.`,
-        confirmText: "Overwrite",
-        alternateText: "Skip conflicts",
-        cancelText: "Cancel upload",
+          t("{0} {1}。仅在目标自核对后未变化时覆盖，或跳过 {2}，或取消整批。", "{0} {1}. Overwrite only if unchanged since this check, skip {2}, or cancel the batch.", [formatNameSummary(conflicts.map(value => value.entry.name)), t("已存在", conflicts.length === 1 ? "already exists" : "already exist"), t("这些文件", conflicts.length === 1 ? "this file" : "these files")]),
+        confirmText: t("覆盖", "Overwrite"),
+        alternateText: t("跳过冲突", "Skip conflicts"),
+        cancelText: t("取消上传", "Cancel upload"),
         danger: true,
         returnFocus,
       });
@@ -1546,10 +1543,10 @@ export function createUploadManager(options) {
 
     if (uploadEntries.length === 0) {
       queueMessage.textContent = duplicateName
-        ? `Skipped duplicate upload target ${duplicateName}. Refresh the folder before replacing the same target again.`
+        ? t("已跳过重复上传目标 {0}。请刷新文件夹后再替换同一目标。", "Skipped duplicate upload target {0}. Refresh the folder before replacing the same target again.", [duplicateName])
         : blockedNames.length > 0
-          ? `Skipped ${formatNameSummary(blockedNames)} because the destination cannot be replaced.`
-          : "All conflicting upload destinations were skipped.";
+          ? t("已跳过 {0}，因为目标无法替换。", "Skipped {0} because the destination cannot be replaced.", [formatNameSummary(blockedNames)])
+          : t("已跳过所有冲突的上传目标。", "All conflicting upload destinations were skipped.");
       queueMessage.classList.remove("hidden");
       return;
     }
@@ -1572,15 +1569,15 @@ export function createUploadManager(options) {
 
     const notices = [];
     if (duplicateName) {
-      notices.push(`Skipped duplicate upload target ${duplicateName}.`);
+      notices.push(t("已跳过重复上传目标 {0}。", "Skipped duplicate upload target {0}.", [duplicateName]));
     }
     if (blockedNames.length > 0) {
       notices.push(
-        `Skipped ${formatNameSummary(blockedNames)} because the destination cannot be replaced.`,
+        t("已跳过 {0}，因为目标无法替换。", "Skipped {0} because the destination cannot be replaced.", [formatNameSummary(blockedNames)]),
       );
     }
     if (skippedConflicts) {
-      notices.push("Skipped the conflicting upload destinations.");
+      notices.push(t("已跳过冲突的上传目标。", "Skipped the conflicting upload destinations."));
     }
     if (notices.length > 0) {
       queueMessage.textContent = notices.join(" ");
@@ -1746,7 +1743,7 @@ function formatNameSummary(names) {
   const visible = names.slice(0, 5).map(name => `"${name}"`);
   const remaining = names.length - visible.length;
   return remaining > 0
-    ? `${visible.join(", ")} and ${remaining} more`
+    ? t("{0}及另外 {1} 项", "{0} and {1} more", [visible.join(", "), remaining])
     : visible.join(", ");
 }
 
@@ -1757,13 +1754,13 @@ function formatNameSummary(names) {
 function uploadFailureMessage(state) {
   switch (state) {
     case "running":
-      return "Upload remains resumable";
+      return t("上传仍可续传", "Upload remains resumable");
     case "rejected":
-      return "The upload session was rejected";
+      return t("上传会话已被拒绝", "The upload session was rejected");
     case "not-seen":
-      return "The upload was not recorded";
+      return t("上传未被记录", "The upload was not recorded");
     case "not-started":
-      return "The upload was not started";
+      return t("上传未开始", "The upload was not started");
     default:
       return "";
   }
@@ -1850,7 +1847,7 @@ function normalizeConcurrency(value) {
 function normalizeTerminalRowLimit(value) {
   if (value === undefined) return UPLOAD_TERMINAL_ROW_LIMIT;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
-    throw new TypeError("Upload terminal row limit must be a positive integer");
+    throw new TypeError(t("上传结果行数限制必须为正整数", "Upload terminal row limit must be a positive integer"));
   }
   return value;
 }

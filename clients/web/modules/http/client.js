@@ -1,3 +1,4 @@
+import { t, getLocale } from "../../dist/platform.js";
 import {
   OPERATION_STATE_HEADER,
   TARGET_REVISION_HEADER,
@@ -18,11 +19,11 @@ export {
 
 export const CSRF_HEADER = "X-CSRF-Token";
 export const AUTH_REQUIRED_MESSAGE =
-  "Your session is no longer valid. Returning to the sign-in page.";
+  t("会话已失效，正在返回登录页面。", "Your session is no longer valid. Returning to the sign-in page.");
 export const PAGE_EXPIRED_MESSAGE =
-  "Your session or this page is no longer valid. Refresh the page and select the files again.";
+  t("会话或页面已失效。请刷新页面后重新选择文件。", "Your session or this page is no longer valid. Refresh the page and select the files again.");
 export const RESULT_UNKNOWN_MESSAGE =
-  "The result is unknown; refresh the folder to verify what happened before trying again.";
+  t("结果不确定，请刷新文件夹核对实际状态后再重试。", "The result is unknown; refresh the folder to verify what happened before trying again.");
 export const REQUEST_TIMEOUT_MS = 30 * 1000;
 export const OPERATION_ID_HEADER = "X-Dufs-Operation-Id";
 export const SOURCE_REVISION_HEADER = "X-Dufs-Source-Revision";
@@ -286,7 +287,7 @@ export async function assertResponse(response, onUnauthorized) {
     );
   if (contradictoryOperationState) {
     throw new RequestError(
-      `Invalid operation result. ${RESULT_UNKNOWN_MESSAGE}`,
+      t("操作结果无效。{0}", "Invalid operation result. {0}", [RESULT_UNKNOWN_MESSAGE]),
       {
         status: response.status,
         code: "invalid_operation_result",
@@ -312,7 +313,7 @@ export async function assertResponse(response, onUnauthorized) {
   };
   if (detail.status && detail.status !== response.status) {
     throw new RequestError(
-      "Invalid error response: problem status does not match HTTP status",
+      t("错误响应无效：问题状态与 HTTP 状态不一致", "Invalid error response: problem status does not match HTTP status"),
       {
         ...errorMetadata,
         status: response.status,
@@ -325,7 +326,7 @@ export async function assertResponse(response, onUnauthorized) {
     );
   }
   throw new RequestError(
-    detail.message || `Request failed (HTTP ${response.status})`,
+    problemMessage(detail, response.status),
     {
       ...errorMetadata,
       status: response.status,
@@ -373,7 +374,7 @@ export async function assertDiscardUploadResponse(
     return response;
   }
   throw new RequestError(
-    `Invalid staged-upload cleanup result. ${RESULT_UNKNOWN_MESSAGE}`,
+    t("暂存上传清理结果无效。{0}", "Invalid staged-upload cleanup result. {0}", [RESULT_UNKNOWN_MESSAGE]),
     {
       status: response.status,
       code: "invalid_discard_result",
@@ -427,7 +428,7 @@ export async function assertFreshUploadResponse(
     };
     if (detail.status && detail.status !== response.status) {
       throw new RequestError(
-        "Invalid error response: problem status does not match HTTP status",
+        t("错误响应无效：问题状态与 HTTP 状态不一致", "Invalid error response: problem status does not match HTTP status"),
         {
           ...errorMetadata,
           status: response.status,
@@ -442,7 +443,7 @@ export async function assertFreshUploadResponse(
       );
     }
     throw new RequestError(
-      detail.message || `Upload failed (HTTP ${response.status})`,
+      problemMessage(detail, response.status),
       {
         ...errorMetadata,
         status: response.status,
@@ -457,7 +458,7 @@ export async function assertFreshUploadResponse(
     );
   }
   throw new RequestError(
-    `Invalid upload result. ${RESULT_UNKNOWN_MESSAGE}`,
+    t("上传结果无效。{0}", "Invalid upload result. {0}", [RESULT_UNKNOWN_MESSAGE]),
     {
       status: response.status,
       code: "invalid_upload_result",
@@ -742,7 +743,7 @@ export async function requestJson(url, init = {}, options = {}) {
     }
     if (!isJsonMediaType(buffered.headers.get("content-type"))) {
       await buffered.body?.cancel();
-      throw new RequestError("The server returned a non-JSON response", {
+      throw new RequestError(t("服务器返回了非 JSON 响应", "The server returned a non-JSON response"), {
         status: response.status,
         code: "invalid_json_content_type",
         kind: "protocol",
@@ -757,7 +758,7 @@ export async function requestJson(url, init = {}, options = {}) {
       // stream and retain a second copy of every chunk in an unread branch.
       payload = JSON.parse(await buffered.text());
     } catch {
-      throw new RequestError("The server returned invalid JSON", {
+      throw new RequestError(t("服务器返回了无效 JSON", "The server returned invalid JSON"), {
         status: response.status,
         code: "invalid_json_response",
         kind: "protocol",
@@ -790,7 +791,7 @@ export async function requestNoContent(url, init = {}, options = {}) {
       ![204, 205].includes(buffered.status) &&
       (await buffered.arrayBuffer()).byteLength !== 0
     ) {
-      throw new RequestError("The server returned an unexpected response body", {
+      throw new RequestError(t("服务器返回了意外的响应内容", "The server returned an unexpected response body"), {
         status: buffered.status,
         code: "unexpected_response_body",
         kind: "protocol",
@@ -849,7 +850,7 @@ export async function requestHead(url, init = {}, options = {}) {
 async function performRequest(url, init, options, consume) {
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new TypeError("Request timeout must be a positive integer");
+    throw new TypeError(t("请求超时时间必须为正整数", "Request timeout must be a positive integer"));
   }
 
   const callerSignal = init.signal;
@@ -860,7 +861,7 @@ async function performRequest(url, init, options, consume) {
   // that was already aborted. Keep this distinct from cancellation after the
   // fetch dispatch, whose operation outcome must remain conservative.
   if (callerSignal?.aborted) {
-    throw new RequestError("Request cancelled.", {
+    throw new RequestError(t("请求已取消。", "Request cancelled."), {
       code: "client_cancelled",
       kind: "cancelled",
       outcomeUnknown: false,
@@ -904,7 +905,7 @@ async function performRequest(url, init, options, consume) {
         (!response.ok && returnedOperationState === "succeeded")
       ) {
         throw new RequestError(
-          `Invalid operation result. ${RESULT_UNKNOWN_MESSAGE}`,
+          t("操作结果无效。{0}", "Invalid operation result. {0}", [RESULT_UNKNOWN_MESSAGE]),
           {
             status: response.status,
             code: "invalid_operation_result",
@@ -923,8 +924,8 @@ async function performRequest(url, init, options, consume) {
       throw new RequestError(
         options.timeoutMessage ||
           (outcomeUnknown
-            ? `Request timed out. ${RESULT_UNKNOWN_MESSAGE}`
-            : "Request timed out. Try again."),
+            ? t("请求超时。{0}", "Request timed out. {0}", [RESULT_UNKNOWN_MESSAGE])
+            : t("请求超时，请重试。", "Request timed out. Try again.")),
         {
           code: "client_timeout",
           kind: "timeout",
@@ -937,8 +938,8 @@ async function performRequest(url, init, options, consume) {
     if (controller.signal.aborted) {
       throw new RequestError(
         outcomeUnknown
-          ? `Request cancelled. ${RESULT_UNKNOWN_MESSAGE}`
-          : "Request cancelled.",
+          ? t("请求已取消。{0}", "Request cancelled. {0}", [RESULT_UNKNOWN_MESSAGE])
+          : t("请求已取消。", "Request cancelled."),
         {
           code: "client_cancelled",
           kind: "cancelled",
@@ -950,8 +951,8 @@ async function performRequest(url, init, options, consume) {
     }
     throw new RequestError(
       outcomeUnknown
-        ? `Network connection lost. ${RESULT_UNKNOWN_MESSAGE}`
-        : "Network connection lost. Try again.",
+        ? t("网络连接中断。{0}", "Network connection lost. {0}", [RESULT_UNKNOWN_MESSAGE])
+        : t("网络连接中断，请重试。", "Network connection lost. Try again."),
       {
         code: "network_error",
         kind: "network",
@@ -1101,7 +1102,7 @@ export async function runMutationWithReconciliation(execute, onUnauthorized) {
  */
 export async function queryJob(jobId, onUnauthorized) {
   if (!OPERATION_ID_PATTERN.test(jobId)) {
-    throw new TypeError("Job ID must be a canonical UUID");
+    throw new TypeError(t("任务标识必须为规范的 UUID", "Job ID must be a canonical UUID"));
   }
 
   try {
@@ -1116,7 +1117,7 @@ export async function queryJob(jobId, onUnauthorized) {
     const responseOperationState =
       response.headers.get(OPERATION_STATE_HEADER) || "";
     if (!isRecord(payload)) {
-      throw new RequestError("Invalid job status response", {
+      throw new RequestError(t("任务状态响应无效", "Invalid job status response"), {
         code: "invalid_job_status",
         kind: "protocol",
       });
@@ -1138,7 +1139,7 @@ export async function queryJob(jobId, onUnauthorized) {
         (httpStatus < 400 || httpStatus > 599)
       )
     ) {
-      throw new RequestError("Invalid job status response", {
+      throw new RequestError(t("任务状态响应无效", "Invalid job status response"), {
         code: "invalid_job_status",
         kind: "protocol",
       });
@@ -1172,7 +1173,7 @@ export async function queryJob(jobId, onUnauthorized) {
       code: "job_status_unavailable",
       message:
         `${RESULT_UNKNOWN_MESSAGE} ` +
-        `The one-time status check failed: ${requestErrorMessage(statusError)}`,
+        t("本次状态核对失败：{0}", "The one-time status check failed: {0}", [requestErrorMessage(statusError)]),
       authenticationFailed: false,
     });
   }
@@ -1235,7 +1236,7 @@ export async function queryUnknownUpload(
     }
     if (classification.kind === "invalid") {
       await assertResponse(response, onUnauthorized);
-      throw new RequestError("Invalid upload status response", {
+      throw new RequestError(t("上传状态响应无效", "Invalid upload status response"), {
         code: "invalid_upload_status",
         kind: "protocol",
       });
@@ -1266,7 +1267,7 @@ export async function queryUnknownUpload(
       code: "upload_status_unavailable",
       message:
         `${RESULT_UNKNOWN_MESSAGE} ` +
-        `The one-time upload status check failed: ${requestErrorMessage(statusError)}`,
+        t("本次上传状态核对失败：{0}", "The one-time upload status check failed: {0}", [requestErrorMessage(statusError)]),
       authenticationFailed: false,
     });
   }
@@ -1294,53 +1295,70 @@ function normalizeErrorMessage(value) {
 /** @param {string} state @param {number} status @returns {string} */
 function uploadStatusMessage(state, status) {
   if (state === "committed") {
-    return "The server confirms that the upload was committed.";
+    return t("服务器已确认上传提交成功。", "The server confirms that the upload was committed.");
   }
   if (state === "rejected") {
-    return "The server confirms that the upload was rejected.";
+    return t("服务器已确认上传被拒绝。", "The server confirms that the upload was rejected.");
   }
   if (state === "not-seen") {
-    return "The server did not record this upload ID.";
+    return t("服务器没有记录此上传标识。", "The server did not record this upload ID.");
   }
   if (state === "unknown") {
     if (status === 429) {
-      return "The upload status could not be checked because status queries are temporarily busy. Refresh the folder before trying again.";
+      return t("状态查询繁忙，无法核对上传状态。请刷新文件夹后再重试。", "The upload status could not be checked because status queries are temporarily busy. Refresh the folder before trying again.");
     }
     return status === 503
-      ? "The upload status could not be checked because the status service is temporarily unavailable. Refresh the folder before trying again."
-      : "The server could not confirm the final upload status. Refresh the folder before trying again.";
+      ? t("状态服务暂不可用，无法核对上传状态。请刷新文件夹后再重试。", "The upload status could not be checked because the status service is temporarily unavailable. Refresh the folder before trying again.")
+      : t("服务器无法确认最终上传状态。请刷新文件夹后再重试。", "The server could not confirm the final upload status. Refresh the folder before trying again.");
   }
   return (
-    "The server reports that the upload is still running. " +
-    "Refresh the folder before trying again."
+    t("服务器报告上传仍在进行。", "The server reports that the upload is still running. ") +
+    t("请刷新文件夹后再重试。", "Refresh the folder before trying again.")
   );
 }
 
 /** @param {Record<string, unknown>} payload @returns {string} */
 function jobStatusMessage(payload) {
   if (payload.state === "succeeded") {
-    return "The server confirms that the operation succeeded.";
+    return t("服务器已确认操作成功。", "The server confirms that the operation succeeded.");
   }
   if (payload.state === "failed") {
     const detail = normalizeErrorMessageValue(payload.detail);
-    return detail
-      ? `The server confirms that the operation failed: ${detail}`
-      : "The server confirms that the operation failed.";
+    return detail && getLocale() === "en"
+      ? t("服务器已确认操作失败：{0}", "The server confirms that the operation failed: {0}", [detail])
+      : t("服务器已确认操作失败。", "The server confirms that the operation failed.");
   }
   if (payload.state === "unknown") {
     return (
-      "The server could not prove the final operation outcome. " +
-      "Refresh the folder to inspect the target before trying again."
+      t("服务器无法证明最终操作结果。", "The server could not prove the final operation outcome. ") +
+      t("请刷新文件夹核对目标后再重试。", "Refresh the folder to inspect the target before trying again.")
     );
   }
   return (
-    "The server reports that the operation is still running. " +
-    "Refresh the folder before trying again."
+    t("服务器报告操作仍在进行。", "The server reports that the operation is still running. ") +
+    t("请刷新文件夹后再重试。", "Refresh the folder before trying again.")
   );
+}
+
+/** Protocol metadata stays intact; server prose is not a localized UI contract.
+ * @param {Readonly<ParsedErrorPayload>} detail @param {number} status
+ */
+function problemMessage(detail, status) {
+  if (getLocale() === "en" && detail.message) return detail.message;
+  const labels = /** @type {Record<string, string>} */ ({
+    path_exists: t("路径已存在", "Path already exists"),
+    destination_exists: t("目标已存在", "Destination already exists"),
+    source_changed: t("源文件已变化，请刷新后核对", "Source changed; refresh and review"),
+    destination_changed: t("目标已变化，请刷新后核对", "Destination changed; refresh and review"),
+    permission_denied: t("权限不足", "Permission denied"),
+    not_found: t("目标不存在", "Target not found"),
+    insufficient_storage: t("存储空间不足", "Insufficient storage"),
+  });
+  return labels[detail.code] || t("请求失败（HTTP {0}），请核对目标状态后再重试。", "Request failed (HTTP {0}); check the target state before retrying.", [status]);
 }
 
 /** @param {unknown} error @returns {string} */
 function requestErrorMessage(error) {
   if (error instanceof Error && error.message) return error.message;
-  return "status unavailable";
+  return t("状态不可用", "status unavailable");
 }

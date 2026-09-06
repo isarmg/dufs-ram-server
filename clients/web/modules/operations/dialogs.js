@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 /**
  * @typedef {{
  *   showMessage: (options: DialogOptions) => Promise<undefined>,
@@ -141,11 +142,11 @@ export function createActionDialogs() {
     input.value = options.value || "";
     inputLabel.textContent = options.label || "";
     cancelButton.hidden = kind === "alert";
-    cancelButton.textContent = options.cancelText || "Cancel";
+    cancelButton.textContent = options.cancelText || t("取消", "Cancel");
     alternateButton.hidden = kind !== "choice";
-    alternateButton.textContent = options.alternateText || "Skip";
+    alternateButton.textContent = options.alternateText || t("跳过", "Skip");
     confirmButton.textContent = options.confirmText ||
-      (kind === "alert" ? "Close" : "Confirm");
+      (kind === "alert" ? t("关闭", "Close") : t("确认", "Confirm"));
     confirmButton.classList.toggle("danger", Boolean(options.danger));
     dialog.returnValue = "";
 
@@ -199,9 +200,9 @@ function dialogChoice(value) {
  */
 function requiredDialogElement(selector, root, constructor) {
   const element = root.querySelector(selector);
-  if (!element) throw new Error(`Required dialog control is missing: ${selector}`);
+  if (!element) throw new Error(t("缺少必要的对话框控件：{0}", "Required dialog control is missing: {0}", [selector]));
   if (!(element instanceof constructor)) {
-    throw new Error(`Required dialog control has the wrong type: ${selector}`);
+    throw new Error(t("必要的对话框控件类型不正确：{0}", "Required dialog control has the wrong type: {0}", [selector]));
   }
   return element;
 }

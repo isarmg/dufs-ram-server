@@ -1,3 +1,5 @@
+import { t } from "../dist/platform.js";
+import { localizeStaticPage } from "./language.js";
 import { createActionDialogs } from "./operations/dialogs.js";
 import { createFileOperations } from "./operations/file_operations.js";
 import { createDirectoryListing } from "./listing/controller.js";
@@ -47,23 +49,24 @@ export function start() {
 }
 
 async function initialize() {
+  localizeStaticPage();
   const indexData = /** @type {HTMLTemplateElement | null} */ (
     document.getElementById("index-data")
   );
-  if (!indexData) throw new Error("Page data is missing");
+  if (!indexData) throw new Error(t("页面数据缺失", "Page data is missing"));
   /** @type {unknown} */
   const rawData = JSON.parse(decodeBase64(indexData.content.textContent || ""));
   data = parseIndexData(rawData, await administratorApi.restore());
   addBreadcrumb(data.href);
-  document.title = `${data.href} - Dufs File Manager`;
+  document.title = t("{0} - Dufs 文件管理", "{0} - Dufs File Manager", [data.href]);
   configureNativeWorkspace({
     header: requiredElement(".head", HTMLElement), content: requiredElement(".main", HTMLElement),
     actions: requiredElement(".toolbox-right", HTMLElement), create: requiredElement(".new-folder", HTMLButtonElement),
     logout: requiredElement(".logout-btn", HTMLButtonElement), refresh: () => window.location.reload(),
-    instanceName: "Shared root", instanceHref: "/",
+    instanceName: t("共享根目录", "Shared root"), instanceHref: "/",
     labels: {
-      actions: "Global actions", refresh: "Reload page", light: "Switch to light mode",
-      dark: "Switch to dark mode", logout: "Sign out", instances: "Shared root instance",
+      actions: t("全局操作", "Global actions"), refresh: t("重新载入页面", "Reload page"), light: t("切换到浅色模式", "Switch to light mode"),
+      dark: t("切换到深色模式", "Switch to dark mode"), logout: t("退出", "Sign out"), instances: t("共享根目录实例", "Shared root instance"),
     },
   });
 
@@ -75,10 +78,10 @@ async function initialize() {
   const emptyFolder = requiredElement(".empty-folder", HTMLElement);
   const dialogs = createActionDialogs();
   const emptyNote = params.q
-    ? "No search results"
+    ? t("没有搜索结果", "No search results")
     : data.dir_exists
-      ? "Folder is empty"
-      : "Uploading files will create this folder automatically";
+      ? t("文件夹为空", "Folder is empty")
+      : t("上传文件后将自动创建此文件夹", "Uploading files will create this folder automatically");
 
   directoryListing = createDirectoryListing({
     data,
@@ -147,9 +150,9 @@ async function initialize() {
  */
 function requiredElement(selector, constructor) {
   const element = document.querySelector(selector);
-  if (!element) throw new Error(`Required page control is missing: ${selector}`);
+  if (!element) throw new Error(t("缺少必要的页面控件：{0}", "Required page control is missing: {0}", [selector]));
   if (constructor && !(element instanceof constructor)) {
-    throw new Error(`Required page control has the wrong type: ${selector}`);
+    throw new Error(t("必要的页面控件类型不正确：{0}", "Required page control has the wrong type: {0}", [selector]));
   }
   return /** @type {T} */ (element);
 }
@@ -184,8 +187,8 @@ function addBreadcrumb(href) {
       const root = createElement("a", {
         attributes: {
           href: path,
-          title: "Root",
-          "aria-label": "Root",
+          title: t("根目录", "Root"),
+          "aria-label": t("根目录", "Root"),
         },
       });
       root.append(createIcon("home"));

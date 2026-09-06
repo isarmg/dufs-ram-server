@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import {
   CSRF_HEADER,
   OPERATION_ID_HEADER,
@@ -103,13 +104,13 @@ export function createFileOperations(options) {
     if (pending.has(pendingKey)) return;
     const returnFocus = document.getElementById(`deleteBtn${index}`);
     if (!await dialogs.confirmAction({
-      title: "Delete item",
-      message: `Delete "${file.name}"? This action cannot be undone.`,
-      confirmText: "Delete",
+      title: t("删除项目", "Delete item"),
+      message: t("删除“{0}”？此操作无法撤销。", "Delete \"{0}\"? This action cannot be undone.", [file.name]),
+      confirmText: t("删除", "Delete"),
       danger: true,
       returnFocus,
     })) return;
-    if (!begin(pendingKey, returnFocus, `Deleting ${file.name}…`)) return;
+    if (!begin(pendingKey, returnFocus, t("正在删除 {0}…", "Deleting {0}…", [file.name]))) return;
     try {
       const operationId = crypto.randomUUID();
       const result = await runMutationWithReconciliation(
@@ -135,10 +136,8 @@ export function createFileOperations(options) {
         return;
       }
       await dialogs.showMessage({
-        title: "Delete failed",
-        message: `Unable to delete "${file.name}": ${
-          result.status?.message || errorMessage(result.error)
-        }`,
+        title: t("删除失败", "Delete failed"),
+        message: t("无法删除“{0}”：{1}", "Unable to delete \"{0}\": {1}", [file.name, result.status?.message || errorMessage(result.error)]),
         returnFocus,
       });
       if (effect === MUTATION_EFFECT.REFRESH_REQUIRED) {
@@ -195,11 +194,11 @@ export function createFileOperations(options) {
     const currentDirectory = logicalParent(source);
     const returnFocus = document.getElementById(`moveBtn${index}`);
     let directory = await dialogs.requestText({
-      title: "Move item",
-      message: "Enter an existing destination folder under the shared root. The item name will not change.",
-      label: "Destination folder",
+      title: t("移动项目", "Move item"),
+      message: t("请输入共享根目录下已有的目标文件夹，项目名称将保持不变。", "Enter an existing destination folder under the shared root. The item name will not change."),
+      label: t("目标文件夹", "Destination folder"),
       value: currentDirectory,
-      confirmText: "Move",
+      confirmText: t("移动", "Move"),
       returnFocus,
     });
     if (directory === null || directory === "") return;
@@ -212,8 +211,8 @@ export function createFileOperations(options) {
       !isValidLogicalPath(directory.slice(1))
     ) {
       await dialogs.showMessage({
-        title: "Move failed",
-        message: "The destination folder path is invalid.",
+        title: t("移动失败", "Move failed"),
+        message: t("目标文件夹路径无效。", "The destination folder path is invalid."),
         returnFocus,
       });
       return;
@@ -267,8 +266,8 @@ export function createFileOperations(options) {
       onSuccess,
     } = options;
     const pendingKey = `path:${source}`;
-    const presentParticiple = verb === "rename" ? "Renaming" : "Moving";
-    const titleVerb = verb === "rename" ? "Rename" : "Move";
+    const presentParticiple = verb === "rename" ? t("正在重命名", "Renaming") : t("正在移动", "Moving");
+    const titleVerb = verb === "rename" ? t("重命名", "Rename") : t("移动", "Move");
     if (!begin(pendingKey, returnFocus, `${presentParticiple} ${fileName}…`)) {
       return "retry";
     }
@@ -286,9 +285,9 @@ export function createFileOperations(options) {
       );
       if (destinationRevision) {
         if (!await dialogs.confirmAction({
-          title: "Overwrite destination?",
-          message: `Replace "${destination}" with "${source}"?`,
-          confirmText: "Overwrite",
+          title: t("覆盖目标？", "Overwrite destination?"),
+          message: t("用“{1}”替换“{0}”？", "Replace \"{0}\" with \"{1}\"?", [destination, source]),
+          confirmText: t("覆盖", "Overwrite"),
           danger: true,
           returnFocus,
         })) return "retry";
@@ -307,10 +306,8 @@ export function createFileOperations(options) {
       listing.notifyMutation(effect);
       if (result.kind !== "succeeded") {
         await dialogs.showMessage({
-          title: `${titleVerb} failed`,
-          message: `Unable to ${verb} "${source}" to "${destination}": ${
-            result.status?.message || errorMessage(result.error)
-          }`,
+          title: t("{0}失败", "{0} failed", [titleVerb]),
+          message: t("无法将“{1}”{0}到“{2}”：{3}", "Unable to {0} \"{1}\" to \"{2}\": {3}", [verb === "rename" ? t("重命名", "rename") : t("移动", "move"), source, destination, result.status?.message || errorMessage(result.error)]),
           returnFocus,
         });
         if (effect === MUTATION_EFFECT.REFRESH_REQUIRED) {
@@ -328,8 +325,8 @@ export function createFileOperations(options) {
       if (isAuthenticationError(error)) return "authentication";
       listing.notifyMutation(MUTATION_EFFECT.OUTCOME_UNKNOWN);
       await dialogs.showMessage({
-        title: `${titleVerb} failed`,
-        message: `Unable to ${verb} "${source}" to "${destination}": ${errorMessage(error)}`,
+        title: t("{0}失败", "{0} failed", [titleVerb]),
+        message: t("无法将“{1}”{0}到“{2}”：{3}", "Unable to {0} \"{1}\" to \"{2}\": {3}", [verb === "rename" ? t("重命名", "rename") : t("移动", "move"), source, destination, errorMessage(error)]),
         returnFocus,
       });
       return "unknown";
@@ -340,7 +337,7 @@ export function createFileOperations(options) {
 
   async function logout() {
     const returnFocus = document.querySelector(".logout-btn");
-    if (!begin("logout", returnFocus, "Signing out…")) return;
+    if (!begin("logout", returnFocus, t("正在退出…", "Signing out…"))) return;
     try {
       const { administratorApi } = await import("../platform-session.js");
       await administratorApi.logout();
@@ -348,8 +345,8 @@ export function createFileOperations(options) {
     } catch (error) {
       if (isAuthenticationError(error)) return;
       await dialogs.showMessage({
-        title: "Sign out failed",
-        message: "Unable to sign out. Please try again.",
+        title: t("退出失败", "Sign out failed"),
+        message: t("无法退出，请重试。", "Unable to sign out. Please try again."),
         returnFocus,
       });
     } finally {
@@ -360,7 +357,7 @@ export function createFileOperations(options) {
   /** @param {Element | null} returnFocus */
   async function createDefaultFolder(returnFocus) {
     if (!await listing.settleInlineRename()) return;
-    if (!begin("create-item", returnFocus, "Creating a new folder…")) return;
+    if (!begin("create-item", returnFocus, t("正在创建文件夹…", "Creating a new folder…"))) return;
     try {
       for (let attempt = 0; attempt < DEFAULT_NAME_ATTEMPT_LIMIT; attempt++) {
         const name = defaultCandidate(DEFAULT_FOLDER_NAME, attempt);
@@ -378,10 +375,8 @@ export function createFileOperations(options) {
 
         listing.notifyMutation(trackedMutationEffect(result));
         await dialogs.showMessage({
-          title: "Create folder failed",
-          message: `Unable to create folder "${name}": ${
-            result.status?.message || errorMessage(result.error)
-          }`,
+          title: t("创建文件夹失败", "Create folder failed"),
+          message: t("无法创建文件夹“{0}”：{1}", "Unable to create folder \"{0}\": {1}", [name, result.status?.message || errorMessage(result.error)]),
           returnFocus,
         });
         return;
@@ -395,7 +390,7 @@ export function createFileOperations(options) {
   /** @param {Element | null} returnFocus */
   async function createDefaultFile(returnFocus) {
     if (!await listing.settleInlineRename()) return;
-    if (!begin("create-item", returnFocus, "Creating a new empty file…")) return;
+    if (!begin("create-item", returnFocus, t("正在创建空文件…", "Creating a new empty file…"))) return;
     try {
       for (let attempt = 0; attempt < DEFAULT_NAME_ATTEMPT_LIMIT; attempt++) {
         const name = defaultCandidate(DEFAULT_FILE_NAME, attempt);
@@ -451,10 +446,8 @@ export function createFileOperations(options) {
 
           listing.notifyMutation(uploadMutationEffect(error, status));
           await dialogs.showMessage({
-            title: "Create file failed",
-            message: `Unable to create file "${name}": ${
-              status?.message || errorMessage(error)
-            }`,
+            title: t("创建文件失败", "Create file failed"),
+            message: t("无法创建文件“{0}”：{1}", "Unable to create file \"{0}\": {1}", [name, status?.message || errorMessage(error)]),
             returnFocus,
           });
           return;
@@ -550,9 +543,9 @@ export function createFileOperations(options) {
       if (isAuthenticationError(error)) return false;
       listing.notifyMutation(MUTATION_EFFECT.OUTCOME_UNKNOWN);
       await dialogs.showMessage({
-        title: "Create file failed",
+        title: t("创建文件失败", "Create file failed"),
         message:
-          `Unable to confirm cleanup for staged file "${name}": ${errorMessage(error)}`,
+          t("无法确认暂存文件“{0}”的清理结果：{1}", "Unable to confirm cleanup for staged file \"{0}\": {1}", [name, errorMessage(error)]),
         returnFocus,
       });
       return false;
@@ -562,9 +555,9 @@ export function createFileOperations(options) {
   /** @param {"file" | "folder"} kind @param {Element | null} returnFocus */
   async function showDefaultNameLimit(kind, returnFocus) {
     await dialogs.showMessage({
-      title: `Create ${kind} failed`,
+      title: kind === "file" ? t("创建文件失败", "Create file failed") : t("创建文件夹失败", "Create folder failed"),
       message:
-        `No available default ${kind} name was found after ${DEFAULT_NAME_ATTEMPT_LIMIT} attempts.`,
+        t("尝试 {1} 次后仍未找到可用的默认{0}名称。", "No available default {0} name was found after {1} attempts.", [kind === "file" ? t("文件", "file") : t("文件夹", "folder"), DEFAULT_NAME_ATTEMPT_LIMIT]),
       returnFocus,
     });
   }

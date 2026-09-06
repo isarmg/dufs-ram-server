@@ -1,3 +1,4 @@
+import { t } from "../../dist/platform.js";
 import { isValidLogicalPath } from "../shared/path.js";
 
 /**
@@ -26,7 +27,7 @@ export function parseUploadPreflight(payload, requestedPaths) {
     new Set(requestedPaths).size !== requestedPaths.length ||
     !requestedPaths.every(isAbsoluteLogicalPath)
   ) {
-    throw new TypeError("Invalid upload preflight response");
+    throw new TypeError(t("上传预检查响应无效", "Invalid upload preflight response"));
   }
 
   return Object.freeze(payload.targets.map((value, index) => {
@@ -40,7 +41,7 @@ export function parseUploadPreflight(payload, requestedPaths) {
       (value.exists && value.revision === null) ||
       (!value.exists && value.revision !== null)
     ) {
-      throw new TypeError("Invalid upload preflight response");
+      throw new TypeError(t("上传预检查响应无效", "Invalid upload preflight response"));
     }
     return Object.freeze({
       path: expectedPath,
