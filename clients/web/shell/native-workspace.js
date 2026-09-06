@@ -1,6 +1,6 @@
 import { resolveWorkspaceConfig, WORKSPACE_ICON_PATHS, validInstanceName } from "./workspace-config.js";
 /** Native Web adapter: retains existing product listeners, including logout/CSRF. */
-export function configureNativeWorkspace({ header, content, actions, create, logout, refresh, instanceName, instanceHref, config: input }) {
+export function configureNativeWorkspace({ header, content, actions, create, logout, refresh, instanceName, instanceHref, labels = {}, config: input }) {
     const config = resolveWorkspaceConfig(input);
     header.style.setProperty("--sarmg-header-icon-size", config.headerIconSize);
     if (!validInstanceName(instanceName, config.instanceNameMaxCharacters))
@@ -12,7 +12,7 @@ export function configureNativeWorkspace({ header, content, actions, create, log
     document.documentElement.style.setProperty("--sarmg-font-ui", config.fontFamily);
     actions.classList.add("sarmg-header-actions");
     actions.setAttribute("role", "group");
-    actions.setAttribute("aria-label", "全局操作");
+    actions.setAttribute("aria-label", labels.actions ?? "全局操作");
     const icon = (button, name, label) => {
         button.classList.add("sarmg-button");
         button.setAttribute("aria-label", label);
@@ -41,17 +41,17 @@ export function configureNativeWorkspace({ header, content, actions, create, log
     }
     const reload = document.createElement("button");
     reload.type = "button";
-    icon(reload, "refresh", "刷新");
+    icon(reload, "refresh", labels.refresh ?? "刷新");
     reload.addEventListener("click", refresh);
     actions.append(reload);
     const theme = document.createElement("button");
     theme.type = "button";
     let dark = matchMedia("(prefers-color-scheme: dark)").matches;
-    const update = () => { document.documentElement.dataset.theme = dark ? "dark" : "light"; icon(theme, dark ? "sun" : "moon", dark ? "切换到浅色模式" : "切换到深色模式"); };
+    const update = () => { document.documentElement.dataset.theme = dark ? "dark" : "light"; icon(theme, dark ? "sun" : "moon", dark ? (labels.light ?? "切换到浅色模式") : (labels.dark ?? "切换到深色模式")); };
     update();
     theme.addEventListener("click", () => { dark = !dark; update(); });
     actions.append(theme);
-    icon(logout, "logout", "退出");
+    icon(logout, "logout", labels.logout ?? logout.getAttribute("aria-label") ?? "退出");
     logout.querySelectorAll("span:not([data-workspace-label])").forEach(node => node.hidden = true);
     actions.append(logout);
     if (config.layout === "instances") {
@@ -59,7 +59,7 @@ export function configureNativeWorkspace({ header, content, actions, create, log
         workspace.className = "sarmg-instance-workspace sarmg-native-workspace";
         const sidebar = document.createElement("aside");
         sidebar.className = "sarmg-instance-sidebar";
-        sidebar.setAttribute("aria-label", "共享根实例");
+        sidebar.setAttribute("aria-label", labels.instances ?? "共享根实例");
         const list = document.createElement("div");
         list.className = "sarmg-instance-list";
         const link = document.createElement("a");

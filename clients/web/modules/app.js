@@ -60,7 +60,11 @@ async function initialize() {
     header: requiredElement(".head", HTMLElement), content: requiredElement(".main", HTMLElement),
     actions: requiredElement(".toolbox-right", HTMLElement), create: requiredElement(".new-folder", HTMLButtonElement),
     logout: requiredElement(".logout-btn", HTMLButtonElement), refresh: () => window.location.reload(),
-    instanceName: "共享根目录", instanceHref: "/",
+    instanceName: "Shared root", instanceHref: "/",
+    labels: {
+      actions: "Global actions", refresh: "Reload page", light: "Switch to light mode",
+      dark: "Switch to dark mode", logout: "Sign out", instances: "Shared root instance",
+    },
   });
 
   const pathsTable = requiredElement(".paths-table", HTMLTableElement);
