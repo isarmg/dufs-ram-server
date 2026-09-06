@@ -14,7 +14,9 @@ test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foun
   for (const source of Object.keys(provenance.assets).filter(name => name.endsWith(".woff2") || name.endsWith(".txt"))) {
     const name = source.split("/").at(-1);
     // Vite may coalesce identical license bytes into a single emitted asset.
-    const url = source === "CJK-LICENSE.txt" ? licenses.cjk : source === "OFL.txt" ? licenses.latin : new URL(name, prefix).href;
+    const url = source === "CJK-LICENSE.txt" ? licenses.cjk
+      : ["OFL.txt", "NORMAL-LICENSE.txt"].includes(source) ? licenses.latin
+        : new URL(name, prefix).href;
     const response = await page.context().request.get(url);
     expect(response.status()).toBe(200);
     expect(response.headers()["cache-control"]).toContain("immutable");
