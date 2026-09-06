@@ -1,5 +1,47 @@
 const { expect, pageData, test } = require("./fixtures");
 
+for (const [locale, usernameLabel, passwordLabel, submitLabel, usernameError, passwordError] of [
+  ["en", "Username", "Password", "Sign in", "Enter your username.", "Enter your password."],
+  ["zh-CN", "用户名", "密码", "登录", "请输入用户名。", "请输入密码。"],
+]) {
+  test(`登录必填提示在第五行显示且不触发原生校验气泡 (${locale})`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    try {
+      const page = await context.newPage();
+      let requests = 0;
+      page.on("request", request => {
+        if (request.method() === "POST" && new URL(request.url()).pathname === "/api/v2/auth/login") requests++;
+      });
+      await page.goto(`${testInfo.project.use.baseURL}/__dufs__/login?lang=${locale}`);
+      const username = page.getByLabel(usernameLabel, { exact: true });
+      const password = page.getByLabel(passwordLabel, { exact: true });
+      const submit = page.getByRole("button", { name: submitLabel, exact: true });
+      await expect(username).toBeVisible();
+      await page.evaluate(() => {
+        window.nativeInvalidCount = 0;
+        document.addEventListener("invalid", () => window.nativeInvalidCount++, true);
+      });
+      await submit.click();
+      const error = page.getByRole("alert");
+      await expect(error).toHaveText(usernameError);
+      await expect(username).toBeFocused();
+      await expect(username).toHaveAccessibleDescription(usernameError);
+      await username.fill("admin");
+      await expect(error).toBeHidden();
+      await password.press("Enter");
+      await expect(error).toHaveText(passwordError);
+      await expect(password).toBeFocused();
+      await expect(password).toHaveAttribute("aria-invalid", "true");
+      await expect(password).toHaveAccessibleDescription(passwordError);
+      const [inputBox, errorBox, buttonBox] = await Promise.all([password.boundingBox(), error.boundingBox(), submit.boundingBox()]);
+      expect(errorBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height - 1);
+      expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(buttonBox.y + 1);
+      expect(await page.evaluate(() => window.nativeInvalidCount)).toBe(0);
+      expect(requests).toBe(0);
+    } finally { await context.close(); }
+  });
+}
+
 test("登录错误、会话 Cookie 与注销均由服务端生效", async ({
   browser,
   context,
@@ -34,9 +76,16 @@ test("登录错误、会话 Cookie 与注销均由服务端生效", async ({
   await expect(loginPage).toHaveURL(/\/__dufs__\/login$/);
   await expect(username).toBeFocused();
   expect(emptyLoginPosts).toBe(0);
-  await expect(alert).toBeHidden();
+  await expect(alert).toHaveText("Enter your username.");
+  await expect(username).toHaveAttribute("aria-invalid", "true");
+  await expect(username).toHaveAttribute("aria-describedby", "login-error");
 
   await username.fill(usernameValue);
+  await expect(alert).toBeHidden();
+  await password.press("Enter");
+  await expect(alert).toHaveText("Enter your password.");
+  await expect(password).toBeFocused();
+  expect(emptyLoginPosts).toBe(0);
   await password.fill("wrong-password");
   const rejectedLogin = loginPage.waitForResponse(response =>
     response.request().method() === "POST" &&

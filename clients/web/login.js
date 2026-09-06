@@ -12,16 +12,22 @@ const errorRow = /** @type {HTMLElement} */ (document.querySelector(".error-row"
 const errorText = /** @type {HTMLElement} */ (document.querySelector(".login-error"));
 let pending = false;
 for (const input of [username, password]) {
-  input.addEventListener("invalid", () => input.setCustomValidity(validationMessage(input)));
-  input.addEventListener("input", () => input.setCustomValidity(""));
+  input.addEventListener("invalid", event => event.preventDefault());
+  input.addEventListener("input", () => setError(""));
 }
 
 form.addEventListener("submit", event => {
   event.preventDefault();
   if (pending) return;
-  if (!form.checkValidity()) {
-    form.reportValidity();
-    return;
+  for (const input of [username, password]) {
+    if (!input.validity.valid) {
+      const message = input.validity.valueMissing
+        ? input === username ? t("请输入用户名。", "Enter your username.") : t("请输入密码。", "Enter your password.")
+        : validationMessage(input);
+      setError(message, input);
+      input.focus();
+      return;
+    }
   }
   if (!isAdministratorLoginRequest({ username: username.value, password: password.value }) || !isAdministratorPassword(password.value)) {
     password.value = "";
@@ -57,8 +63,14 @@ async function login() {
   }
 }
 
-/** @param {string} message */
-function setError(message) {
+/** @param {string} message @param {HTMLInputElement} [invalidInput] */
+function setError(message, invalidInput) {
   errorText.textContent = message;
   errorRow.classList.toggle("hidden", message.length === 0);
+  for (const input of [username, password]) {
+    if (input === invalidInput) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+    if (message) input.setAttribute("aria-describedby", "login-error");
+    else input.removeAttribute("aria-describedby");
+  }
 }
