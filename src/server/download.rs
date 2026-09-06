@@ -7,16 +7,15 @@ use crate::utils::{ParsedRange, parse_range, try_get_file_name};
 
 use crate::utils::encode_hex;
 use anyhow::Result;
+use axum::body::Body;
 use bytes::Bytes;
-use futures_util::{TryStreamExt, stream};
+use futures_util::stream;
 use headers::{
     AcceptRanges, CacheControl, ETag, HeaderMap, HeaderMapExt, IfMatch, IfModifiedSince,
     IfNoneMatch, IfUnmodifiedSince, LastModified,
 };
-use http_body_util::{BodyExt, StreamBody, combinators::BoxBody};
-use hyper::{
+use http::{
     StatusCode,
-    body::Frame,
     header::{CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, HeaderValue, IF_RANGE, RANGE},
 };
 use sha2::{Digest, Sha256};
@@ -219,7 +218,7 @@ fn gated_file_body(
     offset: u64,
     remaining: u64,
     idle_timeout: Duration,
-) -> BoxBody<Bytes, anyhow::Error> {
+) -> Body {
     let stream = stream::try_unfold(
         DownloadReadState {
             file,
@@ -265,7 +264,7 @@ fn gated_file_body(
             }
         },
     );
-    StreamBody::new(stream.map_ok(Frame::data).map_err(anyhow::Error::from)).boxed()
+    Body::from_stream(stream)
 }
 
 fn extract_cache_headers(meta: &Metadata) -> Option<(ETag, LastModified)> {
@@ -301,6 +300,7 @@ fn get_content_type(path: &Path) -> String {
 mod tests {
     use super::*;
     use crate::server::rooted_fs::RootedFs;
+    use http_body_util::BodyExt as _;
     use std::{
         future::{Future, poll_fn},
         io::Write as _,
@@ -477,9 +477,15 @@ mod tests {
             Err(error) => error,
             Ok(_) => panic!("a queued download read must exceed its idle deadline"),
         };
-        let source = error
-            .downcast_ref::<io::Error>()
-            .expect("download idle timeout must retain its I/O error type");
+        // Axum wraps stream errors; the original typed I/O cause must remain
+        // in the source chain, not be flattened to a string.
+        let mut source: &(dyn std::error::Error + 'static) = &error;
+        while !source.is::<io::Error>() {
+            source = source
+                .source()
+                .expect("download idle timeout must retain its I/O error type");
+        }
+        let source = source.downcast_ref::<io::Error>().unwrap();
         assert_eq!(source.kind(), io::ErrorKind::TimedOut);
         assert_eq!(
             source.to_string(),

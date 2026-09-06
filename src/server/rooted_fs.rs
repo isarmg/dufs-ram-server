@@ -707,6 +707,47 @@ impl RootedFs {
         Ok(DirectoryVisitProgress::Complete)
     }
 
+    /// Check physical aliases under the anchored root without canonicalizing
+    /// ambient paths. The caller retains mutation leases through the commit.
+    pub(super) async fn platform_path_conflict<G>(
+        &self,
+        path: &Path,
+        protect_ancestors: bool,
+        guard: G,
+    ) -> std::io::Result<bool>
+    where
+        G: Send + 'static,
+    {
+        if path == self.inner.root_path {
+            return Ok(protect_ancestors);
+        }
+        let this = self.clone();
+        let path = path.to_owned();
+        run_blocking_guarded(guard, move || {
+            let target = match this.resolved_path_key_blocking(&path) {
+                Ok(target) => target,
+                Err(error)
+                    if error.raw_os_error() == Some(rustix::io::Errno::XDEV.raw_os_error()) =>
+                {
+                    return Ok(true);
+                }
+                Err(error) => return Err(error),
+            };
+            for reserved in sarmg_server_runtime::PLATFORM_RESERVED_PATHS {
+                let reserved = this.inner.root_path.join(reserved.trim_start_matches('/'));
+                let reserved = this.resolved_path_key_blocking(&reserved)?;
+                if super::path_coordinator::resolved_path_contains(&reserved, &target)
+                    || (protect_ancestors
+                        && super::path_coordinator::resolved_path_contains(&target, &reserved))
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        })
+        .await
+    }
+
     pub(super) async fn resolved_path_key(&self, path: &Path) -> std::io::Result<ResolvedPathKey> {
         self.resolved_path_key_guarded(path, ()).await
     }

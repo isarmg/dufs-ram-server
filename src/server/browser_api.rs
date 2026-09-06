@@ -21,11 +21,11 @@ use crate::http_utils::request_content_type_is;
 use anyhow::Result;
 use bytes::Bytes;
 use headers::{ContentLength, ContentType, HeaderMapExt};
-use http_body_util::{BodyExt, LengthLimitError, Limited};
-use hyper::{
+use http::{
     StatusCode,
     header::{CACHE_CONTROL, HeaderValue},
 };
+use http_body_util::{BodyExt, LengthLimitError, Limited};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -50,11 +50,6 @@ type TrackedOperation = Option<(Uuid, OperationGuard)>;
 
 pub(super) fn is_tracked_browser_mutation(path: &str) -> bool {
     matches!(path, MKDIR_API_PATH | MOVE_API_PATH | RENAME_API_PATH)
-}
-
-pub(super) fn is_browser_api_endpoint(path: &str) -> bool {
-    is_tracked_browser_mutation(path)
-        || matches!(path, UPLOAD_PREFLIGHT_API_PATH | UPLOAD_DISCARD_API_PATH)
 }
 
 #[derive(Debug, Deserialize)]
@@ -506,7 +501,7 @@ impl Server {
         Ok(true)
     }
 
-    async fn handle_upload_preflight(
+    pub(super) async fn handle_upload_preflight(
         &self,
         owner: &str,
         req: Request,
@@ -601,7 +596,10 @@ impl Server {
 
         let mut targets = Vec::with_capacity(paths.len());
         for logical_path in paths {
-            let Some(path) = self.resolve_browser_path(&logical_path) else {
+            let Some(path) = self
+                .resolve_browser_path(&logical_path)
+                .filter(|path| !self.content.path_policy.protects_platform_namespace(path))
+            else {
                 status_api_error(
                     res,
                     StatusCode::BAD_REQUEST,
@@ -622,6 +620,26 @@ impl Server {
                 .as_ref()
             {
                 hook(targets.len());
+            }
+            let reserved = match self
+                .content
+                .rooted_fs
+                .platform_path_conflict(&path, true, preflight_lease.clone())
+                .await
+            {
+                Ok(reserved) => reserved,
+                Err(error) if is_invalid_preflight_path_error(&error) => true,
+                Err(error) => return Err(error.into()),
+            };
+            if reserved {
+                status_api_error(
+                    res,
+                    StatusCode::BAD_REQUEST,
+                    ErrorCode::INVALID_PATH,
+                    "Upload preflight contains a reserved path",
+                    None,
+                )?;
+                return Ok(());
             }
             let target_exists = match self
                 .route_metadata_guarded(&path, preflight_lease.clone())
@@ -683,7 +701,7 @@ impl Server {
         write_json_response(res, &UploadPreflightResponse { targets })
     }
 
-    async fn handle_upload_discard(
+    pub(super) async fn handle_upload_discard(
         &self,
         owner: &str,
         req: Request,
@@ -725,7 +743,13 @@ impl Server {
             )?;
             return Ok(());
         };
-        if self.guard_root_contained(&path).await? {
+        if self.guard_root_contained(&path).await?
+            || self
+                .content
+                .rooted_fs
+                .platform_path_conflict(&path, false, ())
+                .await?
+        {
             status_api_error(
                 res,
                 StatusCode::BAD_REQUEST,
@@ -770,7 +794,13 @@ impl Server {
             return Ok(());
         };
 
-        if self.guard_root_contained(&path).await? {
+        if self.guard_root_contained(&path).await?
+            || self
+                .content
+                .rooted_fs
+                .platform_path_conflict(&path, false, ())
+                .await?
+        {
             finish_api_error(
                 operation.take(),
                 res,
@@ -1027,6 +1057,24 @@ impl Server {
             overwrite,
             kind,
         } = request;
+        if self
+            .content
+            .path_policy
+            .protects_platform_namespace(&source)
+            || self
+                .content
+                .path_policy
+                .protects_platform_namespace(&destination)
+        {
+            finish_api_error(
+                operation.take(),
+                res,
+                StatusCode::BAD_REQUEST,
+                TrackedOperationError::InvalidPath,
+            )
+            .await?;
+            return Ok(());
+        }
         let source_revision = match source_revision.as_deref() {
             Some(value) => match TargetRevision::parse(value) {
                 Some(revision) => revision,
@@ -1127,6 +1175,16 @@ impl Server {
 
         if self.guard_root_contained(&source).await?
             || self.guard_root_contained(&destination).await?
+            || self
+                .content
+                .rooted_fs
+                .platform_path_conflict(&source, true, ())
+                .await?
+            || self
+                .content
+                .rooted_fs
+                .platform_path_conflict(&destination, true, ())
+                .await?
         {
             finish_api_error(
                 operation.take(),

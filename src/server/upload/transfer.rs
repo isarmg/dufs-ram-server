@@ -140,7 +140,9 @@ impl Server {
         let mut file = file.expect("prepared upload owns a file");
 
         let transfer_result = receive_upload_body(
-            IncomingStream::new(req.into_body()),
+            req.into_body()
+                .into_data_stream()
+                .map_err(anyhow::Error::new),
             &mut file,
             &mut space_lease,
             UploadTransferOptions {

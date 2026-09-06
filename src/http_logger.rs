@@ -6,18 +6,16 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use axum::body::Body as AxumBody;
 use bytes::Bytes;
 use chrono::{Local, SecondsFormat};
-use http_body_util::combinators::BoxBody;
-use hyper::{
-    Method, Request, Version,
-    body::{Body, Frame, SizeHint},
-    header::HeaderName,
-};
+use http::{Method, Request, Version, header::HeaderName};
+
+use http_body::{Body, Frame, SizeHint};
 
 use crate::{logger::BoundedLogLine, utils::decode_uri};
 
-pub const DEFAULT_LOG_FORMAT: &str = r#"$time_iso8601 $log_level - $remote_addr "$request" $status operation_id=$operation_id operation_state=$operation_state"#;
+pub const DEFAULT_LOG_FORMAT: &str = r#"$time_iso8601 $log_level - $remote_addr "$request" $status operation_id=$operation_id operation_state=$operation_state request_id=$http_x_request_id"#;
 const MAX_LOG_FORMAT_BYTES: usize = 4096;
 const MAX_LOG_FORMAT_ELEMENTS: usize = 128;
 
@@ -170,11 +168,11 @@ impl HttpLogger {
     pub(crate) fn log_response_body(
         &self,
         data: HashMap<String, String>,
-        body: BoxBody<Bytes, anyhow::Error>,
+        body: AxumBody,
         expected_body_bytes: Option<u64>,
         handler_error: Option<String>,
         omit_success: bool,
-    ) -> BoxBody<Bytes, anyhow::Error> {
+    ) -> AxumBody {
         if self.elements.is_empty() {
             return body;
         }
@@ -191,7 +189,7 @@ impl HttpLogger {
             completion(body_length_error(expected_body_bytes, 0));
             body
         } else {
-            BoxBody::new(AccessLogBody::new(body, expected_body_bytes, completion))
+            AxumBody::new(AccessLogBody::new(body, expected_body_bytes, completion))
         }
     }
 
@@ -254,7 +252,7 @@ impl HttpLogger {
 type ResponseLogCompletion = Box<dyn FnOnce(Option<String>) + Send + Sync + 'static>;
 
 struct AccessLogBody {
-    inner: BoxBody<Bytes, anyhow::Error>,
+    inner: AxumBody,
     expected_body_bytes: Option<u64>,
     produced_body_bytes: u64,
     completion: Option<ResponseLogCompletion>,
@@ -262,7 +260,7 @@ struct AccessLogBody {
 
 impl AccessLogBody {
     fn new(
-        inner: BoxBody<Bytes, anyhow::Error>,
+        inner: AxumBody,
         expected_body_bytes: Option<u64>,
         completion: ResponseLogCompletion,
     ) -> Self {
@@ -283,7 +281,7 @@ impl AccessLogBody {
 
 impl Body for AccessLogBody {
     type Data = Bytes;
-    type Error = anyhow::Error;
+    type Error = axum::Error;
 
     fn poll_frame(
         self: Pin<&mut Self>,
@@ -489,23 +487,20 @@ fn append_sanitized_log_value(output: &mut BoundedLogLine, value: &str) {
 mod tests {
     use super::*;
     use futures_util::stream;
+    use http::Uri;
     use http_body_util::{BodyExt, StreamBody};
-    use hyper::Uri;
     use std::sync::mpsc;
 
     fn observed_body(
-        body: BoxBody<Bytes, anyhow::Error>,
+        body: AxumBody,
         expected_body_bytes: Option<u64>,
-    ) -> (
-        BoxBody<Bytes, anyhow::Error>,
-        mpsc::Receiver<Option<String>>,
-    ) {
+    ) -> (AxumBody, mpsc::Receiver<Option<String>>) {
         let (sender, receiver) = mpsc::channel();
         let completion: ResponseLogCompletion = Box::new(move |error| {
             sender.send(error).unwrap();
         });
         (
-            BoxBody::new(AccessLogBody::new(body, expected_body_bytes, completion)),
+            AxumBody::new(AccessLogBody::new(body, expected_body_bytes, completion)),
             receiver,
         )
     }
@@ -524,7 +519,7 @@ mod tests {
             anyhow::anyhow!("synthetic read failure"),
         )]))
         .boxed();
-        let (failing, failure) = observed_body(failing, None);
+        let (failing, failure) = observed_body(AxumBody::new(failing), None);
         assert!(failing.collect().await.is_err());
         assert_eq!(
             failure.recv().unwrap().as_deref(),
@@ -533,7 +528,7 @@ mod tests {
 
         let pending =
             StreamBody::new(stream::pending::<Result<Frame<Bytes>, anyhow::Error>>()).boxed();
-        let (pending, dropped) = observed_body(pending, None);
+        let (pending, dropped) = observed_body(AxumBody::new(pending), None);
         drop(pending);
         assert_eq!(
             dropped.recv().unwrap().as_deref(),

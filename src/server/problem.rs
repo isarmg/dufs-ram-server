@@ -4,7 +4,7 @@ use super::{
 };
 
 use anyhow::Error;
-use hyper::{
+use http::{
     StatusCode,
     header::{CONTENT_TYPE, HeaderValue, RETRY_AFTER},
 };

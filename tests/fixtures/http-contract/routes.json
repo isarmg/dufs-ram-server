@@ -1,4 +1,177 @@
 [
-  {"id":"login-get","method":"GET","path":"/__dufs__/login","authenticated":false,"headers":{},"body":"","preset":{},"status":200,"required_headers":{"content-type":"text/html; charset=utf-8"},"forbidden_headers":["location","www-authenticate"],"body_contains":"<form","response_fields":{},"file_changes":{},"operation_state":null},
-  {"id":"login-head-denied","method":"HEAD","path":"/__dufs__/login","authenticated":false,"headers":{},"body":"","preset":{},"status":405,"required_headers":{"allow":"GET"},"forbidden_headers":["location"],"body_contains":"","response_fields":{},"file_changes":{},"operation_state":null}
+  {
+    "id": "login-get",
+    "method": "GET",
+    "path": "/__dufs__/login",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 200,
+    "required_headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "forbidden_headers": [
+      "location",
+      "www-authenticate"
+    ],
+    "body_contains": "<form",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "login-head-denied",
+    "method": "HEAD",
+    "path": "/__dufs__/login",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 405,
+    "required_headers": {
+      "allow": "GET"
+    },
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "list-head-denied",
+    "method": "HEAD",
+    "path": "/__dufs__/api/list",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 405,
+    "required_headers": {
+      "allow": "GET"
+    },
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "job-head-denied",
+    "method": "HEAD",
+    "path": "/__dufs__/api/jobs/123e4567-e89b-42d3-a456-426614174000",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 405,
+    "required_headers": {
+      "allow": "GET"
+    },
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "mkdir-get-denied",
+    "method": "GET",
+    "path": "/__dufs__/api/mkdir",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 405,
+    "required_headers": {
+      "allow": "POST"
+    },
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "old-health-no-alias",
+    "method": "GET",
+    "path": "/__dufs__/health",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 404,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "old-readiness-no-alias",
+    "method": "GET",
+    "path": "/__dufs__/ready",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 404,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "new-health-public",
+    "method": "GET",
+    "path": "/healthz",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 204,
+    "required_headers": {
+      "cache-control": "private, no-store"
+    },
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "auth-namespace-unknown-is-not-a-file",
+    "method": "GET",
+    "path": "/api/v2/auth/unknown",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 404,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  }
 ]

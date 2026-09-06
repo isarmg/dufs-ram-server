@@ -1,6 +1,5 @@
 use super::{purge::PreparePurge, *};
 use futures_util::poll;
-use http_body_util::BodyExt as _;
 use std::{
     os::unix::fs::{MetadataExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
@@ -28,7 +27,7 @@ fn authenticated_args(serve_path: PathBuf, state_dir: &Path) -> Args {
 }
 
 #[tokio::test]
-async fn readiness_admission_is_fail_fast_and_preserves_get_and_head_protocols() {
+async fn readiness_admission_is_fail_fast_and_recovers() {
     let root = assert_fs::TempDir::new().unwrap();
     let state_dir = private_state_dir();
     let server = Server::init_with_lifecycle(
@@ -43,63 +42,13 @@ async fn readiness_admission_is_fail_fast_and_preserves_get_and_head_protocols()
         .try_acquire_owned()
         .expect("hold the only readiness probe slot");
 
-    let mut busy_get = Response::default();
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        server.send_readiness(false, &mut busy_get),
-    )
-    .await
-    .expect("a saturated readiness GET waited instead of failing fast");
-    assert_eq!(busy_get.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(busy_get.headers()[RETRY_AFTER], "1");
-    assert_eq!(busy_get.headers()[CACHE_CONTROL], "no-store");
-    assert_eq!(
-        busy_get.headers()[hyper::header::CONTENT_TYPE],
-        "application/json"
-    );
-    assert_eq!(
-        busy_get.into_body().collect().await.unwrap().to_bytes(),
-        r#"{"status":"not_ready"}"#
-    );
-
-    let mut busy_head = Response::default();
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        server.send_readiness(true, &mut busy_head),
-    )
-    .await
-    .expect("a saturated readiness HEAD waited instead of failing fast");
-    assert_eq!(busy_head.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(busy_head.headers()[RETRY_AFTER], "1");
-    assert_eq!(busy_head.headers()[CACHE_CONTROL], "no-store");
-    assert_eq!(
-        busy_head.headers()[hyper::header::CONTENT_TYPE],
-        "application/json"
-    );
     assert!(
-        busy_head
-            .into_body()
-            .collect()
+        !tokio::time::timeout(Duration::from_millis(100), server.probe_readiness())
             .await
-            .unwrap()
-            .to_bytes()
-            .is_empty()
+            .expect("saturated readiness probe must fail fast")
     );
-
     drop(held);
-    let mut ready = Response::default();
-    server.send_readiness(false, &mut ready).await;
-    assert_eq!(ready.status(), StatusCode::OK);
-    assert!(!ready.headers().contains_key(RETRY_AFTER));
-    assert_eq!(ready.headers()[CACHE_CONTROL], "no-store");
-    assert_eq!(
-        ready.headers()[hyper::header::CONTENT_TYPE],
-        "application/json"
-    );
-    assert_eq!(
-        ready.into_body().collect().await.unwrap().to_bytes(),
-        r#"{"status":"ready"}"#
-    );
+    assert!(server.probe_readiness().await);
 }
 
 #[tokio::test]
@@ -116,11 +65,7 @@ async fn cancelled_readiness_caller_retains_admission_until_the_tracked_probe_fi
     let release_actor = server.state.state_store.block_actor_for_test().unwrap();
     let caller = {
         let server = server.clone();
-        tokio::spawn(async move {
-            let mut response = Response::default();
-            server.send_readiness(false, &mut response).await;
-            response
-        })
+        tokio::spawn(async move { server.probe_readiness().await })
     };
 
     tokio::time::timeout(Duration::from_secs(1), async {
@@ -143,15 +88,11 @@ async fn cancelled_readiness_caller_retains_admission_until_the_tracked_probe_fi
     );
     assert_eq!(server.lifecycle.work_tasks.len(), 1);
 
-    let mut saturated = Response::default();
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        server.send_readiness(false, &mut saturated),
-    )
-    .await
-    .expect("a saturated readiness request waited instead of failing fast");
-    assert_eq!(saturated.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(saturated.headers()[RETRY_AFTER], "1");
+    assert!(
+        !tokio::time::timeout(Duration::from_millis(100), server.probe_readiness())
+            .await
+            .expect("saturated readiness probe must fail fast")
+    );
 
     release_actor.send(()).unwrap();
     tokio::time::timeout(Duration::from_secs(1), async {
@@ -167,10 +108,7 @@ async fn cancelled_readiness_caller_retains_admission_until_the_tracked_probe_fi
     .await
     .expect("tracked readiness probe did not release admission after actor completion");
 
-    let mut recovered = Response::default();
-    server.send_readiness(false, &mut recovered).await;
-    assert_eq!(recovered.status(), StatusCode::OK);
-    assert!(!recovered.headers().contains_key(RETRY_AFTER));
+    assert!(server.probe_readiness().await);
 }
 
 #[tokio::test]
@@ -662,10 +600,8 @@ async fn shutdown_gate_drains_admitted_requests_and_rejects_late_entries() {
         .expect("a running server must admit requests");
     lifecycle.shutdown.cancel();
 
-    let gate = lifecycle.request_gate.clone();
-    let mut drain = tokio::spawn(async move {
-        let _exclusive = gate.write_owned().await;
-    });
+    let scope = lifecycle.clone();
+    let mut drain = tokio::spawn(async move { scope.drain_requests().await });
     assert!(
         tokio::time::timeout(Duration::from_millis(25), &mut drain)
             .await
@@ -685,24 +621,15 @@ async fn shutdown_gate_drains_admitted_requests_and_rejects_late_entries() {
 }
 
 #[tokio::test]
-async fn late_request_stops_waiting_when_shutdown_holds_the_gate() {
+async fn late_request_is_rejected_after_shutdown_drains_the_gate() {
     let lifecycle = ServerLifecycle::new();
-    let exclusive = lifecycle.request_gate.clone().write_owned().await;
-    let waiter = {
-        let lifecycle = lifecycle.clone();
-        tokio::spawn(async move { lifecycle.enter_request().await.is_none() })
-    };
-    tokio::task::yield_now().await;
-
-    lifecycle.shutdown.cancel();
+    lifecycle.drain_requests().await;
     assert!(
-        tokio::time::timeout(Duration::from_secs(1), waiter)
+        tokio::time::timeout(Duration::from_secs(1), lifecycle.enter_request())
             .await
-            .expect("late request remained blocked behind the shutdown gate")
-            .expect("late request task panicked"),
-        "late request entered after shutdown cancellation"
+            .expect("late request cannot wait behind a stopped runtime")
+            .is_none()
     );
-    drop(exclusive);
 }
 
 #[test]

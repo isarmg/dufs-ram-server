@@ -9,7 +9,7 @@ use super::{
     },
 };
 use headers::{ContentType, HeaderMapExt};
-use hyper::{
+use http::{
     StatusCode,
     header::{HeaderMap, HeaderValue},
 };

@@ -17,6 +17,8 @@
 
 源码目录遵循项目组统一约定：运行配置模板只在 `config/dufs.yaml.example`，systemd/nginx/proxy 部署资产只在 `deploy/`，浏览器代码只在 `clients/web/`。生产路径 `/etc/dufs/dufs.yaml` 以及 `/etc/dufs/tls/` 是刻意保留的 Dufs 例外：本服务使用需要严格文件权限的 YAML 和独立 HTTPS 网关证书，而不是其他 Server 的扁平 `/etc/isarmg/<product>.env`。不得因此在源码根或 `src/` 再复制第二份配置、unit 或证书模板。
 
+0.51.0 只允许全新、完整的当前实例状态。sarmg-upgrade 暂不支持该版本；不能将旧共享树和空状态库任意拼接，不能修改 metadata 或假设旧二进制能打开新状态。
+
 ## 1. 首次部署
 
 1. 创建不可登录的专用服务账号，并确保共享根、其现有内容以及需要保留的 ACL 和扩展属性可由该账号管理。
@@ -55,7 +57,7 @@
    systemctl enable --now nginx
    systemctl reload-or-restart nginx
    ss -ltnp
-   curl --fail --max-time 10 http://127.0.0.1:5000/__dufs__/health
+   curl --fail --max-time 10 http://127.0.0.1:5000/healthz
    ```
 
 6. 从受支持浏览器经外部 HTTPS 地址登录，完成新建、上传、单文件下载、移动和删除冒烟测试。
@@ -108,8 +110,8 @@ Dufs 的普通文件和 Range 正文没有总时长/最低速率限制，但每�
 
 ## 3. 健康检查和监控
 
-- `GET` 或 `HEAD /__dufs__/health` 是公开 liveness，只表明进程仍能处理 HTTP，不访问文件内容，也不泄露账号或路径。
-- `GET` 或 `HEAD /__dufs__/ready` 是受认证 readiness；它通过启动时锚定的共享根 fd 创建一个保留形状的隐藏文件、写入并同步文件、删除该目录项，再同步根目录 fd，从而真实覆盖创建/写入/文件 `fsync`/删除/目录 `fsync` 路径。同时，统一 state-store actor 在当前 SQLite 连接上读取数据库身份和元数据，执行 `BEGIN IMMEDIATE`、写入探针行并显式 `ROLLBACK`，因此启动后变为只读、不可写或不可访问的数据库不会被缓存的 healthy 标志掩盖。readiness 还要求当前文件系统在计入进程内空间预留后满足 `min-free-space`，且进程未进入任一停机阶段；任一探针失败返回 `503`。purge 容量在 DELETE 预备阶段单独执行，readiness 不是对每种业务配额的完整接受性预测。外部负载均衡器若无法安全维护会话 Cookie，应只用 liveness，并通过独立的登录冒烟任务验证 readiness。
+- `GET` 或 `HEAD /healthz` 是公开 liveness，只表明进程仍能处理 HTTP，不访问文件内容，也不泄露账号或路径。
+- `GET` 或 `HEAD /readyz` 无需认证，只有最小 `ready` 布尔值。Foundation 在启动和每 5 秒刷新共享根真实写入/同步/删除、SQLite 回滚写事务及最低空间探针；每次探针有平台时限，失败返回 503，停止准入立即变为未就绪。端点读取最近一次结果，不泄露路径、账号或错误详情，也不是对 rename、介质读回和所有业务配额的完整保证。
 - 告警至少覆盖进程重启、HTTP 5xx/429/507、登录限流、磁盘空间、inode、共享根挂载状态、备份年龄和备份恢复演练结果。
 
 普通写请求返回成功只表示其规定的原子发布和目录同步步骤已返回成功。硬件、固件、网络文件系统或宿主机错误兑现同步请求仍可能破坏数据，因此监控不能替代备份。
@@ -129,7 +131,7 @@ Dufs 的普通文件和 Range 正文没有总时长/最低速率限制，但每�
 
 首选底层文件系统或存储提供的原子快照：
 
-1. 监控 `/__dufs__/health` 并确认共享根挂载正常。
+1. 监控 `/healthz` 并确认共享根挂载正常。
 2. 创建单一时间点快照。
 3. 从快照复制数据，保留 numeric uid/gid、模式、ACL、xattr、稀疏文件和硬链接。
 4. 对备份清单和内容做校验，记录源主机、Git SHA、时间、快照 ID 和工具版本。

@@ -119,13 +119,10 @@ fn idle_listener_does_not_starve_another_bind_when_connection_limit_is_one(
         .build()?;
     for address in ["127.0.0.1", "127.0.0.2"] {
         let response = client
-            .get(format!(
-                "http://{address}:{}/__dufs__/health",
-                server.port()
-            ))
+            .get(format!("http://{address}:{}/healthz", server.port()))
             .header("connection", "close")
             .send()?;
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), 204);
     }
     Ok(())
 }
@@ -162,7 +159,7 @@ fn connection_limit_bounds_userspace_sockets_across_multiple_binds(
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         stream.write_all(
             format!(
-                "GET /__dufs__/health HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                "GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
                 server.port()
             )
             .as_bytes(),
@@ -174,7 +171,7 @@ fn connection_limit_bounds_userspace_sockets_across_multiple_binds(
         let mut response = String::new();
         stream.read_to_string(&mut response)?;
         assert!(
-            response.starts_with("HTTP/1.1 200 "),
+            response.starts_with("HTTP/1.1 204 "),
             "queued connection returned an unexpected response: {response:?}"
         );
     }
@@ -263,9 +260,9 @@ fn closed_stdout_does_not_abort_the_server(tmpdir: TempDir) -> Result<(), Error>
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if client
-            .get(format!("http://127.0.0.1:{port}/__dufs__/health"))
+            .get(format!("http://127.0.0.1:{port}/healthz"))
             .send()
-            .is_ok_and(|response| response.status() == 200)
+            .is_ok_and(|response| response.status() == 204)
         {
             break;
         }

@@ -1405,7 +1405,7 @@ fn foundation_schema_rows(connection: &Connection) -> Result<Vec<SchemaRow>> {
     Ok(rows)
 }
 
-fn expected_schema_identity() -> Result<SchemaIdentity> {
+pub(in crate::server) fn expected_schema_identity() -> Result<SchemaIdentity> {
     SchemaIdentity::new(
         APPLICATION,
         env!("CARGO_PKG_VERSION"),

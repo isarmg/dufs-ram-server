@@ -110,7 +110,7 @@ fn unauthenticated_html_navigation_redirects_to_login(
     );
     let body = login_page.text()?;
     assert!(body.contains("<form"));
-    assert!(body.contains("class=\"content-card login-card\""));
+    assert!(body.contains("class=\"sarmg-auth-card\""));
     assert!(body.contains("rel=\"stylesheet\""));
     assert!(body.contains("/__dufs_assets_"));
     assert!(body.contains("/login.css"));

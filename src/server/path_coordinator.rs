@@ -628,6 +628,16 @@ fn waiter_lexically_conflicts(waiter: &WaiterState, requested: &[PathBuf]) -> bo
     }
 }
 
+pub(super) fn resolved_path_contains(
+    ancestor: &ResolvedPathKey,
+    descendant: &ResolvedPathKey,
+) -> bool {
+    anchored_tail_is_prefix(ancestor, descendant)
+        || ancestor
+            .target_directory
+            .is_some_and(|identity| descendant.ancestor_directories.contains(&identity))
+}
+
 fn resolved_paths_conflict(left: &ResolvedPathKey, right: &ResolvedPathKey) -> bool {
     anchored_tail_is_prefix(left, right)
         || anchored_tail_is_prefix(right, left)

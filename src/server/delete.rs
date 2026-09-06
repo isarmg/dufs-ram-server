@@ -15,7 +15,7 @@ use super::{
     upload::{TargetRevision, target_revision},
 };
 use anyhow::Result;
-use hyper::StatusCode;
+use http::StatusCode;
 use std::{path::Path, sync::Arc};
 
 enum DeleteCommitOutcome {

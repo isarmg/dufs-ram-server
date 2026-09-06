@@ -10,8 +10,9 @@ test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foun
     const platform = await import(url);
     return { latin: platform.fontLicenseUrl, cjk: platform.cjkFontLicenseUrl };
   }, new URL("platform.js", prefix).href);
-  const provenance = require("../../clients/web/fonts/provenance.json");
-  for (const source of Object.keys(provenance.assets).filter(name => name.endsWith(".woff2") || name.endsWith(".txt"))) {
+  const provenance = require("../../node_modules/@sarmg/web-fonts/dist/provenance.json");
+  const fontCss = readFileSync(require("node:path").join(__dirname, "../../node_modules/@sarmg/web-fonts/dist/fonts.css"), "utf8");
+  for (const source of Object.keys(provenance.assets).filter(name => (name.endsWith(".woff2") && fontCss.includes(`./${name}`)) || name.endsWith(".txt"))) {
     const name = source.split("/").at(-1);
     // Vite may coalesce identical license bytes into a single emitted asset.
     const url = source === "CJK-LICENSE.txt" ? licenses.cjk
@@ -22,11 +23,22 @@ test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foun
     expect(response.headers()["cache-control"]).toContain("immutable");
     expect(response.headers()["x-content-type-options"]).toBe("nosniff");
     expect(response.headers()["content-type"]).toContain(name.endsWith("woff2") ? "font/woff2" : "text/plain");
-    expect(await response.body()).toEqual(readFileSync(require("node:path").join(__dirname, "../../clients/web/fonts", source)));
+    expect(await response.body()).toEqual(readFileSync(require("node:path").join(__dirname, "../../node_modules/@sarmg/web-fonts/dist", source)));
   }
   await page.evaluate(() => document.fonts.ready);
   expect(await page.evaluate(() => document.fonts.check('16px "Sarmg Maple"'))).toBe(true);
   expect(await page.locator("body").evaluate(element => getComputedStyle(element).fontFamily)).toContain("Sarmg Maple");
+  const css = await page.context().request.get(new URL("platform.css", prefix).href);
+  const cssText = await css.text();
+  expect(cssText).not.toContain("data:image");
+  const icons = [...new Set([...cssText.matchAll(/foundation-icon-[a-f0-9]{64}\\.svg/gu)].map(match => match[0]))];
+  expect(icons).toHaveLength(3);
+  for (const icon of icons) {
+    const response = await page.context().request.get(new URL(icon, prefix).href);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("image/svg+xml");
+    expect(response.headers()["cache-control"]).toContain("immutable");
+  }
   const script = await page.context().request.get(new URL("platform.js", prefix).href);
   expect((await script.body()).byteLength).toBeLessThanOrEqual(256 * 1024);
   expect(await script.text()).not.toMatch(/react-dom|react\/jsx-runtime|sourceMappingURL/u);
@@ -41,4 +53,27 @@ test("原生 Profile 的移动明暗主题通过 WCAG AA", async ({ axePage: pag
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     expect(results.violations).toEqual([]);
   }
+});
+
+test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容", async ({ appPage: page }) => {
+  await expect(page.locator(".sarmg-page-header .sarmg-product-identity")).toHaveText("Dufs");
+  await expect(page.locator(".sarmg-header-navigation a[aria-current=page]")).toHaveText("Files");
+  await expect(page.locator(".sarmg-instance-sidebar")).toHaveCount(0);
+  for (const width of [1280, 768, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const main = await page.locator(".main").boundingBox();
+    expect(main.x).toBeLessThanOrEqual(32);
+    expect(main.width).toBeGreaterThan(width - 65);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const button = page.getByRole("button", { name: "Switch to dark mode", exact: true });
+  await button.click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Switch to light mode", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  for (const icon of await page.locator(".sarmg-header-actions button > svg").all()) {
+    expect(await icon.evaluate(svg => Math.abs(svg.getBoundingClientRect().height - Number.parseFloat(getComputedStyle(svg.parentElement).fontSize)))).toBeLessThan(1);
+  }
+  expect(await page.locator(".paths-table").evaluate(table => getComputedStyle(table).borderCollapse)).toBe("collapse");
 });

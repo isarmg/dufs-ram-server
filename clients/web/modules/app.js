@@ -64,6 +64,7 @@ async function initialize() {
     actions: requiredElement(".toolbox-right", HTMLElement), create: requiredElement(".new-folder", HTMLButtonElement),
     logout: requiredElement(".logout-btn", HTMLButtonElement), refresh: () => window.location.reload(),
     instanceName: t("共享根目录", "Shared root"), instanceHref: "/",
+    config: { layout: "custom" },
     labels: {
       actions: t("全局操作", "Global actions"), refresh: t("重新载入页面", "Reload page"), light: t("切换到浅色模式", "Switch to light mode"),
       dark: t("切换到深色模式", "Switch to dark mode"), logout: t("退出", "Sign out"), instances: t("共享根目录实例", "Shared root instance"),

@@ -8,6 +8,7 @@ use super::{
     collection_allocation_bytes, safe_relative_path, try_reserve_bounded_vec_slot,
 };
 
+use sarmg_server_runtime::TrackedTasks as TaskTracker;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -18,7 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::OwnedSemaphorePermit;
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::sync::CancellationToken;
 
 pub(in crate::server) struct DirectoryWalk {
     pub(in crate::server) work_tasks: TaskTracker,
@@ -486,7 +487,14 @@ where
                         return Ok(false);
                     };
                     let is_dir = entry.metadata.is_dir();
-                    if is_internal_name(base_name) {
+                    if is_internal_name(base_name)
+                        || entry
+                            .path
+                            .strip_prefix(&walk_root)
+                            .ok()
+                            .and_then(Path::to_str)
+                            .is_some_and(super::super::path_policy::PathPolicy::is_platform_path)
+                    {
                         return Ok(true);
                     }
                     let include = match include_entry(&entry, base_name) {

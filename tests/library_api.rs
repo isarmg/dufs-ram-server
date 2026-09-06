@@ -31,7 +31,7 @@ async fn reusable_server_layer_can_be_constructed_without_starting_a_process() {
     let runtime = Server::builder(args)
         .build()
         .expect("construct reusable server layer");
-    runtime.shutdown().await;
+    runtime.shutdown().await.expect("drain and close state");
 }
 
 #[tokio::test]
@@ -43,7 +43,7 @@ async fn reusable_server_can_own_an_isolated_list_snapshot_cache() {
         .build()
         .expect("construct server with an isolated listing cache");
 
-    runtime.shutdown().await;
+    runtime.shutdown().await.expect("drain and close state");
 }
 
 #[tokio::test]
@@ -55,10 +55,10 @@ async fn runtime_shutdown_is_observable_and_idempotent() {
         .expect("construct reusable server layer");
 
     assert!(runtime.active_task_counts().0 > 0);
-    runtime.shutdown().await;
+    runtime.shutdown().await.expect("drain and close state");
     assert_eq!(runtime.active_task_counts(), (0, 0));
 
-    runtime.shutdown().await;
+    runtime.shutdown().await.expect("drain and close state");
     assert_eq!(runtime.active_task_counts(), (0, 0));
 }
 
@@ -72,7 +72,7 @@ async fn configured_state_database_is_created_privately() {
     let runtime = Server::builder(args)
         .build()
         .expect("construct server with persistent state");
-    runtime.shutdown().await;
+    runtime.shutdown().await.expect("drain and close state");
 
     let metadata = std::fs::metadata(&state_db).expect("inspect SQLite state database");
     assert!(metadata.is_file());
@@ -105,4 +105,122 @@ fn builder_without_tokio_runtime_returns_an_error() {
 
     let error = result.err().expect("construction should require Tokio");
     assert!(error.to_string().contains("active Tokio runtime"));
+}
+
+fn platform_handle() -> sarmg_server_runtime::RuntimeHandle {
+    sarmg_server_runtime::platform_handle(sarmg_server_runtime::ProductDescriptor {
+        id: "dufs-ram".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        foundation_revision: "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1".into(),
+        profile: "server-filesystem".into(),
+        capabilities: vec!["server-runtime".into()],
+    })
+    .expect("valid platform descriptor")
+}
+
+#[tokio::test]
+async fn http_boundary_requires_a_real_socket_peer() {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let root = assert_fs::TempDir::new().unwrap();
+    let state = private_state_dir();
+    let runtime = Server::builder(authenticated_args(root.path(), state.path()))
+        .build()
+        .unwrap();
+    let service = sarmg_server_runtime::request_service(
+        runtime
+            .server()
+            .clone()
+            .http_service(platform_handle())
+            .unwrap(),
+    );
+    let response = service
+        .oneshot(
+            http::Request::builder()
+                .uri("/")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 500);
+    assert!(response.headers().contains_key("x-request-id"));
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"],
+        "platform.peer_missing"
+    );
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn retained_service_cannot_register_work_after_state_close() {
+    use tower::ServiceExt;
+    let root = assert_fs::TempDir::new().unwrap();
+    let state = private_state_dir();
+    let runtime = Server::builder(authenticated_args(root.path(), state.path()))
+        .build()
+        .unwrap();
+    let service = sarmg_server_runtime::request_service(
+        runtime
+            .server()
+            .clone()
+            .http_service(platform_handle())
+            .unwrap(),
+    );
+    runtime.shutdown().await.unwrap();
+    let operation = uuid::Uuid::new_v4().to_string();
+    let mut request = http::Request::builder()
+        .method("DELETE")
+        .uri("/never-created")
+        .header("x-dufs-operation-id", &operation)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    request.extensions_mut().insert(axum::extract::ConnectInfo(
+        "127.0.0.1:32100".parse::<std::net::SocketAddr>().unwrap(),
+    ));
+    let response = service.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), 503);
+    assert_eq!(response.headers()["x-dufs-operation-id"], operation);
+    assert_eq!(response.headers()["x-dufs-operation-state"], "rejected");
+    assert_eq!(runtime.active_task_counts(), (0, 0));
+    assert!(!root.path().join("never-created").exists());
+}
+
+#[tokio::test]
+async fn reserved_root_conflicts_fail_before_state_creation_without_changing_files() {
+    for path in ["healthz", "readyz", "api/v2/auth"] {
+        let root = assert_fs::TempDir::new().unwrap();
+        let state = private_state_dir();
+        let conflict = root.path().join(path);
+        std::fs::create_dir_all(conflict.parent().unwrap()).unwrap();
+        std::fs::write(&conflict, "preserve existing contents").unwrap();
+        let error = Server::builder(authenticated_args(root.path(), state.path()))
+            .build()
+            .err()
+            .unwrap();
+        assert!(
+            error.to_string().contains("reserved platform path"),
+            "{error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&conflict).unwrap(),
+            "preserve existing contents"
+        );
+        assert_eq!(std::fs::read_dir(state.path()).unwrap().count(), 0);
+    }
+}
+
+#[test]
+fn platform_conflict_scan_does_not_follow_symlink_ancestors_or_reserve_all_api_files() {
+    let root = assert_fs::TempDir::new().unwrap();
+    let outside = assert_fs::TempDir::new().unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join("api")).unwrap();
+    assert!(Server::check_reserved_path_conflicts(root.path()).is_err());
+    assert!(root.path().join("api").is_symlink());
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+    let ordinary = assert_fs::TempDir::new().unwrap();
+    std::fs::create_dir(ordinary.path().join("api")).unwrap();
+    std::fs::write(ordinary.path().join("api/notes.txt"), "ordinary").unwrap();
+    Server::check_reserved_path_conflicts(ordinary.path()).unwrap();
 }

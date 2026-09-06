@@ -248,5 +248,7 @@ grep -Fxq "source_sha=$source_sha" \
 grep -Fxq "source_version=$version" \
   "$package_root/BUILD-ENVIRONMENT.txt"
 
+bash "$project_dir/scripts/check-release-runtime.sh" "$package_root/dufs"
+
 printf 'formal signed release package E2E passed for %s at %s\n' \
   "$release_tag" "$source_sha"

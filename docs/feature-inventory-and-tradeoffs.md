@@ -50,7 +50,7 @@
 本清单按当前工作树的下列闭包交叉核对，而不是只从 README 摘录功能：
 
 - `src/args.rs` 中的全部子命令、CLI 参数、YAML 字段、默认值和组合校验；
-- `Server::call`、私有登录/资源路由和通用文件方法分派中的全部 HTTP 入口，以及代码实际使用的状态码；
+- `Server::http_service`、私有登录/资源路由和通用文件方法分派中的全部 HTTP 入口，以及代码实际使用的状态码；
 - 目录页和登录页 HTML/CSS/JavaScript 中的全部用户入口、传输方式和界面边界；
 - 全部生产 Rust 模块，以及 `Cargo.toml` 的 30 个生产直接依赖；
 - systemd/nginx/YAML 部署样例、质量门禁、本地发布、许可证、安全策略和运维材料；
@@ -148,16 +148,16 @@
 
 ## 4. 管理员、登录、会话和请求安全
 
-Dufs 的认证唯一所有者是 Foundation：受保护 YAML 经 `AuthConfig` 验证后映射为 Static Administrator Store，Hyper Router 接收真实 TCP peer 并处理三个当前认证 API。产品只拥有登录 HTML、响应正文类型适配、HTML 导航重定向和已认证的文件操作归属键，不实现 Session/Cookie/CSRF/密码哈希/登录限流。静态管理员不开放网页新增、改密或停用，配置变化必须重启。
+Dufs 的认证唯一所有者是 Foundation：受保护 YAML 经 `AuthConfig` 验证后映射为 Static Administrator Store，Foundation Axum Adapter 接收真实 TCP peer 并处理三个当前认证 API。产品只拥有登录 HTML、HTML 导航重定向和已认证的文件操作归属键，不实现 Session/Cookie/CSRF/密码哈希/登录限流。静态管理员不开放网页新增、改密或停用，配置变化必须重启。
 
 | ID | 当前能力 | 唯一所有者/适配 | 验证边界 |
 | --- | --- | --- | --- |
-| A-01 | 静态管理员唯一所有者 | Foundation Core/Static/Hyper；产品仅提供 YAML Adapter | 至少一个、最多 1024 个；静态配置无管理写接口 |
+| A-01 | 静态管理员唯一所有者 | Foundation Core/Static/Axum；产品仅提供 YAML Adapter | 至少一个、最多 1024 个；静态配置无管理写接口 |
 | A-02 | 唯一 admin 角色 | Foundation AdministratorSession | 所有已认证管理员对共享根同权，无 ACL/只读角色 |
 | A-03 | 当前规范 username | Foundation admin-auth 与 contracts | 配置 canonical；登录候选由平台规范化；重复和非法配置拒绝 |
 | A-04 | 当前 Argon2id PHC | Foundation admin-auth；dufs hash-password | 仅 v19/m19456/t2/p1/salt16/output32，不读取其他版本 |
 | A-05 | 共享密码策略 | Foundation Rust 与 admin-web | 12–1024 UTF-8 字节、无 ASCII control；wire 候选与策略分层 |
-| A-06 | 三个固定认证端点 | Foundation Hyper Router | POST login、GET session、POST logout；没有 alias |
+| A-06 | 三个固定认证端点 | Foundation Axum Router | POST login、GET session、POST logout；没有 alias |
 | A-07 | 严格请求/会话/错误合同 | Foundation contracts | 多余/重复字段拒绝；ErrorEnvelope 保留平台 code |
 | A-08 | 原生登录页 | 共享 Admin Client + 外部 login.js | 固定安全错误、Request ID、失败清空密码并恢复焦点 |
 | A-09 | 有界登录正文读取 | Foundation HTTP BodyAdmission | 16 KiB、10 秒、全局 32/真实来源 4；取消释放 |
@@ -166,7 +166,7 @@ Dufs 的认证唯一所有者是 Foundation：受保护 YAML 经 `AuthConfig` �
 | A-12 | 内存会话生命周期 | Foundation Static Store | idle 30 分钟、absolute 12 小时、重启失效、时间倒退拒绝 |
 | A-13 | 活动会话容量 | Foundation Static Store | 每管理员 32、全局 1024；排序与裁剪由上游固定 |
 | A-14 | 登录与恢复分离 | Foundation AdministratorService | 登录创建新会话；恢复轮换 CSRF，旧 CSRF 不恢复 |
-| A-15 | 安全 Cookie | Foundation Core/Hyper | 生产 __Host-sarmg-dufs-ram-session；显式开发采用无 Secure 的平台名称 |
+| A-15 | 安全 Cookie | Foundation Core/Axum | 生产 __Host-sarmg-dufs-ram-session；显式开发采用无 Secure 的平台名称 |
 | A-16 | 严格 Cookie 解析 | Foundation HTTP Adapter | 重复 field line、重复当前名称、畸形 token 失败关闭 |
 | A-17 | 生产同源与开发隔离 | Foundation Origin Mode + Args | HTTPS Origin/Host/Sec-Fetch-Site；开发只准 loopback；忽略代理头 |
 | A-18 | 业务写入 CSRF | Foundation authenticate_request | 不安全方法要求唯一有效 X-CSRF-Token；无产品自有校验 |
@@ -359,12 +359,12 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | O-06 | 安全文件或控制台输出 | `--log-file` 以 `O_NOFOLLOW|O_APPEND|O_NONBLOCK|O_CLOEXEC` 打开，要求当前服务用户拥有、单硬链接的普通文件；新文件固定 `0600`，已有文件必须预先精确为 `0600`，不安全权限不会被就地修改；未配置文件时全部日志使用 stderr，stdout 仅输出监听地址 | 防止高权限服务跟随符号链接、在特殊对象打开阶段阻塞或把 fd 泄漏给子进程，也避免 chmod 伪装修复已泄露或被预开 fd 持有的日志；单一控制台 sink 还避免 stdout 阻塞或刷新失败拖住 WARN/ERROR；只用 journald 时文件输出可删除 | 可选 | 低 |
 | O-07 | 连接错误分类 | 记录 peer、协议、超时、断开、I/O 类型和系统错误码 | 对定位网关 `502`、超时和协议错误有价值 | 开发运维 | 低 |
 | O-08 | accept 错误退避 | 从 50 ms 指数退避到 1 秒，下一次成功后重置 | 删除可能在 fd/内存耗尽时形成错误忙循环 | 保障 | 低 |
-| O-09 | 公开 liveness | `GET/HEAD /__dufs__/health` 不要求会话并返回 `{"status":"OK"}`；它不访问文件内容、账号或共享根，只证明进程仍能处理 HTTP | 可供网关无凭据探活；删除收益很小 | 建议保留 | 低 |
-| O-10 | 有硬截止的两阶段停机 | 首个 SIGINT/SIGTERM 停止接收并给普通任务/提交 30 秒；到期后取消普通工作、让停滞上传保存检查点或清理，再给受跟踪工作最多 10 秒。约 40 秒仍未完成则跳过日志 flush、立即以状态 1 强制退出；正常完成 tracked cleanup 后显式 `exit(0)`，避免 runtime drop 等待已取消但卡住的 blocking 工作突破时限 | 删除宽限会增加不明确结果；删除硬截止或显式退出会让故障内核/FUSE 工作无限拖住进程 | 保障 | 高 |
-| O-11 | 第二信号立即退出 | 第二次 SIGINT/SIGTERM 不再等待或 flush 日志；SIGKILL 同样无法保证收尾，尾部日志可能丢失 | 是管理员明确的强制退出边界 | 开发运维 | 低 |
-| O-12 | 正常退出日志 flush | 仅正常停止在 tracked cleanup 后由专用命名 OS thread 执行一次最多 5 秒的日志刷新，不依赖 Tokio blocking pool；主任务以 biased select 继续监听第二信号。硬截止和第二信号路径跳过并立即退出 | 删除可能丢失最后一批诊断记录；把 flush 放进强退路径或可能耗尽的共享阻塞池会突破硬截止，停止监听第二信号又会破坏管理员强退语义 | 开发运维 | 低 |
+| O-09 | 公开 liveness | `GET/HEAD /healthz` 不要求会话并返回 204 空响应；它不访问文件内容、账号或共享根，只证明进程仍能处理 HTTP | 可供网关无凭据探活；删除收益很小 | 建议保留 | 低 |
+| O-10 | 有硬截止的两阶段停机 | Foundation 30 秒宽限及 10 秒强制取消收尾；请求和平台探针退出后才封闭普通与提交登记，提交排空后关闭 StateStore；不取消持久义务来伪造完成 | 删除会让不确定结果丢失或无限卡住 | 保障 | 高 |
+| O-11 | 后续信号与非正常退出 | 第二信号提前进入强制取消阶段，第三信号或硬期限返回包含未完成计数的失败；可执行边界非零退出，保留状态所有者到进程退出 | SIGKILL 或 abort 不能保证收尾，必须验证当前状态恢复 | 开发运维 | 低 |
+| O-12 | 有界退出日志刷新 | 可执行边界使用现有异步日志队列，最多等待 5 秒后显式退出，不等待卡住的 Tokio blocking pool | 日志刷新不证明业务提交成功；不能突破自身上限 | 开发运维 | 低 |
 | O-13 | 内置资源日志降噪 | 只有成功返回的版本化资源 `GET` 跳过普通访问日志；资源错误、HEAD、登录、健康检查和其他请求仍记录 | 删除过滤会增加静态资源噪声；扩大过滤会漏掉诊断 | 建议保留 | 低 |
-| O-14 | 认证 readiness | `GET/HEAD /__dufs__/ready` 要求有效会话；通过锚定根 fd 真实创建隐藏文件、写入、同步文件、删除并同步根目录，同时在现有 SQLite actor 连接执行 `BEGIN IMMEDIATE`、写入探针行并 `ROLLBACK`；还检查扣除进程预留后的 `min-free-space` 和停机状态，失败返回 `503 {"status":"not_ready"}` | 比 liveness 更适合受控冒烟检查；它证明当前根目录和状态库基本可写，但不执行 rename/介质读回，也不预测目标冲突、purge/上传容量等全部业务准入 | 建议保留 | 低 |
+| O-14 | 公开最小 readiness | `GET/HEAD /readyz` 公开并禁止缓存，只输出 `ready`；Foundation 在启动时及每 5 秒刷新有界探针，通过锚定根 fd 真实创建隐藏文件、写入、同步文件、删除并同步根目录，同时在现有 SQLite actor 连接执行 `BEGIN IMMEDIATE`、写入探针行并 `ROLLBACK`；还检查扣除进程预留后的 `min-free-space` 和停机状态，失败返回 `503 {"ready":false}` | 比 liveness 更适合受控冒烟检查；它证明当前根目录和状态库基本可写，但不执行 rename/介质读回，也不预测目标冲突、purge/上传容量等全部业务准入 | 建议保留 | 低 |
 
 ## 13. 内置资源、缓存和部署
 
@@ -427,8 +427,8 @@ T-14 的发布顺序还包含 RustSec 输入封存：宿主 DB 通过完整验�
 | `GET /api/v2/auth/session` | 返回当前五字段管理员 session | 是 | 只读 |
 | `POST /api/v2/auth/logout` | 撤销当前会话并清 Cookie | 是 | `X-CSRF-Token` + Foundation 严格同源 |
 | `GET/HEAD /__dufs_assets_<digest>/*` | 登录页所需内置 JS、CSS、图标；HEAD 与 GET 使用相同 metadata，不发送正文 | 否 | 只读且只允许精确摘要资源 |
-| `GET/HEAD /__dufs__/health` | 不访问共享根的公开 liveness | 否 | 只读 |
-| `GET/HEAD /__dufs__/ready` | 以创建/写入/文件同步/删除/目录同步探针检查共享根，并以回滚写事务检查统一 state store，同时检查空间和停机状态 | 是 | 探针写入后清理/回滚 |
+| `GET/HEAD /healthz` | 不访问共享根的公开 liveness | 否 | 只读 |
+| `GET/HEAD /readyz` | 返回启动时及每 5 秒刷新的根目录、状态库、空间探针最小汇总，停机立即未就绪 | 否 | HTTP 只读；后台探针清理/回滚 |
 | `GET /__dufs__/api/list` | 分页列表或递归搜索结果 | 是 | 只读 |
 | `POST /__dufs__/api/mkdir` | 新建目录 | 是 | CSRF + 同源 + JSON |
 | `POST /__dufs__/api/move` | 移动到目标目录并保留原名称 | 是 | CSRF + 同源 + JSON |
@@ -487,7 +487,7 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 1. Foundation 当前密码合同是 12～1024 个 UTF-8 字节且不含 ASCII 控制字符，并固定当前 Argon2id 参数；它没有字符类别或强制熵规则，管理员仍应使用高熵密码管理流程。
 2. Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Dufs 实现或配置；网关仍须独立按真实客户端 IP 限速。
 3. Foundation Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
-4. 公开 `/__dufs__/health` 只证明进程和路由能响应；认证 `/__dufs__/ready` 会真实创建隐藏文件、写入、同步文件、删除并同步根目录，还会在当前 SQLite actor 连接中执行回滚写事务。它仍不执行 rename 或介质读回，也不预测目标冲突、上传/purge 容量等全部业务准入，因此不能替代完整 CRUD 冒烟和备份恢复演练。
+4. 公开 `/healthz` 只证明进程和路由能响应；公开 `/readyz` 返回最近一次有界探针汇总；后台探针在启动时及每 5 秒真实创建隐藏文件、写入、同步文件、删除并同步根目录，还会在当前 SQLite actor 连接中执行回滚写事务。它仍不执行 rename 或介质读回，也不预测目标冲突、上传/purge 容量等全部业务准入，因此不能替代完整 CRUD 冒烟和备份恢复演练。
 5. `$remote_addr` 与应用限流来源均为 TCP peer；代理头不能覆盖。网关必须独立按真实客户端 IP 限速，并阻止绕过网关。
 6. CLI/YAML 的最终 bind 列表必须非空；`bind: []` 在创建 listener 或其他运行时资源前就以明确配置错误失败。多个 listener 各自先等待可读，再取得共享连接许可后 `try_accept`，因此空闲地址不会预占许可，用户态已接受 socket 不会越过上限；达到上限时内核 backlog 仍可能暂存已经完成握手的连接。
 7. 成功上传任务会保留在上传队列表格中，但不会立即插入已经加载的普通目录列表，刷新页面后才会出现在常规列表。
@@ -564,10 +564,10 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 | --- | --- | --- | --- |
 | CLI 与参数 | `src/args.rs`、`src/main.rs` | `clap` | 所有运行模式都需要；只可减少具体参数 |
 | YAML | `src/args.rs` | `serde_yaml_ng`、`serde` | 删除 X-07 后可移除 YAML 运行依赖 |
-| 登录与密码 | `src/auth.rs`、`src/server/administrator_web.rs` | Foundation Admin Core/Static/Hyper/Auth、`rpassword` | 产品只解析配置、适配 HTML 与交互式 hash-password；无本地认证机制 |
+| 登录与密码 | `src/auth.rs`、`src/server/administrator_web.rs` | Foundation Admin Core/Static/Axum/Auth、`rpassword` | 产品只解析配置、适配 HTML 与交互式 hash-password；无本地认证机制 |
 | 会话、摘要和编码 | `src/auth.rs`、`src/server/assets.rs`、`src/server/listing.rs`、`src/server/listing/snapshot.rs`、`src/server/operation_registry.rs`、`src/server/upload.rs`、`src/server/upload/record.rs` | `sha2`、`base64` | 摘要与 Base64 同时用于会话/账号、资源、页面上下文、抗篡改 cursor、operation 指纹或上传内部名称；固定小写十六进制编解码由 `utils.rs` 的有测试小函数完成，不再引入 `hex` |
 | 统一控制状态 | `src/server/operation_registry.rs`、`src/server/state_store.rs`、`src/server/upload/record.rs`、`src/server/purge.rs` | `rusqlite`（bundled SQLite） | 当前 revision 1 文件数据库同时持久化管理 operations/upload_sessions/purge_jobs；SQLite 是唯一状态权威，`state-dir` 必填，不存在内存模式，服务不迁移旧格式 |
-| HTTP 服务 | `src/main.rs`、`src/server.rs`、`src/server/router.rs`、`src/server/assets.rs` | `tokio`、`tokio-util`、`hyper`、`hyper-util`、`http-body-util`、`headers`、`bytes`、`futures-util` | 核心运行栈；下载以 `StreamBody` 驱动受全局门控的 fd-relative 分块读取，每次门控等待与读取共用 30 秒源 idle deadline；`tokio-util` 只启用任务生命周期所需的 `rt`，`hyper-util` 只提供 Tokio I/O 和计时适配，生产依赖图不包含 `h2` |
+| HTTP 服务 | `src/main.rs`、`src/server/router.rs`、Foundation `sarmg-server-runtime` | `axum`、`http`、`http-body`、`tower`、`headers`、`bytes`、`futures-util` | Axum 为唯一产品路由；Foundation 拥有 HTTP/1 连接、限额、信号与关闭；下载使用 Axum 流式 Body 和受门控的 fd-relative 分块读取，保留 30 秒源 idle deadline。Hyper 仅为 Foundation/Axum 的底层依赖，生产图不含 h2 |
 | TCP 监听 | `src/main.rs` | `socket2` | 用于 Linux listener 配置和 backlog |
 | Linux 系统边界 | `src/args.rs`、`src/server/rooted_fs.rs`、`src/server/rooted_fs/purge.rs`、`storage.rs`、`disk_space.rs` | `rustix` | fd-relative xattr、openat2、fsync、目录操作和空间检查；认证时间由 Foundation 提供 |
 | 路由和表单编码 | `src/server.rs`、`src/server/router.rs`、`administrator_web.rs`、前端 URL | `percent-encoding`、`form_urlencoded` | 登录、查询和路径编码共同使用 |

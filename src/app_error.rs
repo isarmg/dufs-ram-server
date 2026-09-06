@@ -1,4 +1,4 @@
-use hyper::StatusCode;
+use http::StatusCode;
 use std::fmt;
 
 /// HTTP-facing error metadata kept separate from transport response building.

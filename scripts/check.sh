@@ -99,6 +99,7 @@ shell_scripts=(
   scripts/check-coverage.sh
   scripts/check-deployment.sh
   scripts/check-formal-release-e2e.sh
+  scripts/check-release-runtime.sh
   scripts/package-release.sh
   tests/data/generate_tls_certs.sh
 )
@@ -181,6 +182,8 @@ run cargo fmt --all --check
 run cargo clippy --locked --target x86_64-unknown-linux-gnu --all-targets --all-features -- -D warnings
 run cargo test --locked --target x86_64-unknown-linux-gnu --all-targets --all-features
 run ./scripts/check-coverage.sh
+run cargo build --locked --release --target x86_64-unknown-linux-gnu
+run bash scripts/check-release-runtime.sh "${CARGO_TARGET_DIR:-$project_dir/target}/x86_64-unknown-linux-gnu/release/dufs"
 
 run ./node_modules/.bin/tsc --version
 run node scripts/check-release-workflow.mjs

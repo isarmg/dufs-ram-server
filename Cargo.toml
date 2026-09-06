@@ -1,6 +1,6 @@
 [package]
 name = "dufs"
-version = "0.50.2"
+version = "0.51.0"
 edition = "2024"
 rust-version = "1.98"
 description = "A Linux browser file manager"
@@ -12,12 +12,17 @@ publish = false
 build = "build.rs"
 
 [dependencies]
-sarmg-fs-safety = { git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1", version = "=0.6.0" }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+http = "1"
+http-body = "1"
+tower = { version = "0.5", features = ["util"] }
+async-trait = "0.1"
+sarmg-server-runtime = { git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1", version = "=0.7.0" }
+sarmg-fs-safety = { git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1", version = "=0.7.0" }
 clap = { version = "4.5", features = ["wrap_help"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "signal", "net", "time"]}
 tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
-hyper = { version = "1", features = ["http1", "server"] }
 percent-encoding = "2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,14 +31,12 @@ headers = "0.4"
 mime_guess = "2.0"
 uuid = { version = "1.7", features = ["v4"] }
 log = { version = "0.4", features = ["std"] }
-socket2 = "0.6"
 form_urlencoded = "1.2"
 alphanumeric-sort = "1.4"
 anyhow = "1.0"
 rustix = { version = "1.1", features = ["event", "fs", "process", "time"] }
 serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
 base64 = "0.22"
-hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1.5"
 getrandom = "0.4"
@@ -42,15 +45,16 @@ rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"
 sha2 = "0.11.0"
 subtle = "2.6"
 tempfile = "3"
-sarmg-admin-auth = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
-sarmg-admin-core = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
-sarmg-admin-static = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
-sarmg-admin-hyper = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
-sarmg-contracts = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
-sarmg-schema-identity = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
-sarmg-server-target = { version = "=0.6.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "1e889d08fa69fcf2b5fffe45e8cc42b68218f4f1" }
+sarmg-admin-auth = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
+sarmg-admin-core = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
+sarmg-admin-static = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
+sarmg-admin-axum = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
+sarmg-contracts = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
+sarmg-schema-identity = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
+sarmg-server-target = { version = "=0.7.0", git = "https://github.com/isarmg/sarmg-foundation-server.git", rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1" }
 
 [dev-dependencies]
+socket2 = "0.6"
 assert_cmd = "2"
 reqwest = { version = "0.13", features = ["blocking"], default-features = false }
 assert_fs = "1"

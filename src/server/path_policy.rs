@@ -92,10 +92,11 @@ impl PathPolicy {
         if normalized.len() > BROWSER_RELATIVE_PATH_BYTES_LIMIT {
             return None;
         }
-        if normalized
-            .split('/')
-            .next()
-            .is_some_and(|component| self.is_reserved_component(component))
+        if (Self::is_platform_path(&normalized)
+            || normalized
+                .split('/')
+                .next()
+                .is_some_and(|component| self.is_reserved_component(component)))
             && raw_path != format!("/{}", encode_uri(&normalized))
         {
             return None;
@@ -109,6 +110,7 @@ impl PathPolicy {
     pub(super) fn parse_browser_target(&self, value: &str) -> Option<RootedPath> {
         let relative = value.strip_prefix('/')?;
         if relative.is_empty()
+            || Self::is_platform_path(relative)
             || relative.len() > BROWSER_RELATIVE_PATH_BYTES_LIMIT
             || relative.contains('\0')
         {
@@ -156,7 +158,41 @@ impl PathPolicy {
     }
 
     pub(super) fn is_reserved_component(&self, component: &str) -> bool {
-        component == "__dufs__" || component == self.assets_component
+        component == "__dufs__"
+            || component == self.assets_component
+            || Self::is_platform_path(component)
+    }
+
+    pub(super) fn is_platform_path(relative: &str) -> bool {
+        sarmg_server_runtime::PLATFORM_RESERVED_PATHS
+            .iter()
+            .any(|root| {
+                let root = root.trim_start_matches('/');
+                relative == root
+                    || relative
+                        .strip_prefix(root)
+                        .is_some_and(|tail| tail.starts_with('/'))
+            })
+    }
+
+    pub(super) fn is_platform_ancestor(relative: &str) -> bool {
+        !relative.is_empty()
+            && sarmg_server_runtime::PLATFORM_RESERVED_PATHS
+                .iter()
+                .any(|root| {
+                    root.trim_start_matches('/')
+                        .strip_prefix(relative)
+                        .is_some_and(|tail| tail.starts_with('/'))
+                })
+    }
+
+    pub(super) fn protects_platform_namespace(&self, path: &Path) -> bool {
+        path.strip_prefix(&self.root)
+            .ok()
+            .and_then(Path::to_str)
+            .is_some_and(|relative| {
+                Self::is_platform_path(relative) || Self::is_platform_ancestor(relative)
+            })
     }
 }
 
@@ -166,6 +202,44 @@ mod tests {
 
     fn policy() -> PathPolicy {
         PathPolicy::new(PathBuf::from("/srv/share"), "__dufs_assets_test/")
+    }
+
+    #[test]
+    fn platform_namespaces_are_canonical_and_precisely_reserved() {
+        let policy = policy();
+        for path in ["/healthz", "/readyz", "/api/v2/auth", "/api/v2/auth/login"] {
+            assert!(policy.parse_route(path).is_some(), "{path}");
+            assert!(policy.parse_browser_target(path).is_none(), "{path}");
+        }
+        for path in [
+            "/%68ealthz",
+            "//healthz",
+            "/healthz/",
+            "/api//v2/auth",
+            "/api/v2/%61uth/login",
+            "/api/v2/auth/",
+        ] {
+            assert!(policy.parse_route(path).is_none(), "{path}");
+        }
+        for path in [
+            "/api",
+            "/api/notes.txt",
+            "/api/v2/authors",
+            "/healthz.txt",
+            "/nested/healthz",
+            "/%2568ealthz",
+        ] {
+            assert!(policy.parse_route(path).is_some(), "{path}");
+            assert!(policy.parse_browser_target(path).is_some(), "{path}");
+        }
+        for path in ["api", "api/v2", "api/v2/auth", "healthz"] {
+            assert!(policy.protects_platform_namespace(&Path::new("/srv/share").join(path)));
+        }
+        assert!(!policy.protects_platform_namespace(Path::new("/srv/share/api/notes.txt")));
+        assert_eq!(
+            policy.parse_route("/%252e%252e").unwrap().as_str(),
+            "%2e%2e"
+        );
     }
 
     #[test]

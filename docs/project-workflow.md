@@ -7,7 +7,7 @@
 - 部署约定为每个共享根仅运行一个 Dufs 实例；进程会在长期持有的共享根目录 fd 上取得非阻塞独占 `flock`，同机第二实例若指向同一根会在启动时失败；advisory lock 不阻止其他程序写入，一致性保证要求共享根由 Dufs 独占写入，人工修改只能停服执行；
 - `build.rs` 只接受 `x86_64-unknown-linux-gnu`；其他架构、操作系统、ABI 或指针宽度在应用编译前失败，运行内核还必须提供 `openat2`；
 - 本地构建使用 `rust-toolchain.toml` 精确固定的 Rust/rustc/Cargo 1.98.0，源码采用 Rust 2024 edition；
-- Foundation Core/Static/Hyper 和 Web 平台包为唯一上游；当前联调路径依赖尚未发布，正式交付必须改为新不可变来源并验证锁文件；
+- Foundation Core/Static/Axum 与 Runtime 为唯一上游；Rust 依赖固定完整 revision 和精确版本，Web 包使用正式发行 tarball 与完整性锁文件；
 - 必须通过 Foundation 管理员 username 和密码认证，不存在匿名业务访问；
 - 唯一角色是 `admin`；每个有效管理员拥有整个共享目录的浏览和文件管理能力；
 - 服务只通过内网 HTTP/TCP 地址监听，HTTPS 统一由网关终止；
@@ -17,154 +17,25 @@
 
 ## 1. 总体流程树
 
-```mermaid
-flowchart TD
-    START(["启动 dufs"]) --> CONFIG["解析默认值、可选 YAML 和命令行"]
-    CONFIG --> VALIDATE["规范化共享目录、拒绝非目录路径<br/>并校验 Foundation canonical 管理员 username 和当前 Argon2id PHC"]
-    VALIDATE --> ACCOUNT{"至少有一个有效管理员？"}
-    ACCOUNT -- 否 --> FAIL["报错并终止"]
-    ACCOUNT -- 是 --> ROOT_LOCK["打开共享根 fd<br/>取得独占 flock 并验证 openat2"]
-    ROOT_LOCK -- 失败 --> FAIL
-    ROOT_LOCK -- 成功 --> ASSETS["装载编译期内置页面资源"]
-    ASSETS --> LISTENER["绑定内网 HTTP/TCP 地址"]
-    LISTENER --> HYPER["Hyper 连接处理；错误分类并记录 peer 地址"]
-    HYPER --> REQUEST["Server::call → 私有路由分派"]
-    REQUEST --> LIVENESS{"公开 liveness？"}
-    LIVENESS -- 是 --> LIVE_RESPONSE["GET/HEAD /__dufs__/health<br/>不访问共享文件内容"]
-    LIVENESS -- 否 --> LOGIN{"公开登录页或 Foundation login API？"}
-    LOGIN -- GET page --> LOGIN_PAGE["返回英文登录页"]
-    LOGIN -- POST API --> LOGIN_POST["严格同源、16 KiB JSON、登录限流<br/>最多两个并发 Argon2id 校验"]
-    LOGIN_POST --> LOGIN_OK{"管理员 username 和密码正确？"}
-    LOGIN_OK -- 否 --> LOGIN_FAIL["返回统一 JSON ErrorEnvelope<br/>400/401/429"]
-    LOGIN_OK -- 是 --> SESSION_NEW["创建随机内存会话<br/>Set-Cookie + AdministratorSession JSON"]
-    LOGIN -- 否 --> SESSION["验证 __Host-sarmg-dufs-ram-session Cookie"]
-    SESSION --> PASS{"会话有效？"}
-    PASS -- 否 --> NAV{"GET/HEAD 且 Accept 含<br/>精确 text/html; q>0？"}
-    NAV -- 是 --> REDIRECT["303 跳转英文登录页"]
-    NAV -- 否 --> R401["401；remote_user 为空"]
-    PASS -- 是 --> USER["写入会话中的 canonical 管理员 username 到 remote_user"]
-    USER --> UNSAFE{"POST、PUT、PATCH 或 DELETE？"}
-    UNSAFE -- 是 --> CSRF["校验 Origin / Sec-Fetch-Site<br/>和会话专属 CSRF"]
-    UNSAFE -- 否 --> ROUTE{"请求类型"}
-    CSRF -- 通过 --> ROUTE
-    CSRF -- 失败 --> R403["403，不进入文件系统写操作"]
-    ROUTE -->|目录 GET/HEAD| DIRECTORY["目录页或搜索"]
-    ROUTE -->|文件 GET/HEAD| DOWNLOAD["附件下载与单段 Range"]
-    ROUTE -->|PUT/PATCH| UPLOAD["持久化上传与续传"]
-    ROUTE -->|DELETE| DELETE["删除文件或目录"]
-    ROUTE -->|POST 内部 API| API["mkdir、move 或 rename"]
-    ROUTE -->|内置资源/内部 GET| STATIC["内置 JS、CSS、图标、readiness<br/>或 job/operation 状态"]
-    ROUTE -->|POST 注销| LOGOUT["撤销会话并清除 Cookie"]
-    ROUTE -->|其他| R405["405 Method Not Allowed"]
-    LOGIN_PAGE --> RESPONSE["构造响应"]
-    LIVE_RESPONSE --> RESPONSE
-    LOGIN_FAIL --> RESPONSE
-    SESSION_NEW --> RESPONSE
-    REDIRECT --> RESPONSE
-    R403 --> RESPONSE
-    DIRECTORY --> RESPONSE["构造响应"]
-    DOWNLOAD --> RESPONSE
-    UPLOAD --> RESPONSE
-    DELETE --> RESPONSE
-    API --> RESPONSE
-    STATIC --> RESPONSE
-    LOGOUT --> RESPONSE
-    R401 --> RESPONSE
-    R405 --> RESPONSE
-    RESPONSE --> LOG["记录状态和访问日志"]
-    LOG --> CLIENT(["返回浏览器"])
+```text
+配置验证 → Foundation 安装信号、绑定全部端口（失败不改状态）
+ → 保留路径只读检查 → 根锁/openat2/严格当前状态恢复
+ → Foundation 受限 HTTP/1 → 真实 socket peer、一次 request ID
+ → 原始 PathPolicy → 请求许可 → Axum Router
+    ├─ Foundation 认证与公开最小 healthz/readyz
+    ├─ 公共登录 HTML 和摘要资源
+    ├─ Foundation 认证后的列表、操作查询和 JSON 修改
+    └─ Foundation 认证后的 GET/HEAD/PUT/PATCH/DELETE 文件动作
+ → 流式 Body、协议错误、完成/失败访问日志
 ```
 
-移动和重命名从页面到协议都是两个独立操作：`POST /__dufs__/api/rename` 只接受新的单段名称并保留原父目录，`POST /__dufs__/api/move` 只接受已经存在的目标目录并保留原名称。两者在校验出最终目标后复用同一套原子 rename、覆盖确认、路径租约和 operation 状态机制。
+完整路由与所有权说明见[请求生命周期](beginner-guide/04-backend-request-lifecycle.md)。移动与重命名仍是两个明确业务命令，底层复用原子 rename、覆盖确认、路径租约和原有操作表。
 
 ## 2. 启动与监听流程
 
-```mermaid
-flowchart TD
-    BUILD["Cargo 构建"] --> TARGET{"build.rs + Foundation target gate<br/>arch=x86_64、os=linux、env=gnu<br/>pointer_width=64？"}
-    TARGET -- 否 --> UNSUPPORTED["构建失败<br/>拒绝非 x86_64-unknown-linux-gnu 目标"]
-    TARGET -- 是 --> MAIN(["main"])
-    MAIN --> CLI["构建并解析命令行"]
-    CLI --> YAML{"指定 YAML？"}
-    YAML -- 是 --> LOAD["读取 YAML 作为配置基线"]
-    YAML -- 否 --> DEFAULT["使用默认配置"]
-    LOAD --> OVERRIDE["命令行覆盖 YAML"]
-    DEFAULT --> OVERRIDE
-    OVERRIDE --> PATH["canonicalize serve-path"]
-    PATH --> DIRECTORY{"是现有目录？"}
-    DIRECTORY -- 否 --> STOP["返回错误，不启动监听"]
-    DIRECTORY -- 是 --> AUTH["解析 administrator-username:Argon2id-PHC"]
-    AUTH --> AUTH_OK{"管理员、路径和资源预算有效？"}
-    AUTH_OK -- 否 --> STOP
-    AUTH_OK -- 是 --> ADDRS{"bind 列表非空？"}
-    ADDRS -- 否 --> STOP
-    ADDRS -- 是 --> LOGGER["初始化日志"]
-    LOGGER --> BIND["创建并暂存全部 TCP listener<br/>默认仅 127.0.0.1"]
-    BIND -- 任一失败 --> STOP
-    BIND -- 全部成功 --> ROOT["打开共享根目录 fd、初始化持久状态<br/>取得非阻塞独占 flock 并试用 openat2"]
-    ROOT -- 失败 --> STOP
-    ROOT -- 成功 --> PUBLISH["统一启动全部 listener task"]
-    PUBLISH --> READY["等待 listener 可读<br/>不预占连接许可"]
-    READY -- 失败 --> ACCEPT_LOG["记录 listener、错误分类<br/>io_kind、系统错误码和 retry_ms"]
-    ACCEPT_LOG --> BACKOFF["50 ms 起指数退避<br/>封顶 1 s"]
-    BACKOFF --> READY
-    READY -- 可读 --> PERMIT{"取得全局连接许可？"}
-    PERMIT -- 停机 --> DONE["不接受新连接"]
-    PERMIT -- 是 --> ACCEPT["非阻塞 try_accept<br/>socket 出生即持有许可"]
-    ACCEPT -- WouldBlock --> READY
-    ACCEPT -- 失败 --> ACCEPT_LOG
-    ACCEPT -- 成功 --> RESET["退避重置为 50 ms<br/>许可随连接进入 work task"]
-    RESET --> HYPER["Hyper HTTP/1.0/1.1 连接处理"]
-    HYPER --> RESULT{"连接处理结果"}
-    RESULT -- 正常结束 --> DONE["结束连接任务"]
-    RESULT -- 错误 --> CLASSIFY["分类处理并在诊断日志中记录<br/>时间、级别和 peer 地址"]
-```
+[main.rs](../src/main.rs) 只组装产品和 Foundation 的唯一 `serve` 入口，不含产品自建 accept、HTTP 连接或全局信号实现。先绑定全部端口，再构造持久状态；冲突不会修改旧数据。平台认证、健康检查与文件命名空间统一保留 `/healthz`、`/readyz` 和精确 `/api/v2/auth` 子树，但不整体封禁 `/api`。
 
-logger 完成初始化后，绑定、共享根、持久状态恢复或后续服务流程返回的错误都会先以完整错误链进入同一异步日志，并执行有界 flush，再由进程返回非零状态。logger 自身初始化失败仍只能直接返回 stderr，因为此时尚没有可用的日志 sink。
-
-运行时构建并统一发布 listener task 后，stdout 只输出便于脚本读取的监听地址。该输出写入失败（包括管道读端提前关闭的 `EPIPE`）会记录 WARN，但不会 panic、撤销 listener 或绕过正常停机；readiness/health 才是判断服务是否可用的权威信号。
-
-配置覆盖关系：
-
-```text
-程序默认值
-└─ 可选 YAML
-   └─ 命令行
-```
-
-生产配置只来自可选 YAML 和命令行，且命令行覆盖 YAML；Dufs 二进制不读取 `DUFS_*` 环境变量。Linux 上的 YAML 必须由 root 或进程 euid 拥有，mode 精确为 `0400/0440/0600/0640`，其中组读模式要求文件 gid 精确匹配进程 egid；同时要求单硬链接普通文件且没有扩展 POSIX access ACL。配置只以 `O_NOFOLLOW|O_NONBLOCK` 打开一次，ACL 探测与最多 1 MiB 的读取都使用同一 fd；前后 `fstat` 必须保持 dev/inode、mode、nlink、uid/gid、大小和纳秒级 mtime/ctime 不变。`--bind` 只接受 IPv4 或 IPv6 地址，CLI 和 YAML 均会拒绝非 IP 值；覆盖完成后的地址列表必须至少包含一项且不能有完全重复的 IP。`bind: []` 或重复地址会在初始化日志、根 fd 或 listener 前产生明确配置错误并以非零状态退出。YAML 反序列化启用 `deny_unknown_fields`，字段拼写错误或不属于当前配置结构的字段都会指出配置文件和未知字段并阻止启动。递归搜索项数必须大于零且不超过 100000，避免管理员把有界协议配置成任意大结果。
-
-TCP `accept` 返回的对端 `SocketAddr` 会作为必填参数依次传入 `handle_stream` 和 `Server::call`，访问日志始终记录 `remote_addr`。
-
-启动先创建并暂存全部 TCP listener；只有每个地址都成功绑定，才打开共享根、创建空的当前状态库或验证现有当前状态库，并执行当前恢复。运行时完整构建后才统一启动 listener task，因此任一后项绑定失败时，前面已经绑定的 socket 不会接受连接，持久状态也不会被打开、创建或修改。
-
-所有监听器共享一个连接信号量，默认最多保留 256 个活跃 TCP 连接。每个 listener 先独立等待可读，确认已有连接进入 backlog 后才可取消地竞争许可，取得许可后立即用 `try_accept` 接收；`WouldBlock` 会释放许可并重新等待，不做错误退避。这样空闲 listener 不占槽，多 bind 和低连接上限不会让某个已公布地址确定性饥饿，而且所有进入用户态的 socket 从接受之初就计入全局上限；超额握手只留在有界内核 backlog。停机可以同时打断可读等待、许可等待和错误退避。后端使用 Hyper HTTP/1 连接处理器，接受 HTTP/1.0 和 HTTP/1.1；HTTP/2 prior knowledge 和 HTTP/1.1 `Upgrade: h2c` 均不受支持。浏览器侧 HTTP/2 或 HTTP/3 必须终止在外部 HTTPS 网关，网关固定用 HTTP/1.1 回源。全部后端连接统一使用 10 秒请求头读取时限和 64 KiB 接收缓冲上限；HTTP/1.0/1.1 单连接请求串行处理，因此一个连接不能再通过并发 HTTP/2 stream 绕过连接预算。
-
-普通请求处理并生成响应头默认限时 300 秒；普通文件和单段 Range 的响应正文没有应用内总时长或最低速率限制，但每个源文件分块的门控等待及读取连续 30 秒未完成会使正文报错，已经取得的分块在底层套接字连续 30 秒没有写入进展也会超时关闭。两项 idle deadline 相互独立，公网网关仍应施加自己的总时长/速率策略。管理员登录 JSON 另有正文读取前来源 admission、16 KiB 上限和 10 秒总时限。上传使用独立的正文空闲时限、全生命周期总时限、并发数和声明长度预算。空间快照在 blocking 任务中、不持有共享预留 mutex 时读取，返回后只在同设备 revision 未变化时登记，最多重试 8 次，持续竞争失败关闭且其他设备变化不触发重试。上传把逻辑长度及约 1 MiB + 64 KiB 的元数据余量分别按 `f_frsize` 向上取整后预留。
-
-列表与搜索分别有并发、遍历项数和内存上限。预算用尽时在能够形成 HTTP 响应的层级返回 `408`、`413`、`429` 或 `504`，并在请求结束、取消或失败后由 RAII guard 释放槽位；移入阻塞 worker 的列表或搜索 permit 会保持到 worker 真正退出。
-
-accept 失败不会再立即热循环：日志按资源耗尽、瞬时错误、连接错误、权限错误、listener 状态或一般 I/O 分类，并携带 listener 地址、`io_kind`、原始系统错误码和重试延迟。连续失败按 50、100、200、400、800、1000 ms 退避并封顶在 1 s；下一次成功接收后重置为 50 ms。等待连接和退避睡眠都可被停机信号打断。
-
-连接处理错误按类型记录：无请求的探测连接关闭不记录，已进入请求后的断开使用 INFO，其余协议、超时、服务和 I/O 等异常使用 WARN；诊断信息携带时间、级别和 peer 地址，便于与网关日志对照并定位具体连接。
-
-### 2.1 网关部署链路
-
-```mermaid
-flowchart LR
-    B["Edge / Firefox"] -->|"外部 HTTPS"| G["网关或反向代理"]
-    G --> HOST["显式列入受信直连代理；只接受规范 Host<br/>传递单值 X-Forwarded-Proto 与真实客户端 IP"]
-    HOST --> LIMIT["网关 login route 限速/限连接<br/>Dufs 正文前全局/每 IP 预算 + IP/账号组合退避"]
-    LIMIT -->|"回环或隔离私网 HTTP/TCP"| D["该共享根的唯一 Dufs 实例"]
-    D --> F["共享目录"]
-    PUBLIC["其他网络来源"] -. 防火墙拒绝直接访问 .-> D
-```
-
-Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Dufs 实现或配置；网关仍须独立按真实客户端 IP 限速。
-
-生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。 Dufs 必须独占主机名并部署在根路径 `/`。
-
-服务器初始化时打开共享根目录，在该 fd 上取得非阻塞独占 `flock`，并试用 Linux `openat2`。根 fd 和锁会保持到进程退出；指向同一根目录的第二个本机实例无法取得锁并会明确启动失败。旧于 Linux 5.6 的内核、禁止该系统调用的 seccomp/容器策略或其他不支持场景也会启动失败；`RootedFs` 的最终文件打开和写变更不会为这些环境退回字符串路径实现。
+Foundation 的连接许可全地址共享，先等 listener 可读再取许可再 accept；默认连接数来自 Dufs 配置。HTTP/1 请求头 10 秒、缓冲 64 KiB、socket 写入空闲 30 秒。真实对端来自 `ConnectInfo`，缺失时明确失败，不能信任 X-Forwarded-For 代替。流式响应和实际 socket 结束前不会释放连接资源。
 
 ## 3. Foundation 管理员认证模型
 
@@ -278,7 +149,7 @@ Dufs 使用 Foundation 原生 ESM Profile：`platform.js` 仅导出共享 Admin 
 flowchart TD
     REQ(["收到请求"]) --> CANON{"内部路径是唯一规范 URI？"}
     CANON -- 否 --> BAD["400，不执行内部操作"]
-    CANON -- 是 --> LIVE{"GET/HEAD /__dufs__/health？"}
+    CANON -- 是 --> LIVE{"GET/HEAD /healthz？"}
     LIVE -- 是 --> LIVE_RES["公开返回最小 liveness JSON"]
     LIVE -- 否 --> PAGE{"GET /__dufs__/login？"}
     PAGE -- 是 --> LOGIN_PAGE["返回英文登录页"]
@@ -321,11 +192,11 @@ flowchart TD
 | GET | `/__dufs__/login` | 公开返回英文登录 HTML；页面用 Fetch 调用唯一当前 Foundation login API |
 | POST | `/api/v2/auth/login` | 无会话；严格同源、严格 `username/password` JSON、Foundation username normalization、登录 admission；成功返回 AdministratorSession 并 Set-Cookie，失败返回统一 ErrorEnvelope |
 | GET | `/api/v2/auth/session` | 要求会话；返回唯一当前 AdministratorSession，role 固定 `admin` |
-| GET/HEAD | `/__dufs__/health` | 公开 liveness；只表明 HTTP 处理仍存活，不读取文件内容或泄露账号/路径 |
+| GET/HEAD | `/healthz` | 公开 liveness；只表明 HTTP 处理仍存活，不读取文件内容或泄露账号/路径 |
 | POST | `/api/v2/auth/logout` | 要求会话、唯一 `X-CSRF-Token` 和 Foundation 严格同源；撤销会话并清除 Cookie |
 | GET/HEAD | 目录 | 要求会话；普通目录/搜索返回页面骨架，未识别的查询参数不选择其他输出格式 |
 | GET | `/__dufs__/api/list` | 要求会话；fd 根锚定的目录/搜索快照分页 JSON |
-| GET/HEAD | `/__dufs__/ready` | 要求会话；在锚定根 fd 上执行创建/写入/文件同步/删除/目录同步，并在 SQLite actor 上执行 `BEGIN IMMEDIATE` 写探针后 `ROLLBACK`，同时检查最低磁盘水位和停机状态；未就绪返回 `503` |
+| GET/HEAD | `/readyz` | 公开、禁止缓存；返回启动时及每 5 秒刷新的共享根、SQLite 回滚写事务和空间探针汇总；仅包含 `ready`，未就绪返回 `503`，停机立即未就绪 |
 | GET | `/__dufs__/api/jobs/<UUID>` | 要求会话；统一查询当前账号的 mutation job，返回 `job_id` 及 `running/succeeded/failed/unknown` 状态 |
 | GET/HEAD | 文件 | 要求会话；同一打开句柄生成附件响应和弱 ETag；只有 GET 支持无 `If-Range` 的单段 Range，HEAD 忽略 Range |
 | GET/HEAD | 版本化内置资源 | 公开；仅编译期 allowlist 中精确摘要+名称可命中，供登录页加载；成功时允许公共长期缓存，HEAD 保留 GET 头并省略正文 |
@@ -894,37 +765,15 @@ Problem Details 只表示 Dufs 业务 API 失败，不改变成功资源表示�
 
 访问日志只跳过同时满足三个条件的请求：方法是 `GET`、规范化后的路径精确匹配已知内置 JavaScript/CSS/图标、响应状态是 `200`。内置资源的 `HEAD`、未知资源、资源错误，以及页面、健康检查、登录、下载和 API 请求仍照常记录；处理器返回的内部错误也始终记录。访问日志在响应正文流正常结束、返回读取错误或被提前丢弃时才写出；后两种情况使用 ERROR 级别并保留已经发送的实际 HTTP 状态。socket 写入可能发生在正文生产端已经正常结束之后，无法由访问日志正文包装器证明已送达，仍由独立连接错误记录按错误类型和 TCP peer 地址补充诊断。
 
-HTTP 访问日志从动态字段拼接阶段就使用 16 KiB 有界构造器，重复变量不会先形成巨型临时字符串；请求线程只把已经转义为单个物理行、再次经过 16 KiB 入队硬上限的日志放入容量 4096 的有界 channel，不直接写终端或文件。超长 UTF-8 文本会在字符边界截断并只带一个固定标记；自定义日志格式最多 4096 字节和 128 个解析元素，超限配置会阻止启动。未配置日志文件时，INFO/WARN/ERROR 和访问日志共用 stderr 这一条控制台 sink，stdout 仅在启动后输出监听地址；这样单 writer 不会因为先写或刷新 stdout 而阻止错误日志到达 stderr。`--log-file` 使用 `O_NOFOLLOW|O_APPEND|O_NONBLOCK|O_CLOEXEC` 打开，只接受当前服务用户拥有、仅有一个硬链接的普通文件；新文件原子创建并固定为 `0600`，已有文件必须预先就是精确 `0600`，不安全权限保持不变并阻止启动，避免 chmod 无法撤销的既往泄露或预开 fd 写权限。符号链接、异常文件类型、属主不匹配和多硬链接对象同样都会阻止启动。独立写线程批量写入并每 250 ms 刷新；刷新失败保留 dirty 状态，由下个周期或显式 flush 重试，回退诊断 sink 失败也不会 panic writer。队列满时丢弃最新记录，运行中至多每秒输出一次聚合 `dropped_newest` 告警，显式 flush 和退出仍提交累计数。正常停止由专用命名 OS thread 提交 flush 命令并最多等待 5 秒，不依赖可能被故障文件系统占满的 Tokio blocking pool；主 async 任务同时继续监听第二停止信号。请求 URI、请求头、用户名、连接错误和 handler 错误都经过控制字符转义，认证、Cookie 与 CSRF 头继续脱敏。
+HTTP 访问日志从动态字段拼接阶段就使用 16 KiB 有界构造器，重复变量不会先形成巨型临时字符串；请求线程只把已经转义为单个物理行、再次经过 16 KiB 入队硬上限的日志放入容量 4096 的有界 channel，不直接写终端或文件。超长 UTF-8 文本会在字符边界截断并只带一个固定标记；自定义日志格式最多 4096 字节和 128 个解析元素，超限配置会阻止启动。未配置日志文件时，INFO/WARN/ERROR 和访问日志共用 stderr 这一条控制台 sink，stdout 仅在启动后输出监听地址；这样单 writer 不会因为先写或刷新 stdout 而阻止错误日志到达 stderr。`--log-file` 使用 `O_NOFOLLOW|O_APPEND|O_NONBLOCK|O_CLOEXEC` 打开，只接受当前服务用户拥有、仅有一个硬链接的普通文件；新文件原子创建并固定为 `0600`，已有文件必须预先就是精确 `0600`，不安全权限保持不变并阻止启动，避免 chmod 无法撤销的既往泄露或预开 fd 写权限。符号链接、异常文件类型、属主不匹配和多硬链接对象同样都会阻止启动。独立写线程批量写入并每 250 ms 刷新；刷新失败保留 dirty 状态，由下个周期或显式 flush 重试，回退诊断 sink 失败也不会 panic writer。队列满时丢弃最新记录，运行中至多每秒输出一次聚合 `dropped_newest` 告警，显式 flush 和退出仍提交累计数。退出边界调用已有日志刷新队列并最多等待 5 秒，不依赖 Tokio blocking pool；Foundation 内的第二、第三信号只控制尚未结束的停机阶段。请求 URI、请求头、用户名、连接错误和 handler 错误都经过控制字符转义，认证、Cookie 与 CSRF 头继续脱敏。
 
 ### 12.2 分阶段优雅停止流程
 
-```mermaid
-flowchart TD
-    RUN["Linux 服务运行"] --> SIGNAL{"首次 SIGINT / SIGTERM？"}
-    SIGNAL -- 否 --> ACCEPT["TCP listener 继续接收连接"]
-    ACCEPT --> RUN
-    SIGNAL -- 是 --> STOP_ACCEPT["取消 listener token<br/>中断 accept/退避并停止接收"]
-    STOP_ACCEPT --> HYPER["通知已有 Hyper HTTP/1.0/1.1 连接 graceful_shutdown<br/>不再接收 keep-alive 新请求"]
-    HYPER --> CLOSE_WORK["关闭 work tracker；等待普通工作与 commit<br/>连接、遍历、维护与 purge 均受跟踪"]
-    CLOSE_WORK --> GRACE{"全部工作在首次信号后 30 秒内排空？"}
-    GRACE -- 是 --> FLUSH["专用 OS thread<br/>最多 5 秒刷新日志"]
-    GRACE -- 否 --> FORCE_WORK["running=false；取消普通连接与遍历<br/>通知上传保存检查点或清理"]
-    FORCE_WORK --> HARD{"受跟踪工作在额外 10 秒内完成？"}
-    HARD -- 是 --> FLUSH
-    HARD -- 否 --> HARD_EXIT["触发 hard deadline<br/>不 flush，状态 1 立即退出"]
-    FLUSH --> EXIT(["正常退出"])
-    STOP_ACCEPT -. "宽限期内第二次信号" .-> DESTRUCTIVE["立即强制退出<br/>不等待清理"]
-    HARD -. "第二次信号或 SIGKILL" .-> DESTRUCTIVE
-    FLUSH -. "刷新期间第二次信号" .-> DESTRUCTIVE
-```
+关闭次序由 Foundation 的有限阶段实现：`Running → Quiescing → DrainingRequests → DrainingCommits → ClosingState → Stopped`。宽限耗尽会先进入 `CancellingOrdinaryWork`；无法完成则返回非成功报告，不越过提交义务关闭状态。
 
-Linux 上首次收到 SIGINT 或 SIGTERM 时先取消 listener、通知已有 Hyper 连接 graceful shutdown、关闭 work tracker 并开始排空已有连接；此时不立即把 `running` 设为 false，因此已经进入请求处理的搜索、下载和上传有机会自然结束。嵌入式晚到调用在等待 request gate 时同时监听停机 token；即使 shutdown writer 已经持有独占锁，也会立即得到停止响应，不会等完整 runtime drain 结束。请求日志上下文在 gate 前建立，所以这类 `503 server_stopping` 仍记录 method、URI、peer、状态及可用的 operation ID/state。HTTP/1.0/1.1 连接、后台遍历、游标化维护和分片 trash 回收都由 work tracker 跟踪；上传和普通写提交由独立 mutation task 持有请求体/租约/operation guard。首次信号后的同一个 30 秒窗口同时等待普通工作和提交。
+Linux 上首次收到 SIGINT 或 SIGTERM 时，Foundation 进入 Quiescing、立即 ready=false、关闭业务准入并通知已有 HTTP/1 连接 graceful shutdown。已有请求和平台探针仍能登记安全收尾工作；二者必须与连接一起排空，才能关闭普通任务登记入口，再排空提交并关闭 StateStore。晚到嵌入式调用立即返回带日志上下文的 `503 server_stopping`。
 
-30 秒到期后把 `running` 置为 false 以取消普通遍历，并以 force token 让仍在接收正文的上传停止、保存有效检查点或清理暂存。服务只再等待最多 10 秒让受跟踪工作和提交收尾；到首次信号约 40 秒的硬截止仍未退出时，记录错误并以状态 1 强制终止。卡在内核/文件系统调用中的 rename、目录 `fsync` 或其他提交此时不再得到持久性保证。
-
-维护任务收到首次停止信号后，会在根 fd 相对遍历的目录项之间停止发现新候选；purge worker 的每个 256 项/25 ms 切片也接收同一 token。未完成的分片 cursor 是进程内优化，任务结束时会丢弃；但文件型 state store 中 `Ready/Claimed` purge job 的根内 trash 路径、完整 revision 和下次可重建的 fd 锚点语义仍在，下次启动把 `Claimed` 恢复为 `Ready` 后从 trash 根重新遍历。`Prepared` 没有 committed revision，启动恢复会保留 target、quarantine trash occupant 并释放 intent。低频 orphan 扫描只为跨域崩溃缝隙中没有 outbox 行的隐藏 trash 兜底。过期 upload session 在删除前会短暂持锁复核 DB 行与 maintenance marker，实际 open/unlink 在锁外执行；过期 `Rejected` 还会先按保存的 identity 尝试清理 stage，再条件删除仍过期的原 DB snapshot。上传等待 marker 时受 deadline 和 force-shutdown 约束。请求返回后的 trash 回收若被取消，也不影响原名称已持久化删除的事实。
-
-30 秒是正常宽限，之后的 10 秒是硬收尾窗；它们不是“无限等待提交”的承诺。宽限期间收到第二次 SIGINT/SIGTERM 会跳过日志 flush，立即以对应的 130/143 退出；SIGKILL 根本无法被捕获，两者都可能中断最终提交并丢失尾部日志。约 40 秒硬截止路径同样不再 flush，直接以状态 1 退出。正常路径在完成 tracked cleanup 后启动专用命名 OS thread，只做一次、最多 5 秒的日志刷新，再显式 `exit(0)`；因此不依赖可能被卡死 FUSE 工作耗尽的 Tokio blocking pool，也不让 runtime drop 突破截止。主 async 任务以 biased select 继续优先监听第二信号，flush 期间收到时仍立即以 130/143 强退；若连专用线程都无法启动则状态 1 退出。
+30 秒正常宽限后进入最多 10 秒的取消与收尾窗。第二次信号可提前进入取消阶段，第三次信号或硬期限使未完成关闭返回失败；不保留产品自己的第二套信号引擎。运行中的阻塞工作仍持有许可、租约和状态所有者，不能通过 abort 等待者伪造完成。可执行程序记录未完成计数后非零退出，状态所有者保留到进程边界；日志使用已有最多 5 秒的有界刷新。release 仍为 panic=abort，无法依赖 catch_unwind 隔离故障，必须通过真实进程异常退出验证当前状态恢复。
 
 通过 systemd 运行时，`TimeoutStopSec` 应大于应用约 40 秒的硬截止并留出服务管理器余量；仓库基线使用 120 秒。调大 systemd 超时不会延长 Dufs 内建的 30 + 10 秒窗口，慢盘或网络存储必须通过监控、容量规划和停机演练保证常见提交能在窗口内完成。
 
@@ -938,8 +787,8 @@ flowchart TD
     A --> B["2. args.rs<br/>账号、IP 地址和运行配置"]
     B --> C["3. auth.rs<br/>Argon2id 账号、会话摘要和 CSRF"]
     C --> D["4. server.rs + server/{identity,path_policy,protocol,problem}.rs<br/>内容/状态/准入/生命周期组合，身份与公开协议"]
-    D --> R["5. server/router.rs + router/{request,dispatch}.rs + assets.rs<br/>一次请求分类、生命周期/超时策略、端点分发与资源摘要"]
-    R --> G["6. Foundation Admin Hyper + administrator_web.rs<br/>登录限流、Cookie、注销与写请求同源防护"]
+    D --> R["5. server/router.rs + router/{request,routes,files}.rs + assets.rs<br/>一次请求分类、生命周期/超时策略、端点分发与资源摘要"]
+    R --> G["6. Foundation Admin Axum + administrator_web.rs<br/>登录限流、Cookie、注销与写请求同源防护"]
     G --> OP["7. server/operation_registry.rs + state_store/{actor,database,model,operation,upload,purge}.rs<br/>当前 schema 分域仓储、统一 metadata/指纹、live 探针与恢复"]
     OP --> H["8. server/browser_api.rs<br/>mkdir/move/rename 与 upload preflight/discard JSON API"]
     H --> E["9. server/path_coordinator.rs<br/>同路径与祖先/后代写租约"]

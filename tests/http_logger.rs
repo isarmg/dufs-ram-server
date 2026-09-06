@@ -556,7 +556,7 @@ fn startup_failure_is_written_and_flushed_to_the_configured_log(
 
     let output = std::fs::read_to_string(&log_file)?;
     assert!(
-        output.contains("ERROR Server failed: Failed to bind `20.205.243.166:0`"),
+        output.contains("ERROR Server failed: Failed to bind all configured listen addresses"),
         "startup failure was not flushed to the configured log: {output:?}"
     );
     Ok(())

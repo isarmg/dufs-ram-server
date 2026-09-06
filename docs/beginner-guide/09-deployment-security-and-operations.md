@@ -253,7 +253,7 @@ systemctl status dufs --no-pager
 journalctl -u dufs -n 200 --no-pager
 ss -ltnp
 curl --noproxy '*' --connect-timeout 2 --max-time 10 --fail \
-  http://127.0.0.1:5000/__dufs__/health
+  http://127.0.0.1:5000/healthz
 ```
 
 生产浏览器冒烟应通过 HTTPS 域名完成登录、ready、列表、上传、下载、移动和删除，而不是只看 systemd 是 `active`。
@@ -262,8 +262,8 @@ curl --noproxy '*' --connect-timeout 2 --max-time 10 --fail \
 
 | 接口 | 认证 | 证明 | 不证明 |
 | --- | --- | --- | --- |
-| `/__dufs__/health` | 不需要 | HTTP 进程仍能响应 | 根目录或 SQLite 可写 |
-| `/__dufs__/ready` | 需要 | 根可创建/写/同步/删，SQLite 可开真实写事务后回滚，空间足够，未停机 | 每条业务请求一定被接受 |
+| `/healthz` | 不需要 | HTTP 进程仍能响应 | 根目录或 SQLite 可写 |
+| `/readyz` | 需要 | 根可创建/写/同步/删，SQLite 可开真实写事务后回滚，空间足够，未停机 | 每条业务请求一定被接受 |
 
 所以 health 200、ready 503 是合理信号：进程还活着，但不应接收写流量。
 
@@ -307,11 +307,11 @@ curl --noproxy '*' --connect-timeout 2 --max-time 10 --fail \
     --connect-timeout 5 --max-time 30 \
     --cookie "$probe_dir/cookies" \
     --header 'Accept: application/json' \
-    https://files.example.com/__dufs__/ready
+    https://files.example.com/readyz
 )
 ```
 
-第一条命令的 `session.json` 应为 Foundation 五字段 `AdministratorSession` 且 `role` 只能是 `admin`，第二条命令预期输出 `{"status":"ready"}`。自动探针应从只有探针进程可读的受控凭据源建立或更新会话，并控制登录频率，避免触发 Argon2 和登录限流预算。当前 Dufs 没有 readiness-only 或只读角色，任何管理员凭据都拥有共享根完整权限，因此必须把这项风险纳入设计；无法安全保存时就不要把它塞进通用负载均衡器。独立 ready 任务还必须接入告警或明确的摘流自动化，只记录一次 503 不会自动停止流量。
+第一条命令的 `session.json` 应为 Foundation 五字段 `AdministratorSession` 且 `role` 只能是 `admin`，第二条命令预期输出 `{"ready":true}`。自动探针应从只有探针进程可读的受控凭据源建立或更新会话，并控制登录频率，避免触发 Argon2 和登录限流预算。当前 Dufs 没有 readiness-only 或只读角色，任何管理员凭据都拥有共享根完整权限，因此必须把这项风险纳入设计；无法安全保存时就不要把它塞进通用负载均衡器。独立 ready 任务还必须接入告警或明确的摘流自动化，只记录一次 503 不会自动停止流量。
 
 ## 9.11 日志与 Operation ID
 

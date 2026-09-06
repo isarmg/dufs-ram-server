@@ -705,6 +705,23 @@ node -e '
   }
 ' "$validation_dir/upstream.json"
 
+# The public Foundation probe paths must reach the upstream unchanged, without
+# credentials or an obsolete path alias. The real response contract is tested
+# separately against Dufs in tests/health.rs.
+for health_path in /healthz /readyz; do
+  bounded_curl "$curl_default_max_time_seconds" \
+    --fail --http1.1 --insecure --noproxy '*' --silent --show-error \
+    --unix-socket "$socket_dir/https.sock" \
+    --output "$validation_dir/health-path.json" \
+    "https://files.example.com$health_path"
+  node -e '
+    const result = JSON.parse(require("fs").readFileSync(process.argv[1]));
+    if (result.url !== process.argv[2] || result.host !== "files.example.com") {
+      throw new Error("Foundation probe path or canonical Host was rewritten");
+    }
+  ' "$validation_dir/health-path.json" "$health_path"
+done
+
 # Exercise the total request deadline against an upstream that accepts the
 # request but deliberately never sends a response.
 timeout_probe_started=$SECONDS

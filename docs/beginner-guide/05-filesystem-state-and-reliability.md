@@ -380,9 +380,9 @@ worker 还持有 trash 根的 `O_PATH` 锚点，并在每个最终 unlink/rmdir 
 
 ## 5.18 readiness 如何证明“现在可写”
 
-公开 `/__dufs__/health` 只证明 HTTP 进程能响应。
+公开 `/healthz` 只证明 HTTP 进程能响应。
 
-受认证 `/__dufs__/ready` 会实际：
+公开 `/readyz` 返回最近一次有界探针的最小结果，不要求会话，也不会为每个 HTTP 请求重复探测。Foundation 在启动时以及每 5 秒刷新一次；探针会实际：
 
 1. 并行发起共享根、磁盘空间和 StateStore 三个实时探针；
 2. 在锚定共享根创建隐藏测试文件；

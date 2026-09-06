@@ -14,13 +14,12 @@ use super::{
     status_not_found,
     storage::{CommitStagedFileOutcome, commit_staged_file, sync_file_to_storage},
 };
-use crate::http_utils::IncomingStream;
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use futures_util::{Stream, TryStreamExt, pin_mut};
 use headers::{ContentLength, HeaderMapExt};
-use hyper::{StatusCode, header::HeaderValue};
+use http::{StatusCode, header::HeaderValue};
 use sha2::{Digest, Sha256};
 use std::{
     borrow::Cow,

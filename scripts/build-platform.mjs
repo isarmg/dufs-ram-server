@@ -1,7 +1,5 @@
 import { spawnSync } from "node:child_process";
-import "../clients/web/fonts/verify.mjs";
-import "../clients/web/appearance/verify.mjs";
-import "../clients/web/shell/verify.mjs";
+import "./check-foundation-web.mjs";
 import { cpSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

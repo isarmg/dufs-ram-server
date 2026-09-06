@@ -141,7 +141,7 @@ test("登录卡片保持 3:2 布局和键盘可见控件", async ({ page }, test
   await page.goto(`${testInfo.project.use.baseURL}/__dufs__/login`);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page).toHaveTitle("Sign in");
-  const card = page.locator(".login-card");
+  const card = page.locator(".sarmg-auth-card");
   const bounds = await card.boundingBox();
   expect(bounds.width / bounds.height).toBeCloseTo(1.5, 2);
   await expect(page.getByLabel("Username")).toBeFocused();
@@ -159,7 +159,7 @@ test("登录卡片保持 3:2 布局和键盘可见控件", async ({ page }, test
     await card.evaluate(element => {
       const style = getComputedStyle(element);
       return style.borderStyle !== "none" &&
-        Number.parseFloat(style.borderWidth) >= 2;
+        Number.parseFloat(style.borderWidth) >= 1;
     }),
   ).toBe(true);
   const username = page.getByLabel("Username");
@@ -168,8 +168,8 @@ test("登录卡片保持 3:2 布局和键盘可见控件", async ({ page }, test
     expect(
       await control.evaluate(element => {
         const style = getComputedStyle(element);
-        return style.borderStyle !== "none" &&
-          Number.parseFloat(style.borderWidth) >= 1;
+        return (style.borderBottomStyle !== "none" && Number.parseFloat(style.borderBottomWidth) >= 1) ||
+          (style.outlineStyle !== "none" && Number.parseFloat(style.outlineWidth) >= 2);
       }),
     ).toBe(true);
   }

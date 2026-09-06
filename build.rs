@@ -49,6 +49,7 @@ fn embed_platform_assets() {
             Some("js") => "application/javascript; charset=UTF-8",
             Some("css") => "text/css; charset=UTF-8",
             Some("woff2") => "font/woff2",
+            Some("svg") => "image/svg+xml",
             Some("txt") => "text/plain; charset=UTF-8",
             _ => panic!("unsupported platform asset: {name}"),
         };

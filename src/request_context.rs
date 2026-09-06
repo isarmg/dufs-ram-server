@@ -1,5 +1,5 @@
 use crate::http_logger::HttpLogger;
-use hyper::{Method, Request};
+use http::{Method, Request};
 use std::{collections::HashMap, net::SocketAddr};
 
 /// Data parsed once at the HTTP boundary and shared by request handlers.
@@ -38,14 +38,5 @@ impl RequestContext {
 
     pub fn access_log_mut(&mut self) -> &mut HashMap<String, String> {
         &mut self.access_log
-    }
-
-    #[cfg(test)]
-    pub(crate) fn for_test(peer: SocketAddr) -> Self {
-        Self {
-            peer,
-            head_request: false,
-            access_log: HashMap::new(),
-        }
     }
 }

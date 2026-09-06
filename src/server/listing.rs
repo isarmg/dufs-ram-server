@@ -12,7 +12,7 @@ use crate::{auth::FilePrincipal, http_utils::body_full};
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use headers::{CacheControl, ContentLength, ContentType, HeaderMapExt};
-use hyper::{StatusCode, header::HeaderValue};
+use http::{StatusCode, header::HeaderValue};
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::path::PathBuf;
@@ -910,7 +910,14 @@ fn collect_list_snapshot_blocking(
                 ));
                 return Ok(false);
             };
-            if is_internal_name(base_name) {
+            if is_internal_name(base_name)
+                || entry
+                    .path
+                    .strip_prefix(serve_path)
+                    .ok()
+                    .and_then(Path::to_str)
+                    .is_some_and(super::path_policy::PathPolicy::is_platform_path)
+            {
                 return Ok(true);
             }
             let entry_path = entry.path.clone();

@@ -153,7 +153,7 @@ Listening on http://127.0.0.1:5000/
 
 ```sh
 curl --noproxy '*' --connect-timeout 2 --max-time 10 \
-  -i http://127.0.0.1:5000/__dufs__/health
+  -i http://127.0.0.1:5000/healthz
 ```
 
 预期状态是 `200 OK`。该接口是公开 liveness，只证明进程还能处理 HTTP。
@@ -162,7 +162,7 @@ readiness 需要认证：
 
 ```sh
 curl --noproxy '*' --connect-timeout 2 --max-time 10 \
-  -i http://127.0.0.1:5000/__dufs__/ready
+  -i http://127.0.0.1:5000/readyz
 ```
 
 没有会话时收到 `401` 是正常的；这条未认证命令只证明 ready 受到保护，**不会执行 readiness 探针**。带有效会话请求 ready 时，服务才会实际验证共享根的创建、写入、文件同步、删除、目录同步，以及 SQLite 的写事务能力和可用空间。下面的本地 HTTPS 示例给出完整验证命令。
@@ -240,11 +240,11 @@ password: test-password
   curl -k --noproxy '*' --connect-timeout 2 --max-time 30 \
     --fail --silent --show-error \
     --cookie "$cookie_dir/cookies" \
-    https://127.0.0.1:9443/__dufs__/ready
+    https://127.0.0.1:9443/readyz
 )
 ```
 
-预期正文是 `{"status":"ready"}`。这里的 `-k` 只为接受仓库自签名测试证书，不能作为生产 TLS 校验方式。
+预期正文是 `{"ready":true}`。这里的 `-k` 只为接受仓库自签名测试证书，不能作为生产 TLS 校验方式。
 
 ## 2.9 用 YAML 保存配置
 

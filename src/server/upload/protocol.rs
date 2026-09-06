@@ -5,7 +5,7 @@ use super::super::{
 use crate::utils::{decode_hex_to_slice, encode_hex};
 use anyhow::{Result, anyhow};
 use headers::HeaderMap;
-use hyper::header::HeaderValue;
+use http::header::HeaderValue;
 use serde::{Serialize, Serializer};
 use std::fmt;
 use tokio::time::Instant;

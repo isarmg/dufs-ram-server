@@ -10,9 +10,30 @@
   <link rel="stylesheet" href="__ASSETS_PREFIX__index.css">
 </head>
 
-<body data-sarmg-scope>
-  <div class="head">
-    <div class="breadcrumb"></div>
+<body class="sarmg-admin-shell" data-sarmg-scope>
+  <a class="sarmg-skip-link" href="#file-content" data-i18n-zh="跳转到文件内容">Skip to files</a>
+  <header class="head sarmg-page-header">
+    <div class="sarmg-header-navigation-slot">
+      <div class="sarmg-header-brand-navigation">
+        <strong class="sarmg-product-identity">Dufs</strong>
+        <nav class="sarmg-header-navigation" aria-label="Main navigation" data-i18n-aria-label-zh="主导航">
+          <a href="/" aria-current="page" data-i18n-zh="文件">Files</a>
+        </nav>
+      </div>
+    </div>
+    <div class="toolbox-right">
+      <button class="logout-btn hidden" type="button" title="Sign out" data-i18n-title-zh="退出" aria-label="Sign out" data-i18n-aria-label-zh="退出">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 3.5a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 1 1 0v2A1.5 1.5 0 0 1 9.5 14h-8A1.5 1.5 0 0 1 0 12.5v-9A1.5 1.5 0 0 1 1.5 2h8A1.5 1.5 0 0 1 11 3.5v2a.5.5 0 0 1-1 0z"/>
+          <path fill-rule="evenodd" d="M4.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H14.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708z"/>
+        </svg>
+        <span class="user-name"></span>
+      </button>
+    </div>
+  </header>
+  <main class="main sarmg-shell-main" id="file-content" tabindex="-1">
+    <section class="sarmg-content-panel file-toolbar" aria-label="File controls" data-i18n-aria-label-zh="文件操作">
+      <nav class="breadcrumb" aria-label="Current folder" data-i18n-aria-label-zh="当前文件夹"></nav>
     <div class="toolbox">
       <button class="control upload-file hidden" type="button" aria-label="Upload files" data-i18n-aria-label-zh="上传文件" title="Upload files" data-i18n-title-zh="上传文件">
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -63,22 +84,12 @@
         maxlength="128" autocomplete="off">
       <input type="submit" hidden />
     </form>
-    <div class="toolbox-right">
-      <button class="logout-btn hidden" type="button" title="Sign out" data-i18n-title-zh="退出" aria-label="Sign out" data-i18n-aria-label-zh="退出">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <path fill-rule="evenodd" d="M10 3.5a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 1 1 0v2A1.5 1.5 0 0 1 9.5 14h-8A1.5 1.5 0 0 1 0 12.5v-9A1.5 1.5 0 0 1 1.5 2h8A1.5 1.5 0 0 1 11 3.5v2a.5.5 0 0 1-1 0z"/>
-          <path fill-rule="evenodd" d="M4.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H14.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708z"/>
-        </svg>
-        <span class="user-name"></span>
-      </button>
-    </div>
-  </div>
-  <div class="main">
-    <div class="index-page hidden">
+    </section>
+    <div class="index-page sarmg-content-panel hidden">
       <div class="operation-status hidden" role="status" aria-live="polite"></div>
       <div class="upload-queue-message hidden" role="alert" aria-live="assertive"></div>
       <div class="empty-folder hidden" role="status" aria-live="polite"></div>
-      <table class="uploaders-table hidden" aria-label="Upload queue" data-i18n-aria-label-zh="上传队列">
+      <table class="uploaders-table sarmg-table hidden" aria-label="Upload queue" data-i18n-aria-label-zh="上传队列">
         <caption class="upload-history-status hidden" role="status" aria-live="polite"></caption>
         <thead>
           <tr>
@@ -87,7 +98,8 @@
           </tr>
         </thead>
       </table>
-      <table class="paths-table hidden" aria-label="File list" data-i18n-aria-label-zh="文件列表">
+      <table class="paths-table sarmg-table hidden" aria-label="File list" data-i18n-aria-label-zh="文件列表">
+        <colgroup><col class="file-icon"><col><col class="file-modified"><col class="file-size"><col class="file-actions"></colgroup>
         <thead>
         </thead>
         <tbody>
@@ -98,8 +110,8 @@
         <button class="load-more hidden" type="button"><span data-i18n-zh="加载更多">Load more</span></button>
       </div>
     </div>
-  </div>
-  <dialog class="action-dialog" aria-labelledby="action-dialog-title"
+  </main>
+  <dialog class="action-dialog sarmg-dialog" aria-labelledby="action-dialog-title"
     aria-describedby="action-dialog-message">
     <form class="action-dialog-form" method="dialog">
       <h2 id="action-dialog-title"></h2>

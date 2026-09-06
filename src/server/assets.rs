@@ -4,7 +4,7 @@ use crate::http_utils::body_full;
 use crate::utils::encode_hex;
 use bytes::Bytes;
 use headers::{ContentLength, HeaderMapExt};
-use hyper::{
+use http::{
     StatusCode,
     header::{CACHE_CONTROL, HeaderValue},
 };

@@ -79,10 +79,25 @@ pub fn test_auth_config(accounts: &[&str]) -> TestAuthConfig {
     }
 }
 
+/// Explicit test-only override for exercising an extracted release binary.
+#[allow(dead_code)]
+fn test_binary_command() -> Command {
+    if let Some(path) = std::env::var_os("DUFS_TEST_BINARY") {
+        let path = PathBuf::from(path);
+        assert!(
+            path.is_absolute() && path.is_file(),
+            "DUFS_TEST_BINARY must be an absolute existing binary"
+        );
+        Command::new(path)
+    } else {
+        Command::new(assert_cmd::cargo::cargo_bin!())
+    }
+}
+
 #[allow(dead_code)]
 pub fn dufs_command(accounts: &[&str]) -> (Command, TestAuthConfig) {
     let auth_config = test_auth_config(accounts);
-    let mut command = Command::new(assert_cmd::cargo::cargo_bin!());
+    let mut command = test_binary_command();
     command.arg("--config").arg(auth_config.path());
     (command, auth_config)
 }
@@ -381,7 +396,7 @@ where
             .expect("Couldn't make the test state dir private");
         Some(state_dir)
     };
-    let mut command = Command::new(assert_cmd::cargo::cargo_bin!());
+    let mut command = test_binary_command();
     command.arg(tmpdir.path()).arg("-p").arg("0").args(&args);
     if development {
         command.arg("--development");
@@ -694,6 +709,28 @@ impl TestServer {
         self.port
     }
 
+    pub fn abort_process_and_wait(&mut self) {
+        use std::os::unix::process::ExitStatusExt;
+        let pid = rustix::process::Pid::from_raw(i32::try_from(self.child.id()).unwrap()).unwrap();
+        rustix::process::prlimit(
+            Some(pid),
+            rustix::process::Resource::Core,
+            rustix::process::Rlimit {
+                current: Some(0),
+                maximum: Some(0),
+            },
+        )
+        .unwrap();
+        rustix::process::kill_process(pid, rustix::process::Signal::ABORT).unwrap();
+        let status = self.child.wait().expect("wait for abnormal process exit");
+        assert!(!status.success());
+        assert_eq!(
+            status.signal(),
+            Some(6),
+            "expected SIGABRT, not graceful shutdown"
+        );
+    }
+
     pub fn restart_with_default_auth(&mut self) {
         self.restart_with_default_auth_args(&[] as &[&str]);
     }
@@ -724,7 +761,7 @@ impl TestServer {
                 value == "--min-free-space" || value.starts_with("--min-free-space=")
             })
         });
-        let mut command = Command::new(assert_cmd::cargo::cargo_bin!());
+        let mut command = test_binary_command();
         command
             .arg(self.tmpdir.path())
             .arg("--development")

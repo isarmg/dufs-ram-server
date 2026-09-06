@@ -6,7 +6,7 @@ use super::super::{
     upload::{parse_upload_id, parse_upload_length, parse_upload_offset},
 };
 
-use hyper::Method;
+use http::Method;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, Ordering},
@@ -24,6 +24,7 @@ pub(super) struct UploadRequestContext {
 /// cache, and access-log policy. Keeping this classification in one value
 /// prevents those branches from slowly acquiring different definitions of an
 /// "internal" or "tracked" request.
+#[derive(Clone)]
 pub(super) struct RequestProfile {
     public_asset: bool,
     omit_success_log: bool,
@@ -45,7 +46,7 @@ impl RequestProfile {
             || (method == Method::POST && relative_path.is_some_and(is_tracked_browser_mutation));
         let request_path = req.uri().path();
         let administrator_auth_api =
-            sarmg_admin_hyper::HyperAdministratorRouter::owns_path(request_path);
+            request_path == "/api/v2/auth" || request_path.starts_with("/api/v2/auth/");
         let internal_api = relative_path.is_some_and(|path| {
             path == LIST_API_PATH
                 || path.starts_with(BROWSER_API_PREFIX)

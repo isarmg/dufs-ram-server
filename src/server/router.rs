@@ -11,21 +11,45 @@ use super::{
 use crate::{app_error::AppError, http_logger::HttpLogger, request_context::RequestContext};
 
 use anyhow::Result;
-use hyper::{Method, StatusCode, header::CONTENT_LENGTH};
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use axum::{Router, extract::ConnectInfo, response::IntoResponse};
+use http::{Method, StatusCode, header::CONTENT_LENGTH};
+use std::{convert::Infallible, sync::Arc, time::Duration};
+use tower::ServiceExt;
 
-mod dispatch;
+mod files;
 mod request;
+mod routes;
 
 pub(in crate::server) use request::MutationProgress;
 use request::RequestProfile;
 
 impl Server {
-    pub async fn call(
+    pub fn http_service(
         self: Arc<Self>,
-        req: Request,
-        addr: SocketAddr,
-    ) -> Result<Response, hyper::Error> {
+        handle: sarmg_server_runtime::RuntimeHandle,
+    ) -> anyhow::Result<tower::util::BoxCloneSyncService<Request, Response, Infallible>> {
+        let router = routes::assemble(self.clone(), handle)?;
+        Ok(tower::util::BoxCloneSyncService::new(tower::service_fn(
+            move |request| {
+                let server = self.clone();
+                let router = router.clone();
+                async move { server.process_request(request, router).await }
+            },
+        )))
+    }
+
+    async fn process_request(
+        self: Arc<Self>,
+        mut req: Request,
+        router: Router,
+    ) -> Result<Response, Infallible> {
+        let Some(ConnectInfo(addr)) = req
+            .extensions()
+            .get::<ConnectInfo<std::net::SocketAddr>>()
+            .copied()
+        else {
+            return Ok((http::StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"code":"platform.peer_missing","message":"Socket peer is missing","retryable":false,"details":{}}))).into_response());
+        };
         let relative_path = self.resolve_path(req.uri().path());
         let public_asset_request = matches!(req.method(), &Method::GET | &Method::HEAD)
             && relative_path
@@ -33,6 +57,13 @@ impl Server {
                 .is_some_and(|path| self.is_public_asset_path(path));
         let profile = RequestProfile::new(&req, relative_path.as_deref(), public_asset_request);
         let mutation = profile.mutation();
+        let auth_log = routes::AuthLog::default();
+        req.extensions_mut().insert(auth_log.clone());
+        req.extensions_mut().insert(profile.clone());
+        req.extensions_mut().insert(mutation.clone());
+        if let Some(path) = &relative_path {
+            req.extensions_mut().insert(path.clone());
+        }
         let mut context = RequestContext::new(&req, addr, &self.content.args.http_logger);
         if let Some(operation_id) = profile.operation_id() {
             self.content.args.http_logger.set_runtime_value(
@@ -40,6 +71,20 @@ impl Server {
                 "operation_id",
                 || operation_id.hyphenated().to_string(),
             );
+        }
+
+        if relative_path.is_none() {
+            let mut response = Response::default();
+            super::status_bad_request(&mut response, "Invalid Path");
+            set_private_no_store(&mut response);
+            attach_access_log(
+                &self.content.args.http_logger,
+                &mut context,
+                &mut response,
+                Some("invalid raw path".into()),
+                false,
+            );
+            return Ok(response);
         }
 
         // An embedder may retain an Arc<Server> after ServerRuntime shutdown.
@@ -117,13 +162,28 @@ impl Server {
             );
             return Ok(res);
         };
-        let handle = self.clone().handle_inner(
-            req,
-            relative_path,
-            profile.is_internal_api(),
-            mutation.clone(),
-            &mut context,
-        );
+        let handle = async move {
+            let mut response = router
+                .oneshot(req)
+                .await
+                .expect("Axum service is infallible");
+            if response
+                .extensions_mut()
+                .remove::<routes::OmitHeadContentLength>()
+                .is_some()
+            {
+                response.headers_mut().remove(CONTENT_LENGTH);
+            }
+            if let Some(error) = response.extensions_mut().remove::<routes::BusinessError>() {
+                return Err(error
+                    .0
+                    .lock()
+                    .expect("business error lock")
+                    .take()
+                    .expect("error consumed once"));
+            }
+            Ok(response)
+        };
         let handle_result = if profile.is_upload() {
             handle.await
         } else {
@@ -164,6 +224,12 @@ impl Server {
                         status_error(&mut res, StatusCode::GATEWAY_TIMEOUT, "Request timed out");
                     }
                     set_private_no_store(&mut res);
+                    if let Some(username) = auth_log.0.lock().expect("auth log lock").as_ref() {
+                        self.content
+                            .args
+                            .http_logger
+                            .set_authenticated_user(context.access_log_mut(), username);
+                    }
                     attach_access_log(
                         &self.content.args.http_logger,
                         &mut context,
@@ -176,8 +242,23 @@ impl Server {
             }
         };
 
+        if let Some(username) = auth_log.0.lock().expect("auth log lock").as_ref() {
+            self.content
+                .args
+                .http_logger
+                .set_authenticated_user(context.access_log_mut(), username);
+        }
         let (mut res, successful_public_asset) = match handle_result {
             Ok(mut res) => {
+                if let Some(identity) = res
+                    .extensions()
+                    .get::<sarmg_admin_axum::VerifiedAdministrator>()
+                {
+                    self.content
+                        .args
+                        .http_logger
+                        .set_authenticated_user(context.access_log_mut(), identity.username());
+                }
                 if let Some(operation_id) = profile.operation_id()
                     && !res.headers().contains_key(OPERATION_ID_HEADER)
                 {
@@ -497,7 +578,7 @@ mod tests {
         let logger = "$request $remote_addr $status $operation_id $operation_state"
             .parse::<HttpLogger>()
             .unwrap();
-        let request = hyper::Request::builder()
+        let request = http::Request::builder()
             .method(Method::DELETE)
             .uri("/late-request")
             .body(())

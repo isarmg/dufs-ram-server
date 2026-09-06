@@ -1,30 +1,14 @@
-//! Product HTML and response-body adaptation; no authentication policy or state.
+//! Product login HTML and page navigation; no authentication policy or state.
 use super::{Response, Server};
 use crate::http_utils::body_full;
 use anyhow::Result;
 use headers::{ContentLength, ContentType, HeaderMapExt};
-use http_body_util::{BodyExt, Limited};
-use hyper::{
+use http::{
     HeaderMap, Method, StatusCode,
     header::{self, HeaderValue},
 };
 
-pub(super) const LOGIN_PATH: &str = "__dufs__/login";
 const LOGIN_HTML: &str = include_str!("../../clients/web/login.html");
-
-pub(super) async fn platform_response<B>(response: hyper::Response<B>) -> Result<Response>
-where
-    B: hyper::body::Body<Data = bytes::Bytes>,
-    B::Error: std::error::Error + Send + Sync + 'static,
-{
-    let (parts, body) = response.into_parts();
-    let bytes = Limited::new(body, 32 * 1024)
-        .collect()
-        .await
-        .map_err(|_| anyhow::anyhow!("platform response body failed"))?
-        .to_bytes();
-    Ok(Response::from_parts(parts, body_full(bytes)))
-}
 
 impl Server {
     pub(super) fn send_login_page_for_get(&self, res: &mut Response) -> Result<()> {
@@ -111,7 +95,7 @@ impl Server {
             ),
             (
                 "content-security-policy",
-                "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+                "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
             ),
         ] {
             res.headers_mut()

@@ -26,6 +26,7 @@ use super::StatePathScanLease;
 
 mod actor;
 mod database;
+pub(super) use database::expected_schema_identity;
 mod model;
 mod operation;
 mod purge;

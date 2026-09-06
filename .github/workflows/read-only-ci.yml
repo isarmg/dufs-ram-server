@@ -231,6 +231,7 @@ jobs:
           set -euo pipefail
           cargo build --locked --release --target "$SERVER_TARGET"
           "./target/$SERVER_TARGET/release/dufs" --version | grep -F "dufs "
+          bash scripts/check-release-runtime.sh "$GITHUB_WORKSPACE/target/$SERVER_TARGET/release/dufs"
 
   browser:
     name: Browser (${{ matrix.browser }})

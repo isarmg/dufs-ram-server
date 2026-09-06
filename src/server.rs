@@ -42,34 +42,26 @@ use self::{
 use crate::{Args, app_error::AppError, args::ValidatedConfig, http_utils::body_full};
 
 use anyhow::{Context, Result};
-use bytes::Bytes;
-use headers::{ContentType, HeaderMapExt};
-use http_body_util::combinators::BoxBody;
-use hyper::{
-    Method, StatusCode,
-    body::Incoming,
-    header::{ALLOW, CACHE_CONTROL, CONTENT_DISPOSITION, HeaderValue, RETRY_AFTER},
+use http::{
+    StatusCode,
+    header::{ALLOW, CACHE_CONTROL, CONTENT_DISPOSITION, HeaderValue},
 };
+use sarmg_server_runtime::WorkScope as ServerLifecycle;
 use std::{
     collections::HashSet,
     future::Future,
     path::Path,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Mutex},
     time::SystemTime,
 };
-use tokio::sync::{OwnedRwLockReadGuard, OwnedSemaphorePermit, RwLock, Semaphore, mpsc};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::timeout_at;
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::sync::CancellationToken;
 
-pub type Request = hyper::Request<Incoming>;
-pub type Response = hyper::Response<BoxBody<Bytes, anyhow::Error>>;
+pub type Request = axum::extract::Request;
+pub type Response = axum::response::Response;
 
 const BUF_SIZE: usize = 65536;
-const HEALTH_CHECK_PATH: &str = "__dufs__/health";
-const READINESS_CHECK_PATH: &str = "__dufs__/ready";
 const NON_UPLOAD_MUTATION_CAPACITY: usize = 64;
 const READINESS_PROBE_CAPACITY: usize = 1;
 const STATE_PATH_SCAN_CAPACITY: usize = 4;
@@ -77,13 +69,6 @@ const STATE_PATH_SCAN_ADMISSION_ERROR: &str = "Durable state path scan admission
 const STATE_PATH_ADMISSION_PAGE_SIZE: usize = 256;
 const PATH_WAIT_CAPACITY_LIMIT: usize = 64;
 const PATH_WAIT_LIMIT_DETAIL: &str = "Too many path-coordinated requests are active";
-
-#[derive(Clone, Copy)]
-enum ReadinessStatus {
-    Ready,
-    NotReady,
-    Busy,
-}
 
 /// Keeps one durable-state scan admission slot tied to work that cannot be
 /// cancelled after dispatch. The request owns one clone, while each accepted
@@ -218,9 +203,7 @@ impl ServerRuntime {
     }
 
     pub fn request_force_shutdown(&self) {
-        self.lifecycle.running.store(false, Ordering::SeqCst);
-        self.lifecycle.shutdown.cancel();
-        self.lifecycle.force_shutdown.cancel();
+        self.lifecycle.cancel_ordinary_work();
     }
 
     /// Returns the number of ordinary/background tasks and durable filesystem
@@ -237,21 +220,10 @@ impl ServerRuntime {
     ///
     /// The method borrows the runtime so a process supervisor can observe the
     /// task counts or request forced cancellation while awaiting the drain.
-    pub async fn shutdown(&self) {
-        self.lifecycle.shutdown.cancel();
-        // The writer is an atomic admission barrier: it cannot be acquired
-        // until every request that passed the entry check has returned, and a
-        // queued writer prevents later readers from slipping in. Consequently
-        // no request can register a detached task after the drains below.
-        let _request_drain = self.lifecycle.request_gate.write().await;
-        self.lifecycle.work_tasks.close();
-        self.lifecycle.work_tasks.wait().await;
-        self.lifecycle.commit_tasks.close();
-        self.lifecycle.commit_tasks.wait().await;
-        if let Err(error) = self.server.state.state_store.close().await {
-            error!("Failed to close state store cleanly error={error:#}");
-        }
-        self.lifecycle.running.store(false, Ordering::SeqCst);
+    pub async fn shutdown(&self) -> Result<()> {
+        self.lifecycle.drain_requests().await;
+        self.lifecycle.drain_commits().await;
+        self.server.state.state_store.close().await
     }
 }
 
@@ -261,6 +233,33 @@ impl Drop for ServerRuntime {
         // maintenance tasks' Arc<Server> ownership loop if an embedder forgets
         // to await `shutdown`.
         self.request_force_shutdown();
+    }
+}
+
+#[async_trait::async_trait]
+impl sarmg_server_runtime::LifecycleParticipant for ServerRuntime {
+    fn quiesce(&self) {
+        self.lifecycle.quiesce();
+    }
+    fn cancel_ordinary_work(&self) {
+        self.lifecycle.cancel_ordinary_work();
+    }
+    fn active_tasks(&self) -> (usize, usize) {
+        self.active_task_counts()
+    }
+    async fn drain_requests(&self) {
+        self.lifecycle.drain_requests().await;
+    }
+    async fn drain_commits(&self) {
+        self.lifecycle.drain_commits().await;
+    }
+    async fn close_state(&self) -> std::result::Result<(), String> {
+        self.server
+            .state
+            .state_store
+            .close()
+            .await
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -278,7 +277,6 @@ struct ContentServices {
     args: ValidatedConfig,
     administrator:
         Arc<sarmg_admin_core::AdministratorService<sarmg_admin_static::StaticAdministratorStore>>,
-    administrator_router: sarmg_admin_hyper::HyperAdministratorRouter,
     administrator_origin: sarmg_admin_auth::AdministratorOriginMode,
     assets_prefix: String,
     path_policy: PathPolicy,
@@ -331,41 +329,49 @@ struct AdmissionControl {
     list_metadata_phase_hook: ListMetadataPhaseHook,
 }
 
-/// Process lifecycle and task ownership. Only this context decides when new
-/// work stops and when detached mutations have drained.
-#[derive(Clone)]
-struct ServerLifecycle {
-    running: Arc<AtomicBool>,
-    work_tasks: TaskTracker,
-    commit_tasks: TaskTracker,
-    shutdown: CancellationToken,
-    force_shutdown: CancellationToken,
-    request_gate: Arc<RwLock<()>>,
-}
-
-impl ServerLifecycle {
-    fn new() -> Self {
-        Self {
-            running: Arc::new(AtomicBool::new(true)),
-            work_tasks: TaskTracker::new(),
-            commit_tasks: TaskTracker::new(),
-            shutdown: CancellationToken::new(),
-            force_shutdown: CancellationToken::new(),
-            request_gate: Arc::new(RwLock::new(())),
-        }
-    }
-
-    async fn enter_request(&self) -> Option<OwnedRwLockReadGuard<()>> {
-        let guard = tokio::select! {
-            biased;
-            _ = self.shutdown.cancelled() => return None,
-            guard = self.request_gate.clone().read_owned() => guard,
-        };
-        (!self.shutdown.is_cancelled()).then_some(guard)
-    }
-}
-
 impl Server {
+    /// Read-only preflight before root locks, SQLite creation or recovery.
+    pub fn check_reserved_path_conflicts(root: &Path) -> Result<()> {
+        for reserved in sarmg_server_runtime::PLATFORM_RESERVED_PATHS {
+            let components = reserved
+                .trim_start_matches('/')
+                .split('/')
+                .collect::<Vec<_>>();
+            let mut path = root.to_path_buf();
+            for (index, component) in components.iter().enumerate() {
+                path.push(component);
+                match std::fs::symlink_metadata(&path) {
+                    Ok(metadata) => {
+                        if metadata.is_symlink() || index + 1 == components.len() {
+                            anyhow::bail!(
+                                "Shared root conflicts with reserved platform path {reserved}; preserve the existing data and choose a clean root"
+                            );
+                        }
+                        if !metadata.is_dir() {
+                            break;
+                        }
+                    }
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                        ) =>
+                    {
+                        break;
+                    }
+                    Err(error) => {
+                        return Err(error).context("Could not inspect reserved platform paths");
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn schema_identity(&self) -> Result<sarmg_schema_identity::SchemaIdentity> {
+        state_store::expected_schema_identity()
+    }
+
     pub fn builder(args: Args) -> ServerBuilder {
         ServerBuilder::new(args)
     }
@@ -380,17 +386,13 @@ impl Server {
         list_snapshot_cache: ListSnapshotCache,
     ) -> Result<Self> {
         let args = ValidatedConfig::try_from(args)?;
+        Self::check_reserved_path_conflicts(&args.serve_path)?;
         let administrator = args.auth.administrator_service()?;
         let administrator_origin = if args.development {
             sarmg_admin_auth::AdministratorOriginMode::LoopbackDevelopmentHttp
         } else {
             sarmg_admin_auth::AdministratorOriginMode::ProductionHttps
         };
-        let administrator_router = sarmg_admin_hyper::HyperAdministratorRouter::new(
-            "dufs-ram",
-            administrator_origin,
-            administrator.clone(),
-        )?;
         let assets_prefix = embedded_assets_prefix();
         let rooted_fs = RootedFs::new(&args.serve_path)?;
         let path_policy = PathPolicy::new(args.serve_path.clone(), &assets_prefix);
@@ -414,7 +416,6 @@ impl Server {
             content: ContentServices {
                 args,
                 administrator,
-                administrator_router,
                 administrator_origin,
                 assets_prefix,
                 path_policy,
@@ -721,42 +722,10 @@ impl Server {
         }
     }
 
-    fn send_liveness(&self, head_only: bool, res: &mut Response) {
-        const BODY: &str = r#"{"status":"OK"}"#;
-        res.headers_mut()
-            .typed_insert(ContentType::from(mime_guess::mime::APPLICATION_JSON));
-        res.headers_mut()
-            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        if !head_only {
-            *res.body_mut() = body_full(BODY);
-        }
-    }
-
-    fn render_readiness(res: &mut Response, head_only: bool, status: ReadinessStatus) {
-        const READY: &str = r#"{"status":"ready"}"#;
-        const NOT_READY: &str = r#"{"status":"not_ready"}"#;
-        let ready = matches!(status, ReadinessStatus::Ready);
-        res.headers_mut()
-            .typed_insert(ContentType::from(mime_guess::mime::APPLICATION_JSON));
-        res.headers_mut()
-            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        if matches!(status, ReadinessStatus::Busy) {
-            res.headers_mut()
-                .insert(RETRY_AFTER, HeaderValue::from_static("1"));
-        } else {
-            res.headers_mut().remove(RETRY_AFTER);
-        }
-        *res.status_mut() = if ready {
-            StatusCode::OK
-        } else {
-            StatusCode::SERVICE_UNAVAILABLE
+    pub async fn probe_readiness(&self) -> bool {
+        let Some(_request) = self.lifecycle.enter_request().await else {
+            return false;
         };
-        if !head_only {
-            *res.body_mut() = body_full(if ready { READY } else { NOT_READY });
-        }
-    }
-
-    async fn send_readiness(&self, head_only: bool, res: &mut Response) {
         let permit = match self
             .admission
             .readiness_probe_slots
@@ -765,8 +734,7 @@ impl Server {
         {
             Ok(permit) => permit,
             Err(_) => {
-                Self::render_readiness(res, head_only, ReadinessStatus::Busy);
-                return;
+                return false;
             }
         };
 
@@ -795,19 +763,10 @@ impl Server {
                 false
             }
         };
-        let ready = probes_ready
+        probes_ready
             && self.state.operation_registry.is_healthy()
             && !self.lifecycle.shutdown.is_cancelled()
-            && !self.lifecycle.force_shutdown.is_cancelled();
-        Self::render_readiness(
-            res,
-            head_only,
-            if ready {
-                ReadinessStatus::Ready
-            } else {
-                ReadinessStatus::NotReady
-            },
-        );
+            && !self.lifecycle.force_shutdown.is_cancelled()
     }
 
     /// Resolve the target for method dispatch without following an invalid
@@ -1041,10 +1000,6 @@ fn encode_content_disposition_filename(filename: &str) -> String {
         }
     }
     encoded
-}
-
-fn head_only_for(method: &Method) -> bool {
-    *method == Method::HEAD
 }
 
 #[cfg(test)]

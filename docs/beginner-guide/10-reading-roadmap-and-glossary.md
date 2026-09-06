@@ -39,12 +39,12 @@
 
 ### 第 2 次：最短的 HTTP 路径
 
-从 `GET /__dufs__/health` 开始：
+从 `GET /healthz` 开始：
 
 1. [src/main.rs](../../src/main.rs) 中连接交给 Hyper；
-2. [src/server/router.rs](../../src/server/router.rs) 的 `Server::call`；
+2. [src/server/router.rs](../../src/server/router.rs) 的 `Server::http_service`；
 3. [src/server/router/request.rs](../../src/server/router/request.rs) 的请求画像；
-4. [src/server/router/dispatch.rs](../../src/server/router/dispatch.rs) 的公共路由。
+4. [src/server/router/files.rs](../../src/server/router/files.rs) 的公共路由。
 
 回答：
 
@@ -453,7 +453,7 @@ Rust 中表示将来可能完成的异步计算。丢弃 Future 不会撤销已�
 ### L
 
 **liveness**
-进程是否还活着并能响应。Dufs 的公开 `/__dufs__/health` 是 liveness。
+进程是否还活着并能响应。Dufs 的公开 `/healthz` 是 liveness。
 
 ### M
 
@@ -502,7 +502,7 @@ Rust 中表示将来可能完成的异步计算。丢弃 Future 不会撤销已�
 资源获取即初始化；值离开作用域时自动释放或执行守卫收尾。
 
 **readiness**
-服务当前是否具备接收业务的关键条件。`/__dufs__/ready` 会实际探测共享根和 SQLite 写路径。
+服务当前是否具备接收业务的关键条件。`/readyz` 会实际探测共享根和 SQLite 写路径。
 
 **revision**
 上传覆盖确认使用的不透明目标版本 token，绑定账号、路径和 identity，不等同于内容哈希。

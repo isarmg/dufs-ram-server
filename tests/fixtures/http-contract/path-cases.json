@@ -1,4 +1,134 @@
 [
-  {"id":"nul-path-rejected","method":"GET","path":"/a%00b","authenticated":true,"headers":{},"body":"","preset":{},"status":400,"required_headers":{},"forbidden_headers":["location"],"body_contains":"Invalid Path","response_fields":{},"file_changes":{},"operation_state":null},
-  {"id":"double-encoding-is-literal","method":"GET","path":"/literal%252F.txt","authenticated":true,"headers":{},"body":"","preset":{"literal%2F.txt":"literal name"},"status":200,"required_headers":{"content-length":"12"},"forbidden_headers":["location"],"body_contains":"literal name","response_fields":{},"file_changes":{},"operation_state":null}
+  {
+    "id": "nul-path-rejected",
+    "method": "GET",
+    "path": "/a%00b",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 400,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "Invalid Path",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "double-encoding-is-literal",
+    "method": "GET",
+    "path": "/literal%252F.txt",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {
+      "literal%2F.txt": "literal name"
+    },
+    "status": 200,
+    "required_headers": {
+      "content-length": "12"
+    },
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "literal name",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "encoded-platform-health-rejected",
+    "method": "GET",
+    "path": "/%68ealthz",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 400,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "duplicate-platform-separator-rejected",
+    "method": "POST",
+    "path": "/api//v2/auth/login",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 400,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "platform-trailing-slash-rejected",
+    "method": "GET",
+    "path": "/readyz/",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 400,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "encoded-platform-auth-rejected",
+    "method": "GET",
+    "path": "/api/v2/%61uth/session",
+    "authenticated": false,
+    "headers": {},
+    "body": "",
+    "preset": {},
+    "status": 400,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  },
+  {
+    "id": "ordinary-api-prefix-remains-a-file",
+    "method": "GET",
+    "path": "/api-notes.txt",
+    "authenticated": true,
+    "headers": {},
+    "body": "",
+    "preset": {
+      "api-notes.txt": "ordinary file"
+    },
+    "status": 200,
+    "required_headers": {},
+    "forbidden_headers": [
+      "location"
+    ],
+    "body_contains": "ordinary file",
+    "response_fields": {},
+    "file_changes": {},
+    "operation_state": null
+  }
 ]

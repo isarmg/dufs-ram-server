@@ -240,7 +240,8 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
     )
     .body("blocked")
     .send()?;
-    assert_eq!(upload.status(), StatusCode::NOT_FOUND);
+    assert_eq!(upload.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(upload.headers()["allow"], "GET, HEAD");
 
     let mkdir = server
         .request(Method::POST, server.url().join("__dufs__/api/mkdir")?)
