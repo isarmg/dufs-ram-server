@@ -171,6 +171,15 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
             Some("js") => "application/javascript; charset=UTF-8",
             Some("css") => "text/css; charset=UTF-8",
             Some("woff2") => "font/woff2",
+            Some("svg") => {
+                let hash = name
+                    .strip_prefix("foundation-icon-")
+                    .and_then(|value| value.strip_suffix(".svg"))
+                    .expect("only compiled Foundation icons are runtime SVG assets");
+                assert_eq!(hash.len(), 64);
+                assert_eq!(hash, format!("{:x}", Sha256::digest(std::fs::read(&path)?)));
+                "image/svg+xml"
+            }
             Some("txt") => "text/plain; charset=UTF-8",
             _ => panic!("unexpected runtime platform asset"),
         };
