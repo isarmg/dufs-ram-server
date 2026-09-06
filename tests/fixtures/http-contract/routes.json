@@ -1,0 +1,4 @@
+[
+  {"id":"login-get","method":"GET","path":"/__dufs__/login","authenticated":false,"headers":{},"body":"","preset":{},"status":200,"required_headers":{"content-type":"text/html; charset=utf-8"},"forbidden_headers":["location","www-authenticate"],"body_contains":"<form","response_fields":{},"file_changes":{},"operation_state":null},
+  {"id":"login-head-denied","method":"HEAD","path":"/__dufs__/login","authenticated":false,"headers":{},"body":"","preset":{},"status":405,"required_headers":{"allow":"GET"},"forbidden_headers":["location"],"body_contains":"","response_fields":{},"file_changes":{},"operation_state":null}
+]

@@ -1,0 +1,4 @@
+[
+  {"id":"api-requires-session","method":"GET","path":"/__dufs__/api/list","authenticated":false,"headers":{},"body":"","preset":{},"status":401,"required_headers":{"content-type":"application/json"},"forbidden_headers":["location","www-authenticate"],"body_contains":"auth.","response_fields":{},"file_changes":{},"operation_state":null},
+  {"id":"page-login-redirect","method":"GET","path":"/","authenticated":false,"headers":{"accept":"text/html"},"body":"","preset":{},"status":303,"required_headers":{"location":"/__dufs__/login"},"forbidden_headers":["www-authenticate"],"body_contains":"","response_fields":{},"file_changes":{},"operation_state":null}
+]
