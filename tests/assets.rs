@@ -177,7 +177,7 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
                     .and_then(|value| value.strip_suffix(".svg"))
                     .expect("only compiled Foundation icons are runtime SVG assets");
                 assert_eq!(hash.len(), 64);
-                assert_eq!(hash, encode_hex(&Sha256::digest(std::fs::read(&path)?)));
+                assert_eq!(hash, encode_hex(Sha256::digest(std::fs::read(&path)?)));
                 "image/svg+xml"
             }
             Some("txt") => "text/plain; charset=UTF-8",
