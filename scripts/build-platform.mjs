@@ -41,13 +41,13 @@ try {
   rmSync(output, { recursive: true, force: true });
   cpSync(join(scratch, "clients/web/dist"), output, { recursive: true, errorOnExist: true });
   const declarations = spawnSync(process.execPath, [
-    join(root, "node_modules/typescript/bin/tsc"), "-p", "clients/web/tsconfig.platform.json",
-  ], { cwd: root, env: process.env, stdio: "inherit" });
+    join(scratch, "node_modules/typescript/bin/tsc"), "-p", "clients/web/tsconfig.platform.json",
+  ], { cwd: scratch, env: process.env, stdio: "inherit" });
   if (declarations.error) throw declarations.error;
   if (declarations.status !== 0) throw new Error("React platform declaration check failed");
   // Runtime assets remain flat. The explicit public wrappers expose no
   // product-internal declaration imports to the unbundled file controllers.
-  cpSync(join(root, "clients/web/types/platform.d.ts"), join(output, "platform.d.ts"));
+  cpSync(join(scratch, "clients/web/types/platform.d.ts"), join(output, "platform.d.ts"));
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
