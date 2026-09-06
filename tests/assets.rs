@@ -32,11 +32,6 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
 
     let assets = [
         (
-            "modules/language.js",
-            format!("{asset_prefix}modules/language.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
             "login.js",
             format!("{asset_prefix}login.js"),
             "application/javascript; charset=UTF-8",

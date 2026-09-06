@@ -14,6 +14,7 @@ const sourceFiles = [
 ].filter(path => /\.(?:js|mjs)$/u.test(path)).sort();
 const failures = [];
 const DOM_SINK_NAMES = new Set([
+  "dangerouslySetInnerHTML",
   "DOMParser",
   "createContextualFragment",
   "innerHTML",
@@ -35,6 +36,9 @@ const STATIC_VALUE_LIMIT = 32;
 const STATIC_STRING_LENGTH_LIMIT = 512;
 
 const detectionFixtures = [
+  ["clients/web/react/application.js", "h('div', { dangerouslySetInnerHTML: { __html: value } });\n", "dangerouslySetInnerHTML"],
+  ["clients/web/react/application.js", "const key = 'dangerously' + 'SetInnerHTML'; h('div', { [key]: value });\n", "dangerouslySetInnerHTML"],
+  ["clients/web/react/application.js", "fetch('/');\n", "fetch"],
   [
     "clients/web/modules/listing/controller.js",
     "const request = fetch; request('/');\n",
@@ -171,7 +175,12 @@ for (const path of sourceFiles) {
   const name = relative(projectRoot, path);
   const source = readFileSync(path, "utf8");
   checkSourceFormat(name, source);
-  checkProductionSafety(name, source);
+  // The generated bundle includes the checksum-pinned React DOM renderer,
+  // whose internals necessarily implement DOM sinks. Audit authored sources
+  // (including every React component) rather than misclassifying vendor code.
+  // Generated files still receive syntax/format checks and immutable asset,
+  // package-integrity, CSP, budget and browser checks.
+  if (!name.startsWith("clients/web/dist/")) checkProductionSafety(name, source);
 
   const syntax = spawnSync(process.execPath, ["--check", path], {
     cwd: projectRoot,
@@ -320,14 +329,14 @@ function productionSafetyIssues(name, source) {
     }
     if (
       propertyName === "fetch" &&
-      name.startsWith("clients/web/modules/") &&
+      name.startsWith("clients/web/") &&
       name !== "clients/web/modules/http/client.js"
     ) {
       addIssue(node, "fetch must go through modules/http/client.js");
     }
     if (
       propertyName === "XMLHttpRequest" &&
-      name.startsWith("clients/web/modules/") &&
+      name.startsWith("clients/web/") &&
       name !== "clients/web/modules/upload/transport.js"
     ) {
       addIssue(
@@ -339,6 +348,10 @@ function productionSafetyIssues(name, source) {
 
   walkAst(ast, (node, parent, key) => {
     const scope = model.nodeScopes.get(node) || model.rootScope;
+    if (node.type === "Property" && parent?.type === "ObjectExpression") {
+      const properties = node.computed ? evaluateStaticStrings(node.key, scope, model) : propertyNameFromSyntax(node.key);
+      if (properties?.has("dangerouslySetInnerHTML")) reportName(node, "dangerouslySetInnerHTML");
+    }
     if (
       node.type === "Identifier" &&
       isReferenceIdentifier(node, parent, key, model.bindingIdentifiers)

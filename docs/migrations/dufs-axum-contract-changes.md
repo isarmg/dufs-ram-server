@@ -34,7 +34,7 @@
 | 原始路径 | PathPolicy 一次解码 | 路由前 Service 验证并传递 RoutePath，不改写 URI |
 | 新保留路径 | 可作为文件名 | 启动时只读检查冲突；明确拒绝，绝不删除、改名或静默隐藏 |
 
-业务 JSON 预算维持 16 KiB，上传预检 2 MiB / 512 路径 / 256 KiB 路径字节 / 并发 4。PUT/PATCH 保持流式和实际字节限制，不用全局 TimeoutLayer 取消持久提交。静态管理员、内存 Session、rusqlite、原生 Web 和文件操作登记表不改模型。
+业务 JSON 预算维持 16 KiB，上传预检 2 MiB / 512 路径 / 256 KiB 路径字节 / 并发 4。PUT/PATCH 保持流式和实际字节限制，不用全局 TimeoutLayer 取消持久提交。静态管理员、内存 Session、rusqlite、文件操作登记表不改模型；页面技术按用户后续授权调整为 React。
 
 ## 状态与发布边界
 
@@ -48,15 +48,16 @@ M0：上述全量 Rust 基线命令已通过，新增 `cargo test --locked --tar
 
 ## 当前实现与复验入口
 
-Foundation 正式版本为 0.7.0，完整 revision 为 `77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1`。
-[CI](https://github.com/isarmg/sarmg-foundation-server/actions/runs/34037708626) 与
-[正式发布](https://github.com/isarmg/sarmg-foundation-server/actions/runs/34037886724) 已通过。
-该提交的 Rust 源码及 Cargo 清单/锁文件与完成消费者测试的 `99d5506c8146dfbe608e32441d97e51b924cdbb9` 完全一致；新增变化为原生 Web 导出及可选 React peer。
+Foundation 正式版本为 0.7.1，完整 revision 为 `466ef3b7e19a5eea07292d5eeda1d014b47e5c59`。
+[CI](https://github.com/isarmg/sarmg-foundation-server/actions/runs/34042339546) 与
+[正式发布](https://github.com/isarmg/sarmg-foundation-server/actions/runs/34042566142) 已通过。
+0.7.1 新增文件服务 Profile 的 React 选择及合同测试，统一包版本；Rust/Web 实现源码与 0.7.0 正式提交 `77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1` 完全相同，已用 Git 差异检查证明。
+四个未受本次 Web Profile 扩展影响的控制平面消费者继续使用已验证的 0.7.0，不冒充它们已升级到 0.7.1。
 
-`release-tree.json` 的 SHA-256 为 `1844a4c53f2c2e92ce02501a228fcbca74e91d639911118b93456dd54667617f`。
+`release-tree.json` 的 SHA-256 为 `05e02a2d9219d688ae1019041f0a0df07961fc6b020abf0d8e12ca900b867cca`。
 Dufs 使用正式 tarball URL 与 npm integrity，不使用本地平台源码副本。
 
-用户后续明确要求 Dufs 也采用 Foundation Web 外观：因此保留原生 ES modules，但统一六行登录卡片、顶部项目名/导航/图标、全宽文件表格、普通非连字字体和中英文主题。移除原样式、shell、字体快照，认证与业务模块不重写。构建把 Foundation CSS 的 SVG mask 发射成摘要命名的同源资源；登录仅增加 `img-src 'self'`，不开放 data:、内联脚本或外部来源。
+用户后续明确要求 Dufs 采用 Foundation Web 外观并引入 React，覆盖手册原先保留原生页面的范围约定。React 19.2.8 实际渲染登录、顶部导航及文件页结构，使用正式 React Profile 和共享 UI/工作区配置；已移除原生工作区初始化和 DOM 翻译入口。文件/上传控制器保留独占 DOM 区域及既有协议，主题局部更新不能重建运行中的队列。构建输出同源摘要 SVG，CSP 不开放 data:、内联脚本或外部来源。全部产品 React 源码仍执行严格类型/AST 安全检查；供应链固定的 React DOM bundle 使用依赖完整性、CSP、资源预算和浏览器验收，不能把渲染器内部 DOM API 当作产品源码的动态 HTML 注入。
 
 | 手册用例 | 当前可执行证据 |
 | --- | --- |
@@ -80,3 +81,7 @@ Dufs 使用正式 tarball URL 与 npm integrity，不使用本地平台源码副
 基线十万目录项测试另行实际执行：旧二进制首屏 4.109828671 秒，候选首屏 4.858747356 秒，均通过既有 30 秒门槛。这是单次测量，不宣称性能提升；首次在并行重编译的资源压力下超时，空闲环境复验通过。普通全量测试中的显式 ignored 基准不等于自动执行。
 
 发布前仍须核验 A1–A14 的最终完整门、覆盖率、浏览器、制品和消费者矩阵；该记录不以候选测试冒充未执行的正式发行验收。
+
+## React 追加验收
+
+原生外观提交 `5ef35ad02f69b55df351aaed978d1b80e19de4bc` 的本地完整 `./scripts/check.sh` 已通过：635 项 Rust、82.10% 行覆盖率、Chromium/Firefox 各 121 项。其正式包 E2E 在包内验收之后发现宿主夹具编译缺少 Web 资源；当前 `check-release-runtime.sh` 已补上本目录资源构建，仍需用最终 React 提交复验，不能将这次失败写为成功。

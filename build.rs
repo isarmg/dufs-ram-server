@@ -42,8 +42,8 @@ fn embed_platform_assets() {
                 .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
         );
         assert!(
-            metadata.len() <= 256 * 1024,
-            "platform asset exceeds native budget"
+            metadata.len() <= 512 * 1024,
+            "platform asset exceeds Foundation React budget"
         );
         let content_type = match path.extension().and_then(|value| value.to_str()) {
             Some("js") => "application/javascript; charset=UTF-8",

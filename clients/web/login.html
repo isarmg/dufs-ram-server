@@ -9,30 +9,7 @@
   <link rel="stylesheet" href="/__ASSETS_PREFIX__login.css">
 </head>
 <body data-sarmg-scope>
-  <main class="sarmg-auth-shell login-screen">
-    <section class="sarmg-auth-card" aria-label="Dufs">
-      <form class="login-card" aria-label="Sign in to Dufs" data-i18n-aria-label-zh="登录 Dufs" novalidate>
-        <h1 data-i18n-zh="登录">Sign in</h1>
-        <label class="sarmg-form-field" for="username">
-          <span data-i18n-zh="用户名">Username</span>
-          <input class="sarmg-input login-input" id="username" name="username" type="text" maxlength="64"
-            autocomplete="username" autocapitalize="none" spellcheck="false"
-            required autofocus>
-        </label>
-        <label class="sarmg-form-field" for="password">
-          <span data-i18n-zh="密码">Password</span>
-          <input class="sarmg-input login-input" id="password" name="password" type="password"
-            data-min-bytes="__MIN_PASSWORD_BYTES__" data-max-bytes="__MAX_PASSWORD_BYTES__"
-            autocomplete="current-password" required>
-        </label>
-        <div class="sarmg-error error-row hidden" role="alert">
-          <span class="login-error" id="login-error"></span>
-        </div>
-        <button class="sarmg-button" type="submit" data-i18n-zh="登录">Sign in</button>
-        <div class="card-actions"></div>
-      </form>
-    </section>
-  </main>
+  <div id="dufs-root" data-dufs-renderer="react" data-min-bytes="__MIN_PASSWORD_BYTES__" data-max-bytes="__MAX_PASSWORD_BYTES__"></div>
   <script type="module" src="/__ASSETS_PREFIX__login.js"></script>
 </body>
 </html>

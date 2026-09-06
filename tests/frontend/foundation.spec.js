@@ -1,8 +1,8 @@
 const { readFileSync } = require("node:fs");
 const AxeBuilder = require("@axe-core/playwright").default;
-const { test, expect, pageData, login } = require("./fixtures.js");
+const { test, expect, pageData, login, selectFiles } = require("./fixtures.js");
 
-test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foundation", async ({ appPage: page }) => {
+test("React Profile 的实际嵌入字体、许可证和恢复会话来自 Foundation", async ({ appPage: page }) => {
   await pageData(page);
   const platformCss = page.locator('link[rel="stylesheet"][href$="/dist/platform.css"]');
   const prefix = new URL("./", await platformCss.evaluate(link => link.href));
@@ -40,11 +40,13 @@ test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foun
     expect(response.headers()["cache-control"]).toContain("immutable");
   }
   const script = await page.context().request.get(new URL("platform.js", prefix).href);
-  expect((await script.body()).byteLength).toBeLessThanOrEqual(256 * 1024);
-  expect(await script.text()).not.toMatch(/react-dom|react\/jsx-runtime|sourceMappingURL/u);
+  expect((await script.body()).byteLength).toBeLessThanOrEqual(512 * 1024);
+  expect(await script.text()).not.toMatch(/sourceMappingURL/u);
+  await expect(page.locator('#dufs-root[data-dufs-renderer="react"] > header')).toHaveCount(1);
+  expect(await page.locator("#dufs-root").evaluate(root => Object.keys(root).some(key => key.startsWith("__reactContainer$")))).toBe(true);
 });
 
-test("原生 Profile 的移动明暗主题通过 WCAG AA", async ({ axePage: page }) => {
+test("React Profile 的移动明暗主题通过 WCAG AA", async ({ axePage: page }) => {
   await login(page);
   await page.setViewportSize({ width: 390, height: 844 });
   for (const colorScheme of ["light", "dark"]) {
@@ -55,7 +57,7 @@ test("原生 Profile 的移动明暗主题通过 WCAG AA", async ({ axePage: pag
   }
 });
 
-test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容", async ({ appPage: page }) => {
+test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容", async ({ appPage: page }, testInfo) => {
   await expect(page.locator(".sarmg-page-header .sarmg-product-identity")).toHaveText("Dufs");
   await expect(page.locator(".sarmg-header-navigation a[aria-current=page]")).toHaveText("Files");
   await expect(page.locator(".sarmg-instance-sidebar")).toHaveCount(0);
@@ -76,4 +78,34 @@ test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容
     expect(await icon.evaluate(svg => Math.abs(svg.getBoundingClientRect().height - Number.parseFloat(getComputedStyle(svg.parentElement).fontSize)))).toBeLessThan(1);
   }
   expect(await page.locator(".paths-table").evaluate(table => getComputedStyle(table).borderCollapse)).toBe("collapse");
+  await page.screenshot({ path: testInfo.outputPath("react-foundation-desktop.png") });
+});
+
+test("React 主题更新不重建上传队列或重复发送上传", async ({ appPage: page }) => {
+  let releaseUpload;
+  let reachedUpload;
+  const gate = new Promise(resolve => { releaseUpload = resolve; });
+  const reached = new Promise(resolve => { reachedUpload = resolve; });
+  let requests = 0;
+  await page.route("**/react-theme-upload.txt", async route => {
+    if (route.request().method() === "PUT") {
+      requests++;
+      reachedUpload();
+      await gate;
+    }
+    await route.continue();
+  });
+  try {
+    await selectFiles(page, "#file", [{ name: "react-theme-upload.txt", mimeType: "text/plain", buffer: Buffer.from("React keeps the upload alive") }]);
+    await reached;
+    const row = await page.locator(".upload-status").elementHandle();
+    expect(row).not.toBeNull();
+    await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.getByRole("button", { name: "Switch to light mode", exact: true }).click();
+    expect(await row.evaluate(element => element.isConnected && element === document.querySelector(".upload-status"))).toBe(true);
+    expect(requests).toBe(1);
+  } finally { releaseUpload(); }
+  await expect(page.locator(".upload-status")).toHaveAttribute("aria-label", "react-theme-upload.txt: upload complete");
+  expect(requests).toBe(1);
 });

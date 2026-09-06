@@ -11,7 +11,7 @@
 | DFM-001 | 单进程管理一个共享根；同根第二实例被 advisory `flock` 拒绝 | `src/main.rs`、`src/server/rooted_fs.rs` | 核心 | 高 | 产品失去清晰数据域；误启多实例会越过进程内协调 | 同根双启失败、不同根可独立启动；锁不能阻止 shell/宿主写入 |
 | DFM-002 | 服务端唯一 target 为 `x86_64-unknown-linux-gnu` | `build.rs`、`sarmg-server-target` | 保障 | 高 | 未证明的 CPU/OS/ABI 进入交付矩阵 | 精确 target 正例；aarch64、musl、Windows、macOS 负例；无 best-effort |
 | DFM-003 | Linux `openat2` 必需，不降级到路径拼接 | `src/server/rooted_fs.rs` | 保障 | 高 | 共享根逃逸和 TOCTOU 安全证明失效 | 缺系统调用启动失败；symlink、magic link 和路径竞态测试 |
-| DFM-004 | Dufs 是项目组唯一非 React/Vite 例外，保留原生 ES modules | `clients/web/`、`src/server/assets.rs` | 建议保留 | 高 | 改框架需重做嵌入、CSP、缓存、构建和供应链 | 生产无 Node 服务/无 bundler；例外不改变 Foundation 认证合同 |
+| DFM-004 | 使用 Foundation React Profile，复用文件业务控制器 | `clients/web/react/`、`src/server/assets.rs` | 已实施 | 高 | 必须同时验证 React、嵌入、CSP、缓存和供应链 | 生产无 Node 服务；无原生页面兼容入口 |
 | DFM-005 | 客户端统一在 `clients/web/`，源码配置在 `config/`，部署资产在 `deploy/` | 三个同名目录 | 开发运维 | 中 | 代码与资产散落，登记和审查易漏 | 新生产模块进入 asset registry；不复制当前配置/部署模板 |
 | DFM-006 | 生产配置故意使用 `/etc/dufs/dufs.yaml`，TLS 使用 `/etc/dufs/tls/` | `deploy/dufs.service`、`deploy/nginx-dufs.conf` | 开发运维 | 中 | 随意换路径会破坏 systemd/nginx 权限约定 | 这是 FHS/TLS 权限例外，不是旧路径兼容 |
 | DFM-007 | current-only：只接受当前配置、API、页面和 SQLite identity | `src/args.rs`、`src/server/router/`、`src/server/state_store/database.rs` | 保障 | 高 | alias/fallback 令分支、攻击面和测试矩阵增加 | 非当前字段、路径、schema 在修改状态前拒绝；未来稳定版本的精确迁移边只进入 `sarmg-upgrade` 的独立 adapter/fixture/CLI |

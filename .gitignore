@@ -8,4 +8,5 @@
 /dufs.log
 /dist/
 /clients/web/dist/
+/clients/web/types/
 target/**

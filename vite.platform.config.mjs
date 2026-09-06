@@ -1,7 +1,15 @@
-import { createSarmgNativeModuleViteConfig } from "@sarmg/web-toolchain/native";
+import { createSarmgReactViteConfig } from "@sarmg/web-toolchain/vite";
 import { createHash } from "node:crypto";
 
-const config = createSarmgNativeModuleViteConfig({ entry: "clients/web/platform.js", outDir: "clients/web/dist" });
+const config = createSarmgReactViteConfig({ base: "./" });
+config.build = {
+  ...config.build, outDir: "clients/web/dist", assetsInlineLimit: 0, cssCodeSplit: false,
+  rollupOptions: {
+    input: "clients/web/platform.js", preserveEntrySignatures: "strict",
+    output: { format: "es", entryFileNames: "platform.js", chunkFileNames: "[hash].js",
+      assetFileNames: asset => asset.names.some(name => name.endsWith(".css")) ? "platform.css" : "[name][extname]" },
+  },
+};
 // Foundation's authored CSS masks are compile-time inputs, not user images.
 // Emit them as immutable same-origin assets so Dufs keeps data: disallowed.
 config.plugins.push({

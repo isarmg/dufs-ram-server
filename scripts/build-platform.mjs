@@ -20,7 +20,7 @@ try {
   }
   cpSync(join(root, "clients/web"), join(scratch, "clients/web"), {
     recursive: true,
-    filter: source => relative(join(root, "clients/web"), source).split("/")[0] !== "dist",
+    filter: source => !["dist", "types"].includes(relative(join(root, "clients/web"), source).split("/")[0]),
   });
   cpSync(join(root, "node_modules"), join(scratch, "node_modules"), { recursive: true });
   for (const file of ["package.json", "vite.platform.config.mjs"]) {
@@ -40,6 +40,14 @@ try {
   // dist is generated output only; never remove source or dependency inputs.
   rmSync(output, { recursive: true, force: true });
   cpSync(join(scratch, "clients/web/dist"), output, { recursive: true, errorOnExist: true });
+  const declarations = spawnSync(process.execPath, [
+    join(root, "node_modules/typescript/bin/tsc"), "-p", "clients/web/tsconfig.platform.json",
+  ], { cwd: root, env: process.env, stdio: "inherit" });
+  if (declarations.error) throw declarations.error;
+  if (declarations.status !== 0) throw new Error("React platform declaration check failed");
+  // Runtime assets remain flat. The explicit public wrappers expose no
+  // product-internal declaration imports to the unbundled file controllers.
+  cpSync(join(root, "clients/web/types/platform.d.ts"), join(output, "platform.d.ts"));
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

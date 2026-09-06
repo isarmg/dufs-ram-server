@@ -567,9 +567,9 @@ Extended Attribute，Linux 文件扩展属性。覆盖重放时必须限制特�
 
 修改平台或业务资源后，重新执行 npm run build:platform、Cargo 构建、重启并取得新页面。全部注册 JS（包括 login.js）、CSS、图标、字体和许可证参与资源摘要；HTML 模板本身不参与该资源摘要，修改模板时直接核对 document 与同源 CSP。
 
-### 为什么 Dufs 不使用其他项目统一的 React/Vite？
+### Dufs 如何使用统一的 React/Vite？
 
-这是项目组唯一明确批准的前端例外：当前页面规模、Rust 编译期资源登记和单二进制交付合同适合原生 ES modules。减少生产构建链的同时，也要求项目自己严格管理状态、DOM 和运行时数据校验；例外不扩展到认证线协议，管理员身份仍完全采用 Foundation current 合同。
+Dufs 使用 Foundation React Profile 和共享组件，React 负责登录、导航与文件页结构。已有文件列表、操作和上传控制器保留自己的 DOM 区域和恢复语义；React 状态更新不能重建正在工作的行或编辑器。构建产物仍编译进单个 Rust 二进制，不需要生产 Node 服务，管理员身份仍完全采用 Foundation current 合同。
 
 ### SQLite 是文件索引数据库吗？
 

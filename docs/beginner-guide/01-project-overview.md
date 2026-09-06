@@ -4,7 +4,7 @@
 
 Dufs 是一个只运行在 Linux AMD64 GNU（`x86_64-unknown-linux-gnu`）上的浏览器文件管理器：服务端把某个目录设为“共享根”，认证后的管理员可以通过网页浏览、搜索、上传、下载、移动、重命名、新建和删除其中的文件。其他 CPU、操作系统或 ABI 由编译守卫直接拒绝，不存在 best-effort 支持层。
 
-它采用“一体化二进制”部署：Rust 程序既处理 API，也返回编译时嵌入的 HTML、CSS 和原生 ES modules。Dufs 是项目组唯一明确不使用 React/Vite 的前端例外；Foundation 管理员认证协议并不例外。生产环境通常在它前面放置 nginx，负责 TLS 和公网边界。
+它采用“一体化二进制”部署：Rust 程序既处理 API，也返回构建时嵌入的 React、Foundation CSS 和文件业务 ES modules。React 负责登录及页面结构，认证协议始终复用 Foundation。生产环境通常在它前面放置 nginx，负责 TLS 和公网边界。
 
 ## 1.2 用户看到什么
 

@@ -342,14 +342,14 @@ HTTP URI path
 
 ## 3.16 浏览器端的 ES Modules 和类型
 
-前端使用原生 ES modules：
+前端以 ES modules 启动 React 页面及文件业务控制器：
 
 ```js
 import { start } from "./modules/app.js";
 start();
 ```
 
-没有 React/Vue，也没有把源码编译成一个 bundle。JavaScript 文件通过 JSDoc 声明类型，再由 TypeScript `checkJs` 检查：
+React 19.2.8 和 Foundation UI 由 Vite 编入平台 bundle，文件操作与上传控制器继续作为独立模块嵌入。全部产品 JavaScript（包括 React 组件）通过 JSDoc 声明类型，由 TypeScript `checkJs` 检查：
 
 ```sh
 npm run check:types

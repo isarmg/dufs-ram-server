@@ -29,6 +29,8 @@ svg {
   fill: var(--svg-primary);
 }
 
+svg[fill="none"] { fill: none; }
+
 .hidden {
   display: none !important;
 }

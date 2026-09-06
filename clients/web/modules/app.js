@@ -1,12 +1,11 @@
 import { t } from "../dist/platform.js";
-import { localizeStaticPage } from "./language.js";
 import { createActionDialogs } from "./operations/dialogs.js";
 import { createFileOperations } from "./operations/file_operations.js";
 import { createDirectoryListing } from "./listing/controller.js";
 import { createElement, createIcon } from "./shared/dom.js";
-import { ApiClientError, configureNativeWorkspace } from "../dist/platform.js";
+import { ApiClientError, mountFileWorkspace } from "../dist/platform.js";
 import { administratorApi, authenticationErrorMessage } from "./platform-session.js";
-// The Foundation web-embedded-native profile supplies authentication and assets.
+// React owns the page; product controllers own the file/queue/dialog regions.
 import { parseIndexData } from "./shared/index_data.js";
 import { currentPageUrl } from "./shared/path.js";
 import { createUploadManager } from "./upload/manager.js";
@@ -49,7 +48,9 @@ export function start() {
 }
 
 async function initialize() {
-  localizeStaticPage();
+  const container = document.getElementById("dufs-root");
+  if (!container) throw new Error("Dufs application root is missing");
+  mountFileWorkspace(container);
   const indexData = /** @type {HTMLTemplateElement | null} */ (
     document.getElementById("index-data")
   );
@@ -59,17 +60,6 @@ async function initialize() {
   data = parseIndexData(rawData, await administratorApi.restore());
   addBreadcrumb(data.href);
   document.title = t("{0} - Dufs 文件管理", "{0} - Dufs File Manager", [data.href]);
-  configureNativeWorkspace({
-    header: requiredElement(".head", HTMLElement), content: requiredElement(".main", HTMLElement),
-    actions: requiredElement(".toolbox-right", HTMLElement), create: requiredElement(".new-folder", HTMLButtonElement),
-    logout: requiredElement(".logout-btn", HTMLButtonElement), refresh: () => window.location.reload(),
-    instanceName: t("共享根目录", "Shared root"), instanceHref: "/",
-    config: { layout: "custom" },
-    labels: {
-      actions: t("全局操作", "Global actions"), refresh: t("重新载入页面", "Reload page"), light: t("切换到浅色模式", "Switch to light mode"),
-      dark: t("切换到深色模式", "Switch to dark mode"), logout: t("退出", "Sign out"), instances: t("共享根目录实例", "Shared root instance"),
-    },
-  });
 
   const pathsTable = requiredElement(".paths-table", HTMLTableElement);
   const pathsTableBody = requiredElement(

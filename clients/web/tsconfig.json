@@ -18,5 +18,5 @@
   "include": [
     "**/*.js"
   ],
-  "exclude": ["dist", "shell"]
+  "exclude": ["dist", "types"]
 }

@@ -136,11 +136,9 @@ fn unauthenticated_html_navigation_redirects_to_login(
             .and_then(|value| value.to_str().ok()),
         Some("public, max-age=31536000, immutable")
     );
-    assert!(body.contains("novalidate"));
-    assert_eq!(body.matches(" required").count(), 2);
-    assert!(body.contains("name=\"username\""));
-    assert!(body.contains("name=\"password\""));
-    assert!(body.contains("maxlength=\"64\""));
+    assert!(body.contains("id=\"dufs-root\""));
+    assert!(body.contains("data-dufs-renderer=\"react\""));
+    assert!(!body.contains("<form")); // React is the only login renderer.
     assert!(body.contains("data-min-bytes=\"12\""));
     assert!(body.contains("data-max-bytes=\"1024\""));
     assert!(!body.contains("__MIN_PASSWORD_BYTES__"));

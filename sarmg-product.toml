@@ -3,14 +3,14 @@ product_id = "dufs-ram"
 
 [foundation]
 platform_generation = 1
-version = "0.7.0"
-git_rev = "77e7ad7af8e1bf62432bd6bdd8fa9aff54cb39d1"
+version = "0.7.1"
+git_rev = "466ef3b7e19a5eea07292d5eeda1d014b47e5c59"
 
 [[components]]
 id = "server"
 profile = "server-filesystem"
 http_adapter = "axum"
-web_profile = "web-embedded-native"
+web_profile = "web-react-admin"
 capabilities = [
   "admin-static",
   "memory-sessions",

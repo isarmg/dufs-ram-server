@@ -15,9 +15,9 @@ Dufs 是一个使用 Rust 编写的轻量级浏览器文件管理器。启动单
 - 从当前目录开始按文件名递归搜索；
 - Foundation 统一的管理员 username、Argon2id 密码、会话、同源和 CSRF 合同；
 - 资源预算和异步访问日志；
-- 编译内置的原生 HTML、CSS、JavaScript 管理页面。
+- 编译内置的 React、Foundation 内容块样式和文件管理模块。
 
-Dufs 采用 Foundation 正式的 `web-embedded-native` Profile。业务页面保持原生 ES modules，不引入 React；共享 Admin Client、设计令牌和 Maple 字体通过 Foundation 原生 Vite 配置构建，然后与业务资源一起登记、摘要化并嵌入 Rust 二进制。Node 基线、资源预算和认证策略由上游维护，不保留产品旧认证实现。
+Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责登录表单、顶部导航及文件页结构，直接使用 Foundation React UI、工作区配置、Admin Client 和 Maple 字体。已有文件列表、操作与上传控制器继续以 ES modules 管理独占 DOM 区域；React 的主题更新不会重建这些区域。使用 Foundation React Vite 配置构建后统一摘要化并嵌入 Rust 二进制，生产不需要 Node 服务。单资源采用 React Profile 的 512 KiB 预算，不保留原生页面渲染入口。
 
 本项目服务端只支持 Linux AMD64 GNU，即精确 target `x86_64-unknown-linux-gnu`，并面向现代桌面浏览器。不提供匿名访问、非管理员角色、账号分级权限、手机 Web、WebDAV、无 JavaScript 客户端、拖放上传、在线预览或编辑、静态网站托管、运行时页面资源覆盖、URL 子路径部署、用户自定义隐藏规则、Unix socket、CORS 或环境变量配置。
 
@@ -527,7 +527,8 @@ git status --short
 ```text
 .
 ├── clients/web/                         # 编译内置的浏览器页面源码
-│   └── modules/                    # 无打包器的原生 ES modules
+│   ├── react/                      # React 登录、导航、页面结构
+│   └── modules/                    # 复用的文件操作和上传控制器
 │       ├── shared/                 # DOM、路径和跨功能 mutation 契约
 │       ├── http/                   # Fetch、Problem Details、响应预算与头解析
 │       ├── listing/                # 分页列表、窗口化 DOM 与行内编辑

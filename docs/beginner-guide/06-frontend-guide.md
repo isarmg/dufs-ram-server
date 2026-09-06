@@ -8,7 +8,7 @@
 
 读完后，你应当能够回答：
 
-1. 为什么 Dufs 是项目组唯一不使用 React/Vite 的明确例外，页面仍然能拆成多个模块？
+1. React 页面与文件业务控制器如何分工，且不重建正在工作的上传行？
 2. 修改 `clients/web/index.css` 后，为什么只刷新浏览器可能看不到变化？
 3. HTML 业务元数据与独立恢复的 Foundation session 如何一起启动页面？
 4. `listing/controller.js` 为什么同时维护数据项、cursor、revision 和 DOM 窗口？
@@ -20,16 +20,17 @@
 
 ## 6.2 先建立正确的前端心智模型
 
-当前前端采用原生 Web 技术。Dufs 是项目组唯一明确不迁移到 React/Vite 的客户端；这项例外只覆盖界面实现和打包方式，认证 wire contract 仍严格使用 Foundation：
+当前前端采用 Foundation React Profile。React 19.2.8 负责页面结构和登录状态，认证 wire contract 严格使用 Foundation：
 
-- HTML 提供页面骨架；
+- HTML 只提供 React 根节点、资源引用及业务元数据；
+- `react/application.js` 使用 React 和 Foundation UI 渲染登录、导航、表格结构与对话框；
 - CSS 提供布局、主题、响应式和高对比度样式；
 - 原生 JavaScript ES Modules 拆分业务逻辑；
 - Fetch 处理普通 API 和状态查询；
 - XMLHttpRequest 处理需要上传进度事件的文件正文；
 - JSDoc 加 TypeScript `checkJs` 在开发阶段检查类型。
 
-它不是一个独立部署的 Node.js 服务，也没有运行时 npm 依赖。浏览器直接执行仓库里的 JavaScript 模块。根目录的 [package.json](../../package.json) 中，TypeScript、Playwright、axe 和 Acorn 都是检查或测试工具。
+它不是一个独立部署的 Node.js 服务，也没有运行时 npm 依赖。浏览器执行构建后的 React 平台 bundle，以及独立嵌入的文件业务模块。根目录的 [package.json](../../package.json) 中，TypeScript、Playwright、axe 和 Acorn 都是检查或测试工具。
 
 最短的前端入口只有三行，见 [clients/web/index.js](../../clients/web/index.js)：
 
@@ -39,7 +40,7 @@ import { start } from "./modules/app.js";
 start();
 ```
 
-这不表示页面逻辑很少，而表示入口只负责把控制权交给 `app.js`。真正的列表、操作、上传和 API 逻辑都在 `clients/web/modules/` 中。
+这不表示页面逻辑很少，而表示入口只负责把控制权交给 `app.js`。React 渲染入口在 `clients/web/react/application.js`；列表、操作、上传和 API 逻辑在 `clients/web/modules/` 中。React 首次同步挂载完成后才初始化控制器，主题组件的局部更新不能重新协调控制器独占的 DOM 区域。
 
 ## 6.3 源码文件不等于运行时静态目录
 
@@ -56,7 +57,7 @@ flowchart LR
 因此运行中的服务不会在每个请求时重新读取工作区的 `clients/web/`。典型修改流程是：
 
 ```text
-修改源码 → cargo build → 停止旧进程 → 启动新二进制 → 重新加载页面
+修改源码 → npm run build:platform → cargo build → 停止旧进程 → 启动新二进制 → 重新加载页面
 ```
 
 如果只改文件并刷新旧进程，浏览器看到的仍是旧二进制内嵌的内容。
@@ -71,7 +72,7 @@ clients/web/modules/preview.js
 
 仅仅在另一个模块中 `import "./preview.js"` 还不够。必须同时在 [src/server/assets.rs](../../src/server/assets.rs) 的 `EMBEDDED_ASSETS` 中注册它，否则编译后的服务器不会返回该 URL，浏览器会报 module 404。
 
-这是没有传统打包器后的显式维护成本：依赖关系由浏览器解析，但哪些文件能被服务端公开仍由 Rust 白名单决定。
+这是保留独立文件业务模块后的显式维护成本。`react/` 中的组件则由 Vite 打包，只公开构建后的平台模块，不能把含 npm 裸导入的源码直接加入 HTTP 白名单。
 
 ### 6.3.3 内容哈希前缀和缓存
 
@@ -92,17 +93,11 @@ Cache-Control: public, max-age=31536000, immutable
 
 目录 HTML 本身则使用 `private, no-store`。它包含当前用户和当前页面的数据，不能像公共 CSS 一样长期缓存。
 
-### 6.3.4 登录脚本是一个例外
+### 6.3.4 登录脚本也走同源资源合同
 
-[clients/web/login.js](../../clients/web/login.js) 是同源外置 ES module，调用 Foundation Admin Client。平台资源经共享原生 Vite 配置构建后与业务脚本共同嵌入二进制；CSP 只允许同源脚本和字体，不允许内联脚本或 eval，见 [src/server/administrator_web.rs](../../src/server/administrator_web.rs)。
+[clients/web/login.js](../../clients/web/login.js) 是同源外置入口，调用 React 登录挂载函数；React 表单经 Foundation Admin Client 发送认证请求。密码规则由服务器注入根节点，组件读取并验证后传给输入框。必填错误由 React 渲染到第五行，不触发原生校验气泡。
 
-修改 `login.js` 时必须同步更新 `LOGIN_CSP` 中的哈希，否则：
-
-- HTML 能正常显示；
-- CSS 也能加载；
-- 浏览器却会因为 CSP 拒绝执行登录校验脚本。
-
-相关测试会检查 HTML 占位符和 CSP 哈希，不能为了图省事加入 `'unsafe-inline'`。
+平台与业务 JS 均参与资源摘要。CSP 使用同源脚本策略，不需要为每次修改更新内联脚本哈希，也不能加入 `'unsafe-inline'`、eval 或 data:。实际规则见 [src/server/administrator_web.rs](../../src/server/administrator_web.rs)。
 
 ## 6.4 页面骨架和服务端注入数据
 
@@ -112,28 +107,12 @@ Cache-Control: public, max-age=31536000, immutable
 
 ```text
 body
-├── .head
-│   ├── .breadcrumb
-│   ├── .toolbox
-│   │   ├── 上传文件按钮与隐藏 file input
-│   │   ├── 上传文件夹按钮与隐藏 folder input
-│   │   ├── 新建文件夹按钮
-│   │   └── 新建空文件按钮
-│   ├── .searchbar
-│   └── .toolbox-right
-│       └── 注销按钮和管理员 username
-├── .main
-│   └── .index-page
-│       ├── 操作状态
-│       ├── 上传队列警告
-│       ├── 空目录状态
-│       ├── 上传表格
-│       ├── 文件列表表格
-│       └── 分页状态与按钮
-├── .action-dialog
-├── template#index-data
-└── script[type=module]
+├── div#dufs-root              React 根节点
+├── template#index-data       已编码业务元数据，无身份或 CSRF
+└── script[type=module]       index.js
 ```
+
+React 在根节点内渲染顶部项目名/文件入口及五个操作图标、全宽工具栏、文件/上传表格结构和操作对话框。React 不重新渲染业务控制器已经接管的行与编辑器。
 
 大多数需要 JavaScript 的控件初始带 `.hidden`。模块初始化成功并绑定事件后才逐个显示，避免用户在逻辑尚未就绪时点击一个看得见但不能工作的按钮。
 
@@ -176,6 +155,7 @@ sequenceDiagram
     H->>A: 求值 app.js，解析 URL 参数
     E->>A: start()
     A->>A: 等待 DOMContentLoaded
+    A->>A: React createRoot + 首次同步渲染
     A->>A: 解码 index-data → JSON.parse 为 unknown
     A->>S: Foundation Admin Client 恢复 Session
     S-->>A: 当前会话与轮换后的 CSRF
@@ -319,7 +299,7 @@ element.setAttribute(name, value);
 
 1. 浏览器 `GET /__dufs__/login` 取得页面；
 2. 用户填写管理员 username candidate 和密码；candidate 必须是 1～64 bytes 且每字节 `0x20`～`0x7e`，允许外层 ASCII space 和大写字母；
-3. `login.js` 阻止默认 form navigation，以 Fetch 向 `POST /api/v2/auth/login` 发送恰好 `username/password` 的 JSON；
+3. React 登录表单阻止默认 form navigation，经 `login.js` 注入的共享客户端回调以 Fetch 向 `POST /api/v2/auth/login` 发送恰好 `username/password` 的 JSON；
 4. 浏览器自动附带同源安全上下文，服务端还要求唯一且一致的 Origin、effective Host 与 `Sec-Fetch-Site: same-origin`；
 5. 服务端验证 Foundation 当前 Argon2id PHC，设置 `__Host-sarmg-dufs-ram-session` Secure Cookie，并返回恰好五字段的 `AdministratorSession`；
 6. 客户端严格验证 session 的字段集合、canonical 管理员 username、`role=admin` 与 token 规范，成功才 `location.replace("/")`；
@@ -1114,7 +1094,7 @@ axe 测试覆盖登录页、文件页、行内编辑器和操作对话框的 WCA
 常见 Console 线索：
 
 - ES module 404：文件没有加入 `EMBEDDED_ASSETS`，或运行的是旧二进制；
-- CSP 拒绝登录脚本：修改 `login.js` 后没有更新 CSP 哈希；
+- CSP 拒绝登录脚本：构建资源缺失或使用了非同源模块；
 - `Required page control is missing`：HTML selector 与 JavaScript 不一致；
 - `Invalid file list response`：后端 JSON 与运行时合约不一致；
 - `crypto.randomUUID is not a function`：页面没有运行在所需安全上下文中。

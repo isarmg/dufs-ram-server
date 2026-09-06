@@ -373,8 +373,8 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | E-01 | 编译时嵌入资源 | 生产运行不读取 `clients/web/` 外部目录，不支持运行时覆盖 | 保留可保证代码和页面版本一致 | 建议保留 |
 | E-02 | 内容摘要资源 URL | 目录页的 `index.js`、18 个 ES module、`index.css`、登录页的 `login.css` 和 favicon 由 `server/assets.rs` 的单一注册表按名称、MIME 类型和内容共同生成完整 256 位 SHA-256，即 64 个十六进制字符的资源前缀；HTML 和内联登录脚本不参与该前缀，后者由独立 CSP SHA-256 授权。静态门双向核对 `clients/web/modules/` 与 `EMBEDDED_ASSETS` | 删除后要改用短缓存或手工版本号；混淆两套摘要或漏嵌模块会造成缓存、404 或 CSP 文档漂移 | 建议保留 |
 | E-03 | 静态资源长期缓存 | 只有精确命中的成功摘要资源使用一年 `immutable`；其他响应 no-store | 删除会增加重复资源传输，但不影响功能 | 可选 |
-| E-04 | 唯一非 React/Vite 例外 | Dufs 客户端是项目组唯一明确保留无 bundler 原生 ES modules 的前端；二进制及页面只由 Cargo 构建。Node 26.7.0 只用于检查、测试和发布辅助，不形成生产前端服务 | 改为 React/Vite 会扩大 Dufs 的构建和供应链；删除这项例外则必须重新设计嵌入、摘要 URL、CSP 与发布验证 | 建议保留 |
-| E-05 | 分层原生前端 | Foundation 原生 Vite 生成共享 Client/合同/设计令牌/字体/许可证；产品业务模块按 shared/http/listing/operations/upload 分层。HTML 只有两个业务字段，Session 单独恢复。全部 JS/CSS/字体均为同源外部摘要资源；禁止内联脚本和 eval | 修改资源需重建平台资源和 Rust，验证资源摘要、CSP、严格合同及业务回归 | 建议保留 |
+| E-04 | Foundation React 前端 | React 负责登录、导航和页面结构，文件操作与上传控制器拥有独占 DOM 区域；构建后统一嵌入 Rust | React 更新不能重建进行中的上传或编辑器；要求固定依赖、同源 CSP、资源预算与浏览器验收 | 已实施 |
+| E-05 | 分层 React 前端 | Foundation React Vite 生成 UI/Client/合同/设计令牌/字体/许可证；产品文件模块按 shared/http/listing/operations/upload 分层。HTML 只有业务数据，Session 单独恢复；全部资源同源摘要化，禁止内联脚本和 eval | 修改资源需重建平台和 Rust，并验证 React 不重建业务独占区域 | 已实施 |
 | E-06 | 多地址 TCP | 可同时监听多个明确 IP，所有监听器共享资源上限 | 若实际永远只监听一个地址，可简化参数和启动循环 | 可选 |
 | E-07 | IPv6 | 显式 `--bind ::` 或其他 IPv6 地址；IPv6 listener 强制 `IPV6_V6ONLY`，因此 `::` 不同时承接 IPv4，双栈必须分别配置 IPv4 与 IPv6 地址 | 仅使用 IPv4 网关时可删除，但代码收益有限 | 可选 |
 | E-08 | 严格分离的前端协议与响应边界 | 目录页 Fetch 统一经 `http/client.js` 编排并使用 30 秒 deadline；登录页单独向 Foundation `/api/v2/auth/login` 发送 JSON Fetch，原生导航和文件下载不在这两个边界内，上传正文另用专用 XHR。`http/response_buffer.js` 先按严格 `Content-Length` 拒绝再逐块读取；错误响应最多 16 KiB、成功响应最多 16 MiB，超限取消 reader/body。Problem Details 只接受 current `application/problem+json` 平铺 snake_case 结构；Foundation auth 则只接受 `AdministratorSession/ErrorEnvelope`。上传 XHR 在响应头、download progress 和最终 UTF-8 字节数三个阶段拒绝超过 16 KiB。operation 与 upload 解析都绑定规范 ID、状态、长度和 offset；异常 2xx、网络或协议结果只查询原 ID，不盲目重放 mutation | 删除会恢复无限等待/缓冲、两种错误合同混淆、协议词汇漂移和无法安全判断 mutation 是否可重试的问题；降低成功上限可能误拒合法大列表 | 保障 |

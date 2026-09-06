@@ -12,7 +12,7 @@
 - 唯一角色是 `admin`；每个有效管理员拥有整个共享目录的浏览和文件管理能力；
 - 服务只通过内网 HTTP/TCP 地址监听，HTTPS 统一由网关终止；
 - TCP 接收错误使用分类日志和有界退避；SIGINT/SIGTERM 触发分阶段优雅停机；
-- 目录页使用编译进程序的 HTML、CSS、原生 ES modules、Maple 字体和图标；Dufs 使用 Foundation 原生 Vite Profile，不使用 React；
+- 目录页使用编译进程序的 React 页面、Foundation CSS、文件业务 ES modules、Maple 字体和图标；采用 Foundation React Vite Profile；
 - 浏览器通过 HTTPS 网关使用会话 Cookie 进行下载、持久化上传、删除和同源 JSON POST 操作；
 
 ## 1. 总体流程树
@@ -141,7 +141,7 @@ flowchart LR
     KNOWN -- 否 --> MISS["404 + private, no-store"]
 ```
 
-Dufs 使用 Foundation 原生 ESM Profile：`platform.js` 仅导出共享 Admin Client、合同和密码策略，并导入设计令牌与 Maple 字体；不引入 React。先执行 `npm ci` 和 `npm run build:platform`，再编译 Rust。共享 Vite 配置生成同源外部模块、CSS、正体/斜体 WOFF2 和 OFL 许可证；单资源 256 KiB 硬预算、禁止 source map。`server/assets.rs` 唯一注册表按名称、MIME 和字节计算摘要并嵌入全部平台/业务资源，精确资源 GET/HEAD 才可长期缓存。HTML 使用外部登录模块和字体 preload；CSP 仅允许同源脚本、样式及字体，不允许内联脚本或 eval。 运行时不读取外部页面或资源覆盖。
+Dufs 使用 Foundation React Profile：`platform.js` 公开 React 挂载入口和共享 Admin Client/合同，`react/application.js` 使用共享 React UI 和工作区配置。先执行 `npm ci`、`npm run build:platform`，再编译 Rust。构建输出同源 ESM、CSS、正体非连字字体和许可证，单资源 512 KiB 硬预算、禁止 source map；声明文件只用于开发，不进入运行时资源。旧原生工作区初始化和 DOM 翻译器已移除。文件/上传控制器在 React 首次渲染之后初始化，其表格行、对话框和编辑器是独占区域，主题局部更新不重建它们。资源按名称、MIME 和内容摘要后嵌入；登录 CSP 只允许同源脚本、样式、字体和构建 SVG，不允许内联脚本、eval 或 data:。运行时没有资源覆盖，也不需要 Node 服务。
 
 ## 5. 公共路由
 

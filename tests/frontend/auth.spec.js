@@ -17,6 +17,12 @@ for (const [locale, usernameLabel, passwordLabel, submitLabel, usernameError, pa
       const password = page.getByLabel(passwordLabel, { exact: true });
       const submit = page.getByRole("button", { name: submitLabel, exact: true });
       await expect(username).toBeVisible();
+      await expect(page.locator(".login-card")).toHaveAttribute("novalidate", "");
+      await expect(username).toHaveAttribute("maxlength", "64");
+      await expect(username).toHaveAttribute("required", "");
+      await expect(password).toHaveAttribute("required", "");
+      await expect(password).toHaveAttribute("data-min-bytes", "12");
+      await expect(password).toHaveAttribute("data-max-bytes", "1024");
       await page.evaluate(() => {
         window.nativeInvalidCount = 0;
         document.addEventListener("invalid", () => window.nativeInvalidCount++, true);
