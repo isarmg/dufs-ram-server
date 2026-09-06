@@ -305,6 +305,7 @@ button {
   box-sizing: border-box;
   width: 120px;
   padding-left: 0.5em;
+  padding-right: 0;
 }
 
 .paths-table .action-slots {

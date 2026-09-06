@@ -31,7 +31,7 @@ test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foun
   const css = await page.context().request.get(new URL("platform.css", prefix).href);
   const cssText = await css.text();
   expect(cssText).not.toContain("data:image");
-  const icons = [...new Set([...cssText.matchAll(/foundation-icon-[a-f0-9]{64}\\.svg/gu)].map(match => match[0]))];
+  const icons = [...new Set([...cssText.matchAll(/foundation-icon-[a-f0-9]{64}\.svg/gu)].map(match => match[0]))];
   expect(icons).toHaveLength(3);
   for (const icon of icons) {
     const response = await page.context().request.get(new URL(icon, prefix).href);
