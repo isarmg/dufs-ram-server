@@ -2,7 +2,7 @@ import { createActionDialogs } from "./operations/dialogs.js";
 import { createFileOperations } from "./operations/file_operations.js";
 import { createDirectoryListing } from "./listing/controller.js";
 import { createElement, createIcon } from "./shared/dom.js";
-import { ApiClientError } from "../dist/platform.js";
+import { ApiClientError, configureNativeWorkspace } from "../dist/platform.js";
 import { administratorApi, authenticationErrorMessage } from "./platform-session.js";
 // The Foundation web-embedded-native profile supplies authentication and assets.
 import { parseIndexData } from "./shared/index_data.js";
@@ -56,6 +56,12 @@ async function initialize() {
   data = parseIndexData(rawData, await administratorApi.restore());
   addBreadcrumb(data.href);
   document.title = `${data.href} - Dufs File Manager`;
+  configureNativeWorkspace({
+    header: requiredElement(".head", HTMLElement), content: requiredElement(".main", HTMLElement),
+    actions: requiredElement(".toolbox-right", HTMLElement), create: requiredElement(".new-folder", HTMLButtonElement),
+    logout: requiredElement(".logout-btn", HTMLButtonElement), refresh: () => window.location.reload(),
+    instanceName: "共享根目录", instanceHref: "/",
+  });
 
   const pathsTable = requiredElement(".paths-table", HTMLTableElement);
   const pathsTableBody = requiredElement(

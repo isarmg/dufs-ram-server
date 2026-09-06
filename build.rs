@@ -16,6 +16,52 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DUFS_BUILD_GIT_SHA");
     emit_git_rerun_paths();
     println!("cargo:rustc-env=DUFS_BUILD_GIT_SHA={}", build_git_sha());
+    embed_platform_assets();
+}
+
+fn embed_platform_assets() {
+    let root = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .join("clients/web/dist");
+    println!("cargo:rerun-if-changed={}", root.display());
+    let mut files = std::fs::read_dir(&root)
+        .expect("build the Web platform before compiling the Server")
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    files.sort();
+    assert!(root.join("platform.js").is_file() && root.join("platform.css").is_file());
+    let mut generated = String::from("&[\n");
+    for path in files {
+        let metadata = std::fs::symlink_metadata(&path).unwrap();
+        assert!(metadata.is_file() && !metadata.file_type().is_symlink());
+        let name = path.file_name().unwrap().to_str().unwrap();
+        if name == "platform.d.ts" {
+            continue; // TypeScript's build-time declarations are not runtime assets.
+        }
+        assert!(
+            name.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        );
+        assert!(
+            metadata.len() <= 256 * 1024,
+            "platform asset exceeds native budget"
+        );
+        let content_type = match path.extension().and_then(|value| value.to_str()) {
+            Some("js") => "application/javascript; charset=UTF-8",
+            Some("css") => "text/css; charset=UTF-8",
+            Some("woff2") => "font/woff2",
+            Some("txt") => "text/plain; charset=UTF-8",
+            _ => panic!("unsupported platform asset: {name}"),
+        };
+        generated.push_str(&format!(
+            "EmbeddedAsset {{ name: {:?}, contents: include_bytes!({:?}), content_type: {:?} }},\n",
+            format!("dist/{name}"),
+            path.to_str().unwrap(),
+            content_type
+        ));
+    }
+    generated.push_str("]\n");
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    std::fs::write(output.join("platform-assets.rs"), generated).unwrap();
 }
 
 fn emit_git_rerun_paths() {

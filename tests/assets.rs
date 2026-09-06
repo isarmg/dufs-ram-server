@@ -32,31 +32,6 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
 
     let assets = [
         (
-            "dist/platform.js",
-            format!("{asset_prefix}dist/platform.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "dist/platform.css",
-            format!("{asset_prefix}dist/platform.css"),
-            "text/css; charset=UTF-8",
-        ),
-        (
-            "dist/MapleMono.woff2",
-            format!("{asset_prefix}dist/MapleMono.woff2"),
-            "font/woff2",
-        ),
-        (
-            "dist/MapleMono-Italic.woff2",
-            format!("{asset_prefix}dist/MapleMono-Italic.woff2"),
-            "font/woff2",
-        ),
-        (
-            "dist/OFL.txt",
-            format!("{asset_prefix}dist/OFL.txt"),
-            "text/plain; charset=UTF-8",
-        ),
-        (
             "login.js",
             format!("{asset_prefix}login.js"),
             "application/javascript; charset=UTF-8",
@@ -174,6 +149,32 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
             "application/javascript; charset=UTF-8",
         ),
     ];
+    let mut assets = assets
+        .into_iter()
+        .map(|(name, path, content_type)| (name.to_owned(), path, content_type))
+        .collect::<Vec<_>>();
+    let mut platform = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/clients/web/dist"))?
+        .map(|entry| entry.map(|value| value.path()))
+        .collect::<Result<Vec<_>, _>>()?;
+    platform.sort();
+    for path in platform {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        if name == "platform.d.ts" {
+            continue;
+        }
+        let content_type = match path.extension().and_then(|value| value.to_str()) {
+            Some("js") => "application/javascript; charset=UTF-8",
+            Some("css") => "text/css; charset=UTF-8",
+            Some("woff2") => "font/woff2",
+            Some("txt") => "text/plain; charset=UTF-8",
+            _ => panic!("unexpected runtime platform asset"),
+        };
+        assets.push((
+            format!("dist/{name}"),
+            format!("{asset_prefix}dist/{name}"),
+            content_type,
+        ));
+    }
     let mut digest = Sha256::new();
     for (name, path, expected_content_type) in assets {
         let response = server.get(server.url().join(&path)?)?;

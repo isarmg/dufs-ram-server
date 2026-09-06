@@ -18,32 +18,8 @@ struct EmbeddedAsset {
 
 // 浏览器客户端的源码统一位于 clients/web，并在编译期完整嵌入二进制；
 // 运行时 URL 仍由下面的资源名和内容摘要生成，与仓库目录名解耦。
+const PLATFORM_ASSETS: &[EmbeddedAsset] = include!(concat!(env!("OUT_DIR"), "/platform-assets.rs"));
 const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[
-    EmbeddedAsset {
-        name: "dist/platform.js",
-        contents: include_bytes!("../../clients/web/dist/platform.js"),
-        content_type: "application/javascript; charset=UTF-8",
-    },
-    EmbeddedAsset {
-        name: "dist/platform.css",
-        contents: include_bytes!("../../clients/web/dist/platform.css"),
-        content_type: "text/css; charset=UTF-8",
-    },
-    EmbeddedAsset {
-        name: "dist/MapleMono.woff2",
-        contents: include_bytes!("../../clients/web/dist/MapleMono.woff2"),
-        content_type: "font/woff2",
-    },
-    EmbeddedAsset {
-        name: "dist/MapleMono-Italic.woff2",
-        contents: include_bytes!("../../clients/web/dist/MapleMono-Italic.woff2"),
-        content_type: "font/woff2",
-    },
-    EmbeddedAsset {
-        name: "dist/OFL.txt",
-        contents: include_bytes!("../../clients/web/dist/OFL.txt"),
-        content_type: "text/plain; charset=UTF-8",
-    },
     EmbeddedAsset {
         name: "login.js",
         contents: include_bytes!("../../clients/web/login.js"),
@@ -174,7 +150,7 @@ const EMBEDDED_ASSETS: &[EmbeddedAsset] = &[
 
 pub(super) fn embedded_assets_prefix() -> String {
     let mut digest = Sha256::new();
-    for asset in EMBEDDED_ASSETS {
+    for asset in EMBEDDED_ASSETS.iter().chain(PLATFORM_ASSETS) {
         digest.update((asset.name.len() as u64).to_be_bytes());
         digest.update(asset.name.as_bytes());
         digest.update((asset.content_type.len() as u64).to_be_bytes());
@@ -231,5 +207,8 @@ impl Server {
 }
 
 fn embedded_asset(name: &str) -> Option<&'static EmbeddedAsset> {
-    EMBEDDED_ASSETS.iter().find(|asset| asset.name == name)
+    EMBEDDED_ASSETS
+        .iter()
+        .chain(PLATFORM_ASSETS)
+        .find(|asset| asset.name == name)
 }

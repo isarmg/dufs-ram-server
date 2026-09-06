@@ -6,13 +6,21 @@ test("原生 Profile 的实际嵌入字体、许可证和恢复会话来自 Foun
   await pageData(page);
   const platformCss = page.locator('link[rel="stylesheet"][href$="/dist/platform.css"]');
   const prefix = new URL("./", await platformCss.evaluate(link => link.href));
-  for (const name of ["MapleMono.woff2", "MapleMono-Italic.woff2", "OFL.txt"]) {
-    const response = await page.context().request.get(new URL(name, prefix).href);
+  const licenses = await page.evaluate(async url => {
+    const platform = await import(url);
+    return { latin: platform.fontLicenseUrl, cjk: platform.cjkFontLicenseUrl };
+  }, new URL("platform.js", prefix).href);
+  const provenance = require("../../clients/web/fonts/provenance.json");
+  for (const source of Object.keys(provenance.assets).filter(name => name.endsWith(".woff2") || name.endsWith(".txt"))) {
+    const name = source.split("/").at(-1);
+    // Vite may coalesce identical license bytes into a single emitted asset.
+    const url = source === "CJK-LICENSE.txt" ? licenses.cjk : source === "OFL.txt" ? licenses.latin : new URL(name, prefix).href;
+    const response = await page.context().request.get(url);
     expect(response.status()).toBe(200);
     expect(response.headers()["cache-control"]).toContain("immutable");
     expect(response.headers()["x-content-type-options"]).toBe("nosniff");
     expect(response.headers()["content-type"]).toContain(name.endsWith("woff2") ? "font/woff2" : "text/plain");
-    expect(await response.body()).toEqual(readFileSync(require.resolve(`@sarmg/web-fonts/${name}`)));
+    expect(await response.body()).toEqual(readFileSync(require("node:path").join(__dirname, "../../clients/web/fonts", source)));
   }
   await page.evaluate(() => document.fonts.ready);
   expect(await page.evaluate(() => document.fonts.check('16px "Sarmg Maple"'))).toBe(true);
