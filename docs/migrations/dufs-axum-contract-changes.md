@@ -1,6 +1,6 @@
 # Dufs Axum 迁移合同与验收记录
 
-本文件区分已验证事实、目标合同和未完成工作，不作为已经迁移完成的声明。
+本文件记录合同变化、测试映射及发布前实测。最终发布状态、精确 tag 提交和下载制品摘要见 [Foundation 消费者验收记录](https://github.com/isarmg/sarmg-foundation-server/blob/main/consumers/react-filesystem-0.7.1-evidence.md)；不能仅凭创建 tag 宣称正式发布成功。
 
 ## M0 基线
 
@@ -45,7 +45,7 @@
 
 ## 阶段跟踪
 
-M0：上述全量 Rust 基线命令已通过，新增 `cargo test --locked --target x86_64-unknown-linux-gnu --test http_contract` 已通过（真实 socket，原始请求路径，10 个表驱动用例）；原有显式 ignored 用例尚未作为已验证项计入。M1–M9 的候选实现及全量 Rust 测试已通过；正式完整门禁、浏览器外观和发行 E2E 仍须完成。失败项不得标记 conforming。
+M0：上述全量 Rust 基线命令及新增 `cargo test --locked --target x86_64-unknown-linux-gnu --test http_contract` 已通过（真实 socket、原始请求路径、10 个表驱动用例）。M1–M10 的实现、Rust、浏览器、部署、覆盖率和本地总检查已通过；十万项基准另行显式执行。正式签名包与最终 tag 运行按下述发布门禁验证，结果登记到 Foundation 消费者记录，失败项不得标记 conforming。
 
 ## 当前实现与复验入口
 
@@ -81,8 +81,16 @@ Dufs 使用正式 tarball URL 与 npm integrity，不使用本地平台源码副
 
 基线十万目录项测试另行实际执行：旧二进制首屏 4.109828671 秒，候选首屏 4.858747356 秒，均通过既有 30 秒门槛。这是单次测量，不宣称性能提升；首次在并行重编译的资源压力下超时，空闲环境复验通过。普通全量测试中的显式 ignored 基准不等于自动执行。
 
-发布前仍须核验 A1–A14 的最终完整门、覆盖率、浏览器、制品和消费者矩阵；该记录不以候选测试冒充未执行的正式发行验收。
+正式发布必须核验 A1–A14。tag 工作流强制等待同一 tag、同一完整提交、push 事件的完整 CI、依赖审计和正式签名包 E2E 全部成功，才构建并发布二进制。正式包 E2E 使用临时测试签名密钥独立验签、解包及验证实际 release 运行时；GitHub Release 的下载项是 Linux 二进制和 SHA-256，不把它们冒充已发布的签名归档。最终消费者矩阵另记录独立下载核验结果。
 
 ## React 追加验收
 
-原生外观提交 `5ef35ad02f69b55df351aaed978d1b80e19de4bc` 的本地完整 `./scripts/check.sh` 已通过：635 项 Rust、82.10% 行覆盖率、Chromium/Firefox 各 121 项。其正式包 E2E 在包内验收之后发现宿主夹具编译缺少 Web 资源；当前 `check-release-runtime.sh` 已补上本目录资源构建，仍需用最终 React 提交复验，不能将这次失败写为成功。
+原生外观提交 `5ef35ad02f69b55df351aaed978d1b80e19de4bc` 的本地完整 `./scripts/check.sh` 已通过：635 项 Rust、82.10% 行覆盖率、Chromium/Firefox 各 121 项。其正式包 E2E 在包内验收之后发现宿主夹具编译缺少 Web 资源；当前 `check-release-runtime.sh` 已补上本目录资源构建。后续成功结果不能改写这次失败历史。
+
+- React 提交 `690c82c44dfc3edc0a1b4022d8b263fe88fa7bd8` 的[完整 CI](https://github.com/isarmg/dufs-ram/actions/runs/34043831610) 通过。
+- 将类型声明生成移入私有构建目录后的 `160e57eac6d420b37d7196fe1c987d902702078d` 的[完整 CI](https://github.com/isarmg/dufs-ram/actions/runs/34044451492) 通过。
+- 本地 `./scripts/check.sh` 通过：635 项 Rust、82.11% 行覆盖率、Chromium/Firefox 各 122 项、实际 release 硬期限和 SIGABRT 恢复、部署与审计。该次运行期间只有上述声明生成目录调整，运行时源码未变；最终干净提交另行执行的总检查结果登记到 Foundation 消费者记录，避免混淆提交身份。
+- 新增浏览器用例以受控的 PUT 响应证明：切换主题不重建上传行、不重复投递上传。登录由实际 React 表单验收第五行中英文错误、必填约束、会话与注销。
+- 十万目录项首屏基准另行通过，4.087200625 秒；单次测量不作性能提升承诺。
+- `cargo tree --locked -d`、`cargo tree --locked -e features` 已审查：Foundation 只有完整 `466ef3b7e19a5eea07292d5eeda1d014b47e5c59`。重复项来自产品 SHA-2 0.11 与认证/HTTP 依赖的 0.10 算法栈、密码库随机数接口和不同过程宏的 syn 主版本；不通过无关升级强行合并，不存在多版 Foundation、直接 Hyper 认证或 sibling path。
+- Foundation 清单、源码、Schema、Web 合同报告通过；仅保留三项文本扫描误判的窄范围例外，未豁免实际运行时或认证。
