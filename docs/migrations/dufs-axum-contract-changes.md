@@ -28,6 +28,7 @@
 | 健康路径 | `/__dufs__/health`、`/__dufs__/ready` | `/healthz`、`/readyz`；旧路径不注册、不重定向 |
 | 就绪认证 | 要求管理员 | 无认证，只有最小 `{ "ready": boolean }` |
 | 管理认证 | Foundation Hyper Adapter | Foundation Axum Adapter，响应直接通过 |
+| 登录文档 | 服务端静态表单 | React 挂载点与同源模块；表单、必填约束和第五行错误提示由真实浏览器验收 |
 | 请求 ID | 产品未统一 | Foundation 验证一次、生成一次、关联日志及响应 |
 | GET/HEAD | 产品显式处理 | 登录、列表、操作查询仍 GET-only；文件 HEAD 保留上传查询分支 |
 | 方法错误 | 产品处理；资源目录写入返回 404 | 显式方法拒绝，受保护接口先认证；公开静态资源只注册 GET/HEAD，其他方法 405 + Allow，无文件副作用 |

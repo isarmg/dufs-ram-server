@@ -15,7 +15,7 @@
       "location",
       "www-authenticate"
     ],
-    "body_contains": "<form",
+    "body_contains": "data-dufs-renderer=\"react\"",
     "response_fields": {},
     "file_changes": {},
     "operation_state": null
