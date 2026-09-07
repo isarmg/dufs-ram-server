@@ -76,7 +76,7 @@ target/release/dufs
 ```
 
 `--locked` 要求 Cargo 严格使用 [Cargo.lock](../../Cargo.lock)，避免一次普通构建意外改变依赖解析结果。
-当前 Foundation 依赖为平台化联调路径，独立发行仍待新的不可变上游版本和锁文件验收。不能把本工作区编译成功视为发行完成，也不能复制认证、Schema 或 target 合同代替共享包。源码构建必须先执行 `npm ci` 和 `npm run build:platform`，生成 Rust 需要嵌入的平台资源。
+当前 Foundation Rust/Web 依赖已固定正式 0.7.1 的完整 revision、Release URL 和锁文件 integrity，无需相邻 Foundation checkout。Dufs 0.51.0 已完成独立构建与发布，见[最终验收记录](https://github.com/isarmg/sarmg-foundation-server/blob/main/consumers/react-filesystem-0.7.1-evidence.md)。后续改动仍须通过发行门禁，不能仅凭本地编译成功宣称已发布，也不能复制认证、Schema 或 target 合同代替共享包。源码构建必须先执行 `npm ci` 和 `npm run build:platform`，生成 Rust 需要嵌入的平台资源。
 
 ## 2.4 准备隔离目录
 
