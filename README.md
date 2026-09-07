@@ -30,7 +30,7 @@ Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责
 - [开发者决策矩阵](docs/feature-decision-matrix.md)：以唯一 ID 和统一列完整覆盖代码锚点、分类、复杂度、删除后果及验证边界；
 - [生产部署、备份、current-only 版本切换与恢复](docs/operations.md)：给出经过语法验证的 systemd/nginx 基线、健康检查、备份恢复演练和制品验证流程；
 
-本 fork 托管在 `https://github.com/isarmg/dufs-ram`。只读 GitHub Actions 门禁不会创建或修改远端 tag、Release 或正式制品；版本 tag 工作流只在 tag、Cargo 版本和源码提交完全一致且全部质量门通过后构建便捷二进制，并生成只绑定当前版本和源码提交的发布说明。需要独立公钥验证、SBOM、许可证清单和构建环境记录的正式制品仍由 `scripts/package-release.sh` 从当前提交生成。
+本 fork 托管在 `https://github.com/isarmg/dufs-ram-server`，Server 与内置 React Web 同属本仓库，不创建空 Client 仓库。只读 GitHub Actions 门禁不会创建或修改远端 tag、Release 或正式制品；版本 tag 工作流只在 tag、Cargo 版本和源码提交完全一致且全部质量门通过后构建便捷二进制，并生成只绑定当前版本和源码提交的发布说明。需要独立公钥验证、SBOM、许可证清单和构建环境记录的正式制品仍由 `scripts/package-release.sh` 从当前提交生成。
 
 发布包完整保留仓库的 `docs/` 层次，并携带教程本地链接所引用的 `clients/web/`、`src/`、`tests/`、`scripts/`、部署样例和构建配置；这些支持材料用于离线阅读与核对，不是运行 Dufs 的额外依赖。打包和 `--self-test` 会先用包内文档检查器验证所有本地链接，再把除 `SHA256SUMS` 自身外的全部普通文件写入清单；此后只做只读覆盖校验，使 checksum 成为包内最后一次内容变更。
 
