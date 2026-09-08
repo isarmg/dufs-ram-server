@@ -3,8 +3,8 @@ product_id = "dufs-ram"
 
 [foundation]
 platform_generation = 1
-version = "0.7.1"
-git_rev = "466ef3b7e19a5eea07292d5eeda1d014b47e5c59"
+version = "0.7.2"
+git_rev = "8beed96c7145e071ff5cff36dd9e1418d7ac4228"
 
 [[components]]
 id = "server"

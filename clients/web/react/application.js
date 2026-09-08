@@ -2,7 +2,7 @@ import { createElement as h, Fragment, useEffect, useRef, useState } from "react
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Button, IconButton, TextField, Table } from "@sarmg/admin-ui";
-import { WorkspaceIcon, resolveWorkspaceConfig } from "@sarmg/admin-shell";
+import { AccountSettings, WorkspaceIcon, resolveWorkspaceConfig } from "@sarmg/admin-shell";
 import { t, initializeLanguage, languageLabel, switchLanguage, validationMessage } from "@sarmg/admin-ui/i18n";
 import { isAdministratorLoginRequest } from "@sarmg/contracts";
 import { isAdministratorPassword } from "@sarmg/admin-web";
@@ -28,9 +28,10 @@ function mount(container, page) {
   flushSync(() => root.render(page));
 }
 
-/** @param {HTMLElement} container */
-export function mountFileWorkspace(container) {
-  mount(container, h(FileWorkspace));
+/** @param {HTMLElement} container
+ * @param {import("@sarmg/admin-web").AdministratorApiClient} client */
+export function mountFileWorkspace(container, client) {
+  mount(container, h(FileWorkspace, { client }));
 }
 
 /** @param {HTMLElement} container
@@ -60,7 +61,15 @@ function ThemeToggle() {
     h(WorkspaceIcon, { name: dark ? "sun" : "moon" }));
 }
 
-function Header() {
+/** @param {{client: import("@sarmg/admin-web").AdministratorApiClient}} props */
+function AccountEntry({ client }) {
+  const [session, setSession] = useState(() => client.currentSession());
+  useEffect(() => client.subscribe(setSession), [client]);
+  return session ? h(AccountSettings, { client, username: session.username, onUpdated: () => { window.location.href = "/__dufs__/login"; } }) : null;
+}
+
+/** @param {{client: import("@sarmg/admin-web").AdministratorApiClient}} props */
+function Header({ client }) {
   return h("header", { className: "head sarmg-page-header" },
     h("div", { className: "sarmg-header-navigation-slot" }, h("div", { className: "sarmg-header-brand-navigation" },
       h("strong", { className: "sarmg-product-identity" }, "Dufs"),
@@ -71,7 +80,7 @@ function Header() {
       h(IconButton, { "aria-label": t("重新载入页面", "Reload page"), title: t("重新载入页面", "Reload page"), onClick: () => window.location.reload() }, h(WorkspaceIcon, { name: "refresh" })),
       h(LanguageToggle), h(ThemeToggle),
       h(IconButton, { className: "logout-btn hidden", "aria-label": t("退出", "Sign out"), title: t("退出", "Sign out") },
-        h(WorkspaceIcon, { name: "logout" }), h("span", { className: "user-name", hidden: true }))));
+        h(WorkspaceIcon, { name: "logout" }), h("span", { className: "user-name", hidden: true })), h(AccountEntry, { client })));
 }
 
 /** @param {{ name: "upload" | "folder" | "file" | "search" }} props */
@@ -129,10 +138,11 @@ function ActionDialog() {
         h(Button, { className: "action-dialog-confirm", type: "submit", value: "confirm" }, t("确认", "Confirm")))));
 }
 
-function FileWorkspace() {
+/** @param {{client: import("@sarmg/admin-web").AdministratorApiClient}} props */
+function FileWorkspace({ client }) {
   return h(Fragment, null,
     h("a", { className: "sarmg-skip-link", href: "#file-content" }, t("跳转到文件内容", "Skip to files")),
-    h(Header),
+    h(Header, { client }),
     h("main", { className: "main sarmg-shell-main", id: "file-content", tabIndex: -1 }, h(FileControls), h(FileContent)),
     h(ActionDialog));
 }

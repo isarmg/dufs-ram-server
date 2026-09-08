@@ -50,7 +50,7 @@ export function start() {
 async function initialize() {
   const container = document.getElementById("dufs-root");
   if (!container) throw new Error("Dufs application root is missing");
-  mountFileWorkspace(container);
+  mountFileWorkspace(container, administratorApi);
   const indexData = /** @type {HTMLTemplateElement | null} */ (
     document.getElementById("index-data")
   );

@@ -131,7 +131,8 @@ async fn authenticate(
                 *log.0.lock().expect("auth log lock") = Some(identity.username.clone());
             }
             request.extensions_mut().insert(FilePrincipal {
-                username: identity.username,
+                // Account renames must not orphan uploads or transfer ownership.
+                username: identity.administrator_id.to_string(),
             });
             next.run(request).await
         }

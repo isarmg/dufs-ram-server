@@ -6,7 +6,8 @@ use sarmg_admin_static::StaticAdministratorStore;
 use serde::{Deserialize, Deserializer};
 use std::{collections::HashMap, fmt, sync::Arc};
 
-/// File operations retain the configured username as their business owner key.
+/// File operations retain the immutable administrator ID as their business owner key.
+/// The field name is retained for compatibility with existing durable upload records.
 #[derive(Clone, Debug)]
 pub struct FilePrincipal {
     pub username: String,
@@ -25,7 +26,7 @@ pub struct AuthConfig {
 impl AuthConfig {
     pub fn new(raw_accounts: &[&str]) -> Result<Self> {
         if raw_accounts.len() > sarmg_admin_core::STATIC_ADMINISTRATORS_MAX {
-            bail!("Static account capacity exceeds the Foundation profile");
+            bail!("This system allows only one administrator");
         }
         let mut users = HashMap::new();
 
@@ -83,8 +84,23 @@ impl<'de> Deserialize<'de> for AuthConfig {
 }
 
 impl AuthConfig {
+    #[cfg(test)]
     pub(crate) fn administrator_service(
         &self,
+    ) -> Result<Arc<AdministratorService<StaticAdministratorStore>>> {
+        self.service(None)
+    }
+
+    pub(crate) fn administrator_service_with_directory(
+        &self,
+        directory: sarmg_fs_safety::PrivateDirectory,
+    ) -> Result<Arc<AdministratorService<StaticAdministratorStore>>> {
+        self.service(Some(directory))
+    }
+
+    fn service(
+        &self,
+        directory: Option<sarmg_fs_safety::PrivateDirectory>,
     ) -> Result<Arc<AdministratorService<StaticAdministratorStore>>> {
         let records = self
             .users
@@ -102,9 +118,12 @@ impl AuthConfig {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(Arc::new(AdministratorService::new(
-            StaticAdministratorStore::new(records)?,
-        )))
+        Ok(Arc::new(AdministratorService::new(match directory {
+            Some(directory) => {
+                StaticAdministratorStore::with_persistent_accounts(records, directory)?
+            }
+            None => StaticAdministratorStore::new(records)?,
+        })))
     }
 }
 

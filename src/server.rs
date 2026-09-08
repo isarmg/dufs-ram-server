@@ -387,7 +387,15 @@ impl Server {
     ) -> Result<Self> {
         let args = ValidatedConfig::try_from(args)?;
         Self::check_reserved_path_conflicts(&args.serve_path)?;
-        let administrator = args.auth.administrator_service()?;
+        let account_root = sarmg_fs_safety::PrivateDirectory::open_existing(
+            args.state_database_path()
+                .parent()
+                .context("State database has no parent directory")?,
+        )?
+        .create_child(&sarmg_fs_safety::EntryName::new("administrator")?)?;
+        let administrator = args
+            .auth
+            .administrator_service_with_directory(account_root)?;
         let administrator_origin = if args.development {
             sarmg_admin_auth::AdministratorOriginMode::LoopbackDevelopmentHttp
         } else {

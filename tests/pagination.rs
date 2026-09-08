@@ -1,7 +1,7 @@
 #[path = "support/fixtures.rs"]
 mod fixtures;
 
-use fixtures::{ADMIN_ACCOUNT, Error, TEST_PASSWORD, TestServer, USER_ACCOUNT, server};
+use fixtures::{Error, TEST_PASSWORD, TestServer, USER_ACCOUNT, server};
 use rstest::rstest;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -139,11 +139,11 @@ fn cursor_is_bound_to_the_page_size(server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn cursor_is_bound_to_the_authenticated_account(
-    #[with(&[] as &[&str], &[USER_ACCOUNT, ADMIN_ACCOUNT])] server: TestServer,
+fn cursor_remains_bound_to_immutable_identity_after_account_rename(
+    #[with(&[] as &[&str], &[USER_ACCOUNT])] server: TestServer,
 ) -> Result<(), Error> {
     let user = server.login("user", TEST_PASSWORD)?;
-    let admin = server.login("admin", TEST_PASSWORD)?;
+
     let mut first_url = server.url().join("__dufs__/api/list")?;
     first_url
         .query_pairs_mut()
@@ -160,14 +160,22 @@ fn cursor_is_bound_to_the_authenticated_account(
         .append_pair("path", "/")
         .append_pair("limit", "1")
         .append_pair("cursor", cursor);
-    let replay = server.get_with(&admin, replay_url)?;
-    assert_problem(
-        replay,
-        400,
-        "invalid_list_cursor",
-        "Invalid list cursor",
-        None,
-    )?;
+    let changed = server
+        .request_with(
+            &user,
+            reqwest::Method::POST,
+            server.url().join("api/v2/platform/administrators/self")?,
+        )
+        .header("Content-Type", "application/json")
+        .body(
+            serde_json::json!({"username":"renamed", "current_password": TEST_PASSWORD})
+                .to_string(),
+        )
+        .send()?;
+    assert_eq!(changed.status(), reqwest::StatusCode::NO_CONTENT);
+    let renamed = server.login("renamed", TEST_PASSWORD)?;
+    let replay = server.get_with(&renamed, replay_url)?;
+    assert_eq!(replay.status(), reqwest::StatusCode::OK);
     Ok(())
 }
 

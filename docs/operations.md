@@ -17,7 +17,7 @@
 
 源码目录遵循项目组统一约定：运行配置模板只在 `config/dufs.yaml.example`，systemd/nginx/proxy 部署资产只在 `deploy/`，浏览器代码只在 `clients/web/`。生产路径 `/etc/dufs/dufs.yaml` 以及 `/etc/dufs/tls/` 是刻意保留的 Dufs 例外：本服务使用需要严格文件权限的 YAML 和独立 HTTPS 网关证书，而不是其他 Server 的扁平 `/etc/isarmg/<product>.env`。不得因此在源码根或 `src/` 再复制第二份配置、unit 或证书模板。
 
-0.51.0 只允许全新、完整的当前实例状态。sarmg-upgrade 暂不支持该版本；不能将旧共享树和空状态库任意拼接，不能修改 metadata 或假设旧二进制能打开新状态。
+0.51.1 只允许全新、完整的当前实例状态。sarmg-upgrade 暂不支持该版本；不能将旧共享树和空状态库任意拼接，不能修改 metadata 或假设旧二进制能打开新状态。
 
 ## 1. 首次部署
 
@@ -163,7 +163,7 @@ systemctl start dufs
 
 本节只说明停服后如何验证并原子替换“唯一当前合同”的制品，不表示 Dufs 支持从任意旧版本就地升级。运行服务不解析旧配置、不读取旧 wire/schema、不执行迁移，也不提供双读、fallback 或兼容 alias。未来稳定版本若当前数据需要转换，必须先由 `sarmg-upgrade` 仓库以独立 adapter、fixture、CLI 和 release 原子加入明确且经验证的转换边；没有该转换边时，只能为新版本初始化当前格式并按经批准的数据恢复方案导入结果。
 
-Foundation 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 0.7.1 / `466ef3b7e19a5eea07292d5eeda1d014b47e5c59`，八个 Web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Dufs 0.51.0 的独立源码树构建、正式签名包 E2E、公开二进制发布及独立下载核验均已通过，见[最终证据](https://github.com/isarmg/sarmg-foundation-server/blob/main/consumers/react-filesystem-0.7.1-evidence.md)。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
+Foundation 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 0.7.1 / `466ef3b7e19a5eea07292d5eeda1d014b47e5c59`，八个 Web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Dufs 0.51.1 的独立源码树构建、正式签名包 E2E、公开二进制发布及独立下载核验均已通过，见[最终证据](https://github.com/isarmg/sarmg-foundation-server/blob/main/consumers/react-filesystem-0.7.1-evidence.md)。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
 
 仓库的 `.github/workflows/read-only-ci.yml` 只提供远程回归反馈：权限为 `contents: read`，checkout 不保留凭据，静态、Rust、质量和 Chromium/Firefox 层不会创建 tag/release 或签名，也不会上传制品。质量层分别运行覆盖率、部署行为、发布脚本自测和 release binary smoke；各步骤只在自己的前置条件成功时运行，一项实质检查失败不会跳过其余独立检查。唯一当前 Node 26.7.0 由 `.node-version`、manifest/lockfile 和工作流共同声明；`scripts/check.sh` 与正式打包入口还会在任何审计、构建或依赖代码前精确比对实际运行时，因此 npm 的 `EBADENGINE` warning 不能形成绿色结论。Rust 1.98.0、ShellCheck 0.11.0、锁定的 npm 工具和 Action commit SHA 也在工作流中固定；静态、Rust 与浏览器 job 使用 `ubuntu-24.04`，含 nginx 1.25.1+ 部署门的质量 job 使用 x64 `ubuntu-26.04`，两种托管镜像的实际版本及宿主工具均写入日志。GitHub 当前把 26.04 标为 preview；若该 runner 不可调度或镜像回归，质量门必须保持失败，不能退回 nginx 1.24 旧语法完成合并。合并前应查看全部矩阵结果，但它不包含正式签名边界，也不替代目标 exact tag 上的完整本地门和下述发布流程。
 

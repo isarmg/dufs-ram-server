@@ -2,8 +2,9 @@ export { createAdministratorApiClient, isAdministratorPassword } from "@sarmg/ad
 export { isAdministratorSession, isAdministratorLoginRequest, isErrorEnvelope } from "@sarmg/contracts";
 export { ApiClientError } from "@sarmg/http-client";
 import { mountFileWorkspace as renderFiles, mountLoginPage as renderLogin } from "./react/application.js";
-/** @param {HTMLElement} container */
-export function mountFileWorkspace(container) { renderFiles(container); }
+/** @param {HTMLElement} container
+ * @param {import("@sarmg/admin-web").AdministratorApiClient} client */
+export function mountFileWorkspace(container, client) { renderFiles(container, client); }
 /** @param {HTMLElement} container
  * @param {(username: string, password: string) => Promise<void>} login
  * @param {(error: unknown) => string} errorMessage */

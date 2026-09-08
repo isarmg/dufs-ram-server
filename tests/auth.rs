@@ -2,8 +2,8 @@
 mod fixtures;
 
 use fixtures::{
-    ADMIN_ACCOUNT, Error, TEST_ACCOUNT, TEST_PASSWORD, TestServer, TestSession, USER_ACCOUNT,
-    dufs_command, preflight_upload_target_with, server, tmpdir, with_new_upload_headers,
+    Error, TEST_ACCOUNT, TEST_PASSWORD, TestServer, TestSession, USER_ACCOUNT, dufs_command,
+    preflight_upload_target_with, server, tmpdir, with_new_upload_headers,
     with_new_upload_overwrite_headers, with_resume_upload_headers, with_upload_headers,
 };
 use reqwest::blocking::{Client, RequestBuilder, Response};
@@ -571,10 +571,10 @@ fn invalid_password_hash_is_rejected_at_startup(
 }
 
 #[rstest]
-fn accounts_have_independent_sessions_and_full_filesystem_access(
-    #[with(&[] as &[&str], &[ADMIN_ACCOUNT, USER_ACCOUNT])] server: TestServer,
+fn one_administrator_has_independent_sessions_and_full_filesystem_access(
+    #[with(&[] as &[&str], &[USER_ACCOUNT])] server: TestServer,
 ) -> Result<(), Error> {
-    let admin = server.login("admin", TEST_PASSWORD)?;
+    let admin = server.login("user", TEST_PASSWORD)?;
     let user = server.login("user", TEST_PASSWORD)?;
     assert_ne!(admin.cookie(), user.cookie());
     assert_ne!(admin.csrf_token(), user.csrf_token());
@@ -827,4 +827,12 @@ fn authorization_header_does_not_replace_browser_session_authentication(
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert!(!response.headers().contains_key("www-authenticate"));
     Ok(())
+}
+
+#[test]
+fn rejects_a_second_configured_administrator() {
+    let (mut command, _auth_config) = dufs_command(&[fixtures::ADMIN_ACCOUNT, USER_ACCOUNT]);
+    let output = command.output().unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("only one administrator"));
 }

@@ -1334,7 +1334,7 @@ fn initialize_schema(connection: &mut Connection, root: RootIdentity) -> Result<
          ) VALUES (1, ?1, ?2, ?3, ?4)",
         params![
             APPLICATION,
-            env!("CARGO_PKG_VERSION"),
+            "0.51.0",
             CURRENT_SCHEMA_REVISION,
             expected_fingerprint
         ],
@@ -1408,7 +1408,7 @@ fn foundation_schema_rows(connection: &Connection) -> Result<Vec<SchemaRow>> {
 pub(in crate::server) fn expected_schema_identity() -> Result<SchemaIdentity> {
     SchemaIdentity::new(
         APPLICATION,
-        env!("CARGO_PKG_VERSION"),
+        "0.51.0",
         u64::try_from(CURRENT_SCHEMA_REVISION)
             .context("Current schema revision cannot be represented as u64")?,
         expected_schema_fingerprint()?,

@@ -19,10 +19,10 @@ for (const [name, version] of Object.entries({ "@types/react": "19.2.18", "@type
 }
 for (const name of ["admin-web", "admin-shell", "admin-ui", "contracts", "http-client", "design-tokens", "web-fonts", "web-toolchain"]) {
   const packageName = `@sarmg/${name}`;
-  const url = `https://github.com/isarmg/sarmg-foundation-server/releases/download/v0.7.1/sarmg-${name}-0.7.1.tgz`;
+  const url = `https://github.com/isarmg/sarmg-foundation-server/releases/download/v0.7.2/sarmg-${name}-0.7.2.tgz`;
   assert.equal(manifest.dependencies[packageName], url);
   const installed = JSON.parse(read(`node_modules/${packageName}/package.json`));
-  assert.equal(installed.version, "0.7.1");
+  assert.equal(installed.version, "0.7.2");
   assert.equal(lock.packages[`node_modules/${packageName}`].resolved, url);
   assert.match(lock.packages[`node_modules/${packageName}`].integrity, /^sha512-/u);
 }
@@ -37,4 +37,4 @@ for (const page of ["index.html", "login.html"]) {
   assert.match(read(`clients/web/${page}`).toString(), /data-sarmg-appearance="content-blocks"/u);
 }
 assert.match(read("sarmg-product.toml").toString(), /web_profile = "web-react-admin"/u);
-console.log("Foundation 0.7.1 immutable React Web, shared appearance and font integrity verified");
+console.log("Foundation 0.7.2 immutable React Web, shared appearance and font integrity verified");

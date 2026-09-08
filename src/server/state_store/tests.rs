@@ -1828,7 +1828,7 @@ fn raw_main_validation_rejects_a_valid_current_wal_shadow_without_modification()
          ) VALUES (1, ?1, ?2, ?3, ?4)",
         params![
             APPLICATION,
-            env!("CARGO_PKG_VERSION"),
+            "0.51.0",
             CURRENT_SCHEMA_REVISION,
             database::expected_schema_fingerprint()?
         ],
@@ -2040,7 +2040,7 @@ async fn initializes_a_preexisting_empty_database_after_read_only_preflight() ->
     let store = StateStore::open(&path, &root(107, 109), CAPACITY, PER_OWNER, TTL)?;
     let pragmas = store.inspect_pragmas().await?;
     assert_eq!(pragmas.application, APPLICATION);
-    assert_eq!(pragmas.application_version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(pragmas.application_version, "0.51.0");
     assert_eq!(pragmas.schema_revision, CURRENT_SCHEMA_REVISION);
     assert_eq!(
         pragmas.schema_sha256,
@@ -2122,7 +2122,7 @@ async fn disk_database_has_expected_identity_permissions_and_pragmas() -> Result
     assert_eq!(pragmas.trusted_schema, 0);
     assert_eq!(pragmas.mmap_size, 0);
     assert_eq!(pragmas.application, APPLICATION);
-    assert_eq!(pragmas.application_version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(pragmas.application_version, "0.51.0");
     assert_eq!(pragmas.schema_revision, CURRENT_SCHEMA_REVISION);
     assert_eq!(
         pragmas.schema_sha256,
