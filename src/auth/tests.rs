@@ -16,11 +16,7 @@ fn configuration_is_strict_and_does_not_disclose_password_hashes() {
         assert!(AuthConfig::new(&[account]).is_err());
     }
     assert!(
-        AuthConfig::new(&vec![
-            &*account;
-            sarmg_admin_core::STATIC_ADMINISTRATORS_MAX + 1
-        ])
-        .is_err()
+        AuthConfig::new(&[&*account; sarmg_admin_core::STATIC_ADMINISTRATORS_MAX + 1]).is_err()
     );
 }
 
