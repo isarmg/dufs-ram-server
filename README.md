@@ -39,7 +39,7 @@ Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责
 - 唯一可编译、测试、部署和正式发布的服务端 target 是 `x86_64-unknown-linux-gnu`；`build.rs` 同时检查 `arch=x86_64`、`os=linux`、`env=gnu` 和 64 位指针，其他 target 在编译期直接失败；
 - 运行内核必须提供 `openat2`；不支持时程序会拒绝启动，二进制还必须匹配 CPU、libc 和动态加载器 ABI；
 - Rust、rustc 和 Cargo 1.98.0，源码使用 Rust 2024 edition；
-- Foundation 认证使用 Core/Static/Axum/Auth 与当前合同；Rust 固定正式 0.7.3 和完整 revision `45006e4b981666529f4e5003bbf6a76cb60578ff`，Web 固定同版 Release tarball 与锁文件 integrity，不依赖相邻工作区。Dufs 0.51.2 已按当前 Foundation 供应链重新验收；禁止复制平台实现或使用可变分支作为发布来源；
+- Foundation 认证使用 Core/Static/Axum/Auth 与当前合同；Rust 固定正式 0.7.5 和完整 revision `80c49f2f811d8d47dbbcdb6c9521924de7d3184e`，Web 固定同版 Release tarball 与锁文件 integrity，不依赖相邻工作区。Dufs 0.51.3 已按当前 Foundation 供应链重新验收；禁止复制平台实现或使用可变分支作为发布来源；
 - 建议使用 rustup；`rust-toolchain.toml` 已固定工具链并包含 Clippy、Rustfmt；
 - `.node-version` 是当前 Node 的仓库级版本基准，内容精确为 `26.7.0`，并且必须与脚本常量、manifest/lockfile engine 和工作流声明交叉一致；`scripts/check.sh` 和 `scripts/package-release.sh` 均在任何审计、构建或依赖代码前比对完整 `node --version` 输出并拒绝其他版本。Node 只用于前端/文档门禁和发布 SBOM 规范化，不是生产运行依赖；
 - 本地开发门在安装 ShellCheck 时执行 `--severity=warning`，缺失时明确跳过而不会联网安装；远程 CI 按 SHA-256 固定并强制使用 ShellCheck 0.11.0，正式发布也要求 ShellCheck 可用；
@@ -201,7 +201,7 @@ Dufs 不提供用户自定义隐藏规则。目录列表和递归搜索会处理
 
 文件型状态库启动恢复会删除 operation 中尚未进入文件系统提交边界的 `Reserved`，把 operation `CommitStarted` 转换为 `Completed/unknown`，把 upload `CommitStarted` 转换为 `Unknown` 并从恢复时刻重新给予完整的 upload session TTL，并把 purge `Claimed` 重置为可立即重试的 `Ready`。operation 终态 TTL 为 15 分钟；upload session TTL 为 7 天，容量为全局 16384、每账号 4096；purge job 没有固定失败次数或 TTL 逃生口，容量为全局 4096、每账号 1024。普通 I/O 故障保留 job 并退避；缺少已提交 revision、身份歧义或最终删除异常则 quarantine 当前对象并释放 job。SQLite 使用 rollback journal `DELETE` 模式和 `synchronous=EXTRA`。SQLite 事务与文件系统 mkdir、rename、文件/目录 `fsync` 不是一个共同事务：operation/upload 在跨域缝隙中恢复为 `unknown`；purge 只有 live DELETE 在 rename 与父目录同步后原子写入的完整 trash revision 才授权后续回收，`Prepared` 恢复从不以数据库意图猜测文件系统结果。
 
-公开的 `GET/HEAD /healthz` 正常返回 204，仅证明 HTTP liveness。`GET/HEAD /readyz` 无需认证，只返回 `{"ready":true}` 或 503 的 `{"ready":false}`。Foundation 在启动及每 5 秒刷新真实根写入/同步/删除、SQLite 回滚写事务和空间探针，端点读取最近一次受时限保护的结果；这不是对全部业务准入的实时保证。旧健康路径删除，不保留别名。
+公开的 `GET/HEAD /healthz` 正常返回 204，仅证明 HTTP liveness。`GET/HEAD /readyz` 无需认证，只返回 `{"ready":true}` 或 503 的 `{"ready":false}`。Foundation 在启动及每 5 秒刷新共享根私有探针的写入/同步/读回、SQLite 回滚写事务和空间探针；固定探针在开始监听前创建并隐藏，周期检查不会改变共享根目录时间戳。端点读取最近一次受时限保护的结果；这不是对全部业务准入的实时保证。旧健康路径删除，不保留别名。
 
 客户端统一通过 `GET /__dufs__/api/jobs/<UUID>` 查询当前账号的 mutation job；响应使用 `job_id` 字段和 `running/succeeded/failed/unknown` 状态。
 

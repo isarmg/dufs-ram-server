@@ -198,13 +198,26 @@ fn control_plane_paths_round_trip_only_normal_relative_components() {
 }
 
 #[tokio::test]
-async fn writable_probe_exercises_the_root_without_leaving_an_entry() {
+async fn writable_probe_keeps_the_root_directory_snapshot_stable() {
     let temp = assert_fs::TempDir::new().unwrap();
     let rooted = RootedFs::new(temp.path()).unwrap();
+    let before = std::fs::metadata(temp.path()).unwrap();
 
     rooted.probe_writable().await.unwrap();
+    rooted.probe_writable().await.unwrap();
 
-    assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+    let after = std::fs::metadata(temp.path()).unwrap();
+    assert_eq!(before.mtime(), after.mtime());
+    assert_eq!(before.mtime_nsec(), after.mtime_nsec());
+    assert_eq!(before.ctime(), after.ctime());
+    assert_eq!(before.ctime_nsec(), after.ctime_nsec());
+    let entries = std::fs::read_dir(temp.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(entries, [OsString::from(READINESS_PROBE_ANCHOR)]);
+    let probe = std::fs::metadata(temp.path().join(READINESS_PROBE_ANCHOR)).unwrap();
+    assert_eq!(probe.permissions().mode() & 0o7777, 0o600);
 }
 
 #[tokio::test]
@@ -725,7 +738,9 @@ fn directory_cursor_resumes_without_revisiting_completed_entries() {
                     true
                 },
                 |entry| {
-                    visited.push(entry.file_name);
+                    if entry.file_name != READINESS_PROBE_ANCHOR {
+                        visited.push(entry.file_name);
+                    }
                     Ok(true)
                 },
             )
@@ -844,7 +859,10 @@ fn directory_cursor_advances_across_consecutive_root_escaping_symlinks() {
                     examined += 1;
                     true
                 },
-                |_| panic!("root-escaping links must remain invisible"),
+                |entry| {
+                    assert_eq!(entry.file_name, READINESS_PROBE_ANCHOR);
+                    Ok(true)
+                },
             )
             .unwrap();
         match progress {
@@ -921,7 +939,9 @@ async fn directory_discovery_remains_anchored_after_root_path_replacement() {
             &root,
             |_| true,
             |entry| {
-                entries.push(entry);
+                if entry.file_name != READINESS_PROBE_ANCHOR {
+                    entries.push(entry);
+                }
                 Ok(true)
             },
         )

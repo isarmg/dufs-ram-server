@@ -175,7 +175,13 @@ fn cursor_remains_bound_to_immutable_identity_after_account_rename(
     assert_eq!(changed.status(), reqwest::StatusCode::NO_CONTENT);
     let renamed = server.login("renamed", TEST_PASSWORD)?;
     let replay = server.get_with(&renamed, replay_url)?;
-    assert_eq!(replay.status(), reqwest::StatusCode::OK);
+    let replay_status = replay.status();
+    let replay_body = replay.text()?;
+    assert_eq!(
+        replay_status,
+        reqwest::StatusCode::OK,
+        "renamed-account cursor response: {replay_body}"
+    );
     Ok(())
 }
 

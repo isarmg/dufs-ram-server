@@ -12,6 +12,7 @@ test("React Profile 的实际嵌入字体、许可证和恢复会话来自 Found
   }, new URL("platform.js", prefix).href);
   const provenance = require("../../node_modules/@sarmg/web-fonts/dist/provenance.json");
   const fontCss = readFileSync(require("node:path").join(__dirname, "../../node_modules/@sarmg/web-fonts/dist/fonts.css"), "utf8");
+  expect(fontCss).toContain('font-family:"Sarmg Maple Bootstrap"');
   for (const source of Object.keys(provenance.assets).filter(name => (name.endsWith(".woff2") && fontCss.includes(`./${name}`)) || name.endsWith(".txt"))) {
     const name = source.split("/").at(-1);
     // Vite may coalesce identical license bytes into a single emitted asset.
@@ -28,6 +29,7 @@ test("React Profile 的实际嵌入字体、许可证和恢复会话来自 Found
   await page.evaluate(() => document.fonts.ready);
   expect(await page.evaluate(() => document.fonts.check('16px "Sarmg Maple"'))).toBe(true);
   expect(await page.locator("body").evaluate(element => getComputedStyle(element).fontFamily)).toContain("Sarmg Maple");
+  expect(await page.locator("#dufs-root").evaluate(root => root.classList.contains("sarmg-font-bootstrap"))).toBe(false);
   const css = await page.context().request.get(new URL("platform.css", prefix).href);
   const cssText = await css.text();
   expect(cssText).not.toContain("data:image");

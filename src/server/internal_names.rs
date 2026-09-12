@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub(super) const UPLOAD_TEMP_PREFIX: &str = ".dufs-upload-";
 pub(super) const UPLOAD_TEMP_SUFFIX: &str = ".part";
 pub(super) const UPLOAD_STAGE_DIRECTORY: &str = ".dufs-upload-stages";
+pub(super) const READINESS_PROBE_ANCHOR: &str = ".dufs-readiness.probe";
 const READINESS_PREFIX: &str = ".dufs-readiness-";
 const READINESS_SUFFIX: &str = ".probe";
 pub(super) const DELETE_TRASH_PREFIX: &str = ".dufs-upload-delete-";
@@ -18,6 +19,7 @@ fn upload_stage_name(target_tag: &str, upload_id: Uuid) -> String {
     format!("{UPLOAD_TEMP_PREFIX}{target_tag}-{upload_id}{UPLOAD_TEMP_SUFFIX}")
 }
 
+#[cfg(test)]
 pub(in crate::server) fn upload_readiness_probe_name(upload_id: Uuid) -> String {
     format!("{READINESS_PREFIX}{upload_id}{READINESS_SUFFIX}")
 }
@@ -72,6 +74,9 @@ pub(in crate::server) fn is_internal_name(file_name: &str) -> bool {
 pub(super) fn classify_internal_name(file_name: &str) -> Option<InternalEntryName> {
     if file_name == UPLOAD_STAGE_DIRECTORY {
         return Some(InternalEntryName::StageDirectory);
+    }
+    if file_name == READINESS_PROBE_ANCHOR {
+        return Some(InternalEntryName::Readiness);
     }
     if is_quarantine_name(file_name) {
         return Some(InternalEntryName::Quarantine);
@@ -163,6 +168,10 @@ mod tests {
         let readiness = upload_readiness_probe_name(upload_id);
         assert_eq!(
             classify_internal_name(&readiness),
+            Some(InternalEntryName::Readiness)
+        );
+        assert_eq!(
+            classify_internal_name(READINESS_PROBE_ANCHOR),
             Some(InternalEntryName::Readiness)
         );
 

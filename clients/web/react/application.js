@@ -1,7 +1,7 @@
 import { createElement as h, Fragment, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { Button, IconButton, TextField, Table } from "@sarmg/admin-ui";
+import { Button, IconButton, PageHeader, TextField, Table } from "@sarmg/admin-ui";
 import { AccountSettings, WorkspaceIcon, resolveWorkspaceConfig } from "@sarmg/admin-shell";
 import { t, initializeLanguage, languageLabel, switchLanguage, validationMessage } from "@sarmg/admin-ui/i18n";
 import { isAdministratorLoginRequest } from "@sarmg/contracts";
@@ -28,17 +28,30 @@ function mount(container, page) {
   document.documentElement.style.setProperty("--sarmg-header-icon-size", workspace.headerIconSize);
   const root = createRoot(container);
   flushSync(() => root.render(page));
-  const fontReady = !document.fonts
-    ? Promise.resolve()
-    : Promise.allSettled([
-      document.fonts.load('400 16px "Sarmg Maple"', "文件管理器管理员登录 Upload Search"),
-      document.fonts.load('700 16px "Sarmg Maple"', "Dufs 文件管理器管理员登录 Upload Search"),
-      document.fonts.ready,
-    ]);
-  const fallback = new Promise(resolve => window.setTimeout(resolve, 4000));
-  void Promise.race([fontReady, fallback]).then(() => {
+  let waiting = true;
+  /** @param {boolean} useFallback */
+  const finish = useFallback => {
+    if (!waiting) return;
+    waiting = false;
+    if (useFallback) document.documentElement.style.setProperty("--sarmg-font-ui", "ui-monospace,monospace");
     container.classList.remove("sarmg-font-bootstrap");
     container.removeAttribute("aria-busy");
+  };
+  const timeout = window.setTimeout(() => finish(true), 1200);
+  if (!document.fonts) {
+    window.clearTimeout(timeout);
+    finish(false);
+    return;
+  }
+  void Promise.all([
+    document.fonts.load('400 16px "Sarmg Maple Bootstrap"', "文件管理器管理员登录 Upload Search"),
+    document.fonts.load('700 16px "Sarmg Maple Bootstrap"', "Dufs 文件管理器管理员登录 Upload Search"),
+  ]).then(results => {
+    window.clearTimeout(timeout);
+    finish(!results.every(faces => faces.length > 0));
+  }, () => {
+    window.clearTimeout(timeout);
+    finish(true);
   });
 }
 
@@ -84,7 +97,7 @@ function AccountEntry({ client }) {
 
 /** @param {{client: import("@sarmg/admin-web").AdministratorApiClient}} props */
 function Header({ client }) {
-  return h("header", { className: "head sarmg-page-header" },
+  return h(PageHeader, null,
     h("div", { className: "sarmg-header-navigation-slot" }, h("div", { className: "sarmg-header-brand-navigation" },
       h("strong", { className: "sarmg-product-identity" }, "Dufs"),
       h("nav", { className: "sarmg-header-navigation", "aria-label": t("主导航", "Main navigation") },

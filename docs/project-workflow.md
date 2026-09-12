@@ -165,7 +165,7 @@ flowchart TD
     LOGOUT_Q -- 是 --> LOGOUT["撤销会话并清除 Cookie"]
     LOGOUT_Q -- 否 --> POST_API{"POST /__dufs__/api/*？"}
     INTERNAL -- 内置资源 --> ASSET_RES["返回编译期内置内容"]
-    INTERNAL -- readiness --> READY_RES["根 fd 创建/写入/fsync/删除/fsync<br/>SQLite BEGIN IMMEDIATE 写探针后 ROLLBACK<br/>并检查磁盘水位和停机"]
+    INTERNAL -- readiness --> READY_RES["固定私有探针写入/fsync/读回<br/>SQLite BEGIN IMMEDIATE 写探针后 ROLLBACK<br/>并检查磁盘水位和停机"]
     INTERNAL -- job/operation 状态 --> OP_RES["按当前账号查询 UUID"]
     INTERNAL -- list API --> LIST_RES["创建或切分不可变列表快照"]
     INTERNAL -- 否 --> JOIN["共享根目录 + 相对路径"]
@@ -211,7 +211,7 @@ flowchart TD
 
 启动时只接受现有目录作为共享根。以 `__dufs__` 或当前摘要 assets 前缀开头的内部请求只接受唯一规范形式：不允许尾斜杠、重复斜杠、编码后的路径分隔符或对 unreserved 字符的多余百分号编码。原始路径只解析一次，外层 timeout/operation 分类、访问日志和实际 handler 共用同一结果；普通共享文件和目录的合法尾斜杠语义不受此约束。目录中的普通文件通过统一方法分派进入 `GET`/`HEAD` 附件下载，未知 HTTP 方法返回 `405 Method Not Allowed`；各方法受限端点同时返回与实际允许集合一致的 `Allow`，例如 health/ready 为 `GET, HEAD`、operation 状态为 `GET`。普通文件或其他非目录对象不能作为共享根启动服务。
 
-readiness 的根探针使用服务启动时长期持有的目录 fd 创建保留形状的隐藏临时项，写入固定短内容并同步文件；随后无论写入是否成功都会尝试删除，成功路径还同步根目录 fd，避免仅凭 metadata 把只读或失效挂载误报为可写。state-store 探针由现有有界 actor 顺序执行：先核对当前 `product_metadata` 与 schema 指纹，再取得 SQLite immediate transaction、写入 `store_meta` 探针键并显式回滚，不发布业务状态。两类探针与磁盘水位检查并行；任一失败只使本次 readiness 返回 `503`，瞬时探针错误本身不等同于终止 actor。
+readiness 的根探针在服务开始监听前，通过长期持有的目录 fd 创建并验证一个 `0600`、单硬链接、同设备且由服务 euid 所有的隐藏普通文件，再固定持有该文件 fd。周期检查先复核固定 fd 与根目录中的名称仍指向同一 inode，然后在 offset 0 写入固定短内容、同步并读回；因此仍能检测只读或失效挂载，同时不会反复增删根目录项、改变根目录时间戳或误伤列表游标。state-store 探针由现有有界 actor 顺序执行：先核对当前 `product_metadata` 与 schema 指纹，再取得 SQLite immediate transaction、写入 `store_meta` 探针键并显式回滚，不发布业务状态。两类探针与磁盘水位检查并行；任一失败只使本次 readiness 返回 `503`，瞬时探针错误本身不等同于终止 actor。
 
 ## 6. 目录浏览和搜索
 

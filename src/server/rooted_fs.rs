@@ -2,8 +2,8 @@ use super::{
     StatePathScanLease,
     blocking_io::blocking_io_gate,
     internal_names::{
-        InternalEntryName, classify_internal_name, delete_trash_name, is_upload_stage_name,
-        quarantine_name, upload_readiness_probe_name, upload_stage_directory,
+        InternalEntryName, READINESS_PROBE_ANCHOR, classify_internal_name, delete_trash_name,
+        is_upload_stage_name, quarantine_name, upload_stage_directory,
     },
     state_store::StoredFileIdentity,
 };
@@ -15,7 +15,7 @@ use rustix::{
         fchown, fgetxattr, flistxattr, fremovexattr, fsetxattr, fstat, fsync, mkdirat, openat,
         openat2, renameat, renameat_with, statat, unlinkat,
     },
-    io::{Errno, dup},
+    io::{Errno, dup, pread, pwrite},
     process::{Gid, Uid, geteuid},
 };
 pub(super) use sarmg_fs_safety::linux::FileIdentity;
@@ -24,7 +24,6 @@ use sha2::{Digest, Sha256};
 use std::{
     ffi::{CStr, CString, OsStr, OsString},
     fs::File,
-    io::Write,
     os::fd::AsFd,
     os::unix::ffi::{OsStrExt, OsStringExt},
     path::{Component, Path, PathBuf},
@@ -57,6 +56,7 @@ pub(super) struct RootedFs {
 
 struct RootedFsInner {
     root: File,
+    readiness_probe: File,
     _root_lock: AdvisoryLock,
     root_identity: FileIdentity,
     root_path: PathBuf,
@@ -308,12 +308,15 @@ impl RootedFs {
                 root_path.display()
             )
         })?;
+        let readiness_probe = open_readiness_probe_at(&root)
+            .context("Failed to open the private filesystem-readiness probe")?;
         let resolve = ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS;
 
         Ok(Self {
             inner: Arc::new(RootedFsInner {
                 root_identity,
                 root,
+                readiness_probe,
                 _root_lock: root_lock,
                 root_path: root_path.to_path_buf(),
                 resolve,
@@ -450,32 +453,49 @@ impl RootedFs {
         )
     }
 
-    /// Prove that the anchored shared root can create, write, sync, unlink,
-    /// and durably record removal of a new entry. The generated name follows
-    /// the upload-internal grammar, so even a process crash between create and
-    /// unlink cannot expose a readiness artifact through listings.
+    /// Prove that the anchored shared root can write, sync, and read through a
+    /// securely pinned private file. The file is created before the server
+    /// starts listening and remains hidden, so periodic probes do not mutate
+    /// the shared root directory metadata or invalidate listing cursors.
     pub(super) async fn probe_writable(&self) -> std::io::Result<()> {
         let this = self.clone();
         run_blocking(move || {
-            let name = upload_readiness_probe_name(Uuid::new_v4());
-            let fd = openat(
+            let held = fstat(&this.inner.readiness_probe).map_err(std::io::Error::from)?;
+            let named = statat(
                 &this.inner.root,
-                name.as_str(),
-                OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-                Mode::from_raw_mode(0o600),
+                READINESS_PROBE_ANCHOR,
+                AtFlags::SYMLINK_NOFOLLOW,
             )
             .map_err(std::io::Error::from)?;
-            let mut file = File::from(fd);
-            let write_result = (|| {
-                file.write_all(b"dufs-readiness-v1")?;
-                file.sync_data()
-            })();
-            let remove_result = unlinkat(&this.inner.root, name.as_str(), AtFlags::empty())
-                .map_err(std::io::Error::from);
-
-            write_result?;
-            remove_result?;
-            fsync(&this.inner.root).map_err(std::io::Error::from)
+            if named.st_dev != held.st_dev
+                || named.st_ino != held.st_ino
+                || FileType::from_raw_mode(named.st_mode) != FileType::RegularFile
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "filesystem-readiness probe lost its anchored pathname",
+                ));
+            }
+            const PAYLOAD: &[u8] = b"dufs-readiness-v2";
+            let written =
+                pwrite(&this.inner.readiness_probe, PAYLOAD, 0).map_err(std::io::Error::from)?;
+            if written != PAYLOAD.len() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "filesystem-readiness probe was only partially written",
+                ));
+            }
+            fsync(&this.inner.readiness_probe).map_err(std::io::Error::from)?;
+            let mut observed = [0u8; PAYLOAD.len()];
+            let read = pread(&this.inner.readiness_probe, &mut observed, 0)
+                .map_err(std::io::Error::from)?;
+            if read != PAYLOAD.len() || observed != PAYLOAD {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "filesystem-readiness probe could not read back its payload",
+                ));
+            }
+            Ok(())
         })
         .await
     }
@@ -2688,6 +2708,52 @@ fn unresolved_path_error(error: &std::io::Error) -> bool {
             | std::io::ErrorKind::NotADirectory
             | std::io::ErrorKind::PermissionDenied
     )
+}
+
+fn open_readiness_probe_at<F: AsFd>(root: &F) -> std::io::Result<File> {
+    let (fd, created) = match openat(
+        root,
+        READINESS_PROBE_ANCHOR,
+        OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o600),
+    ) {
+        Ok(fd) => (fd, true),
+        Err(Errno::EXIST) => (
+            openat(
+                root,
+                READINESS_PROBE_ANCHOR,
+                OFlags::RDWR | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(std::io::Error::from)?,
+            false,
+        ),
+        Err(error) => return Err(std::io::Error::from(error)),
+    };
+    let opened = fstat(&fd).map_err(std::io::Error::from)?;
+    let root_stat = fstat(root).map_err(std::io::Error::from)?;
+    let named = statat(root, READINESS_PROBE_ANCHOR, AtFlags::SYMLINK_NOFOLLOW)
+        .map_err(std::io::Error::from)?;
+    if FileType::from_raw_mode(opened.st_mode) != FileType::RegularFile
+        || opened.st_nlink != 1
+        || opened.st_uid != geteuid().as_raw()
+        || opened.st_dev != root_stat.st_dev
+        || opened.st_mode & 0o7777 != 0o600
+        || named.st_dev != opened.st_dev
+        || named.st_ino != opened.st_ino
+        || FileType::from_raw_mode(named.st_mode) != FileType::RegularFile
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "filesystem-readiness probe is not a private euid-owned regular file",
+        ));
+    }
+    if created {
+        fsync(&fd)
+            .and_then(|()| fsync(root))
+            .map_err(std::io::Error::from)?;
+    }
+    Ok(File::from(fd))
 }
 
 fn ensure_private_upload_stage_directory_at<F: AsFd>(

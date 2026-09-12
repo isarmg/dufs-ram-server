@@ -177,7 +177,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 
 生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
 
-当前 Foundation Rust/Web 已固定正式 0.7.3 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.2 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
+当前 Foundation Rust/Web 已固定正式 0.7.5 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.3 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
 
 ## 5. 浏览器目录界面
 
@@ -364,7 +364,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | O-11 | 后续信号与非正常退出 | 第二信号提前进入强制取消阶段，第三信号或硬期限返回包含未完成计数的失败；可执行边界非零退出，保留状态所有者到进程退出 | SIGKILL 或 abort 不能保证收尾，必须验证当前状态恢复 | 开发运维 | 低 |
 | O-12 | 有界退出日志刷新 | 可执行边界使用现有异步日志队列，最多等待 5 秒后显式退出，不等待卡住的 Tokio blocking pool | 日志刷新不证明业务提交成功；不能突破自身上限 | 开发运维 | 低 |
 | O-13 | 内置资源日志降噪 | 只有成功返回的版本化资源 `GET` 跳过普通访问日志；资源错误、HEAD、登录、健康检查和其他请求仍记录 | 删除过滤会增加静态资源噪声；扩大过滤会漏掉诊断 | 建议保留 | 低 |
-| O-14 | 公开最小 readiness | `GET/HEAD /readyz` 公开并禁止缓存，只输出 `ready`；Foundation 在启动时及每 5 秒刷新有界探针，通过锚定根 fd 真实创建隐藏文件、写入、同步文件、删除并同步根目录，同时在现有 SQLite actor 连接执行 `BEGIN IMMEDIATE`、写入探针行并 `ROLLBACK`；还检查扣除进程预留后的 `min-free-space` 和停机状态，失败返回 `503 {"ready":false}` | 比 liveness 更适合受控冒烟检查；它证明当前根目录和状态库基本可写，但不执行 rename/介质读回，也不预测目标冲突、purge/上传容量等全部业务准入 | 建议保留 | 低 |
+| O-14 | 公开最小 readiness | `GET/HEAD /readyz` 公开并禁止缓存，只输出 `ready`；启动监听前在锚定根 fd 下固定创建、验证并打开私有隐藏探针，Foundation 启动时及每 5 秒通过固定 fd 写入、同步和读回，不再改变共享根目录时间戳；同时在现有 SQLite actor 连接执行 `BEGIN IMMEDIATE`、写入探针行并 `ROLLBACK`，并检查扣除进程预留后的 `min-free-space` 和停机状态，失败返回 `503 {"ready":false}` | 比 liveness 更适合受控冒烟检查；它证明当前根文件系统和状态库基本可写，又不会使有效列表游标误判目录变化；但不执行 rename，也不预测目标冲突、purge/上传容量等全部业务准入 | 建议保留 | 低 |
 
 ## 13. 内置资源、缓存和部署
 
@@ -392,7 +392,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | ID | 当前特性 | 作用 | 删除后的影响 | 级别 |
 | --- | --- | --- | --- | --- |
 | T-01 | 固定 Rust 工具链 | Rust 1.98.0、edition 2024、Rustfmt、Clippy | 开发机结果可能漂移 | 开发运维 |
-| T-02 | 锁定不可变 Foundation 来源 | 当前固定 Foundation 0.7.3 的完整 Git revision、八个 Web Release tarball 和 Rust/Web 锁图；0.51.2 独立发行门已通过，后续变更仍须复验 | 未完成不可发布，禁止复制共享机制或可变分支 fallback | 开发运维 |
+| T-02 | 锁定不可变 Foundation 来源 | 当前固定 Foundation 0.7.5 的完整 Git revision、八个 Web Release tarball 和 Rust/Web 锁图；本版本独立发行门通过后方可发布 | 未完成不可发布，禁止复制共享机制或可变分支 fallback | 开发运维 |
 | T-03 | Linux 构建守卫 | 编译阶段明确拒绝错误目标 | 错误平台可能到运行时才失败 | 保障 |
 | T-04 | Rust 模块分层 | `server.rs` 保留共享状态与模块协调；`router.rs`、`assets.rs`、`delete.rs`、`purge.rs` 分别负责请求路由、内置资源注册/摘要、删除提交事务和回收调度。`listing/{snapshot,walk}.rs` 隔离进程级快照/游标缓存与有界递归遍历；`rooted_fs/purge.rs` 隔离 fd-relative 删除执行器；`internal_names.rs` 与 `maintenance.rs` 提供服务端中性的内部名称和清理边界；`upload/{prepare,target,transfer,commit,failure,protocol,record}.rs` 隔离路径/会话准备、目标 identity/revision、传输、提交、失败、协议与检查点持久化。`server`、`listing`、`rooted_fs` 与 `upload` 的大段内联单元测试均位于各自 `tests.rs`，仍保留模块私有访问 | 拆分只移动内部职责，不改变 HTTP/上传协议，也不新增第三方依赖；重新合并不会减少能力，只降低边界清晰度、维护性和测试定位 | 开发运维 |
 | T-05 | 可复用 `lib.rs` | 测试可在进程内构造服务层 | 删除会增加只能启动外部进程的测试成本 | 开发运维 |
@@ -487,7 +487,7 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 1. Foundation 当前密码合同是 12～1024 个 UTF-8 字节且不含 ASCII 控制字符，并固定当前 Argon2id 参数；它没有字符类别或强制熵规则，管理员仍应使用高熵密码管理流程。
 2. Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Dufs 实现或配置；网关仍须独立按真实客户端 IP 限速。
 3. Foundation Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
-4. 公开 `/healthz` 只证明进程和路由能响应；公开 `/readyz` 返回最近一次有界探针汇总；后台探针在启动时及每 5 秒真实创建隐藏文件、写入、同步文件、删除并同步根目录，还会在当前 SQLite actor 连接中执行回滚写事务。它仍不执行 rename 或介质读回，也不预测目标冲突、上传/purge 容量等全部业务准入，因此不能替代完整 CRUD 冒烟和备份恢复演练。
+4. 公开 `/healthz` 只证明进程和路由能响应；公开 `/readyz` 返回最近一次有界探针汇总；后台探针在启动时及每 5 秒通过开始监听前固定打开的私有隐藏文件执行写入、同步和读回，不改变共享根目录时间戳，还会在当前 SQLite actor 连接中执行回滚写事务。它仍不执行 rename，也不预测目标冲突、上传/purge 容量等全部业务准入，因此不能替代完整 CRUD 冒烟和备份恢复演练。
 5. `$remote_addr` 与应用限流来源均为 TCP peer；代理头不能覆盖。网关必须独立按真实客户端 IP 限速，并阻止绕过网关。
 6. CLI/YAML 的最终 bind 列表必须非空；`bind: []` 在创建 listener 或其他运行时资源前就以明确配置错误失败。多个 listener 各自先等待可读，再取得共享连接许可后 `try_accept`，因此空闲地址不会预占许可，用户态已接受 socket 不会越过上限；达到上限时内核 backlog 仍可能暂存已经完成握手的连接。
 7. 成功上传任务会保留在上传队列表格中，但不会立即插入已经加载的普通目录列表，刷新页面后才会出现在常规列表。
