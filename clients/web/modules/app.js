@@ -165,26 +165,25 @@ function showFatalError(message) {
 
 /** @param {string} href */
 function addBreadcrumb(href) {
+  const rootNavigation = requiredElement(".dufs-root-navigation", HTMLElement);
   const breadcrumb = requiredElement(".breadcrumb", HTMLElement);
-  const parts = href === "/" ? [""] : href.split("/");
+  const root = createElement("a", {
+    attributes: {
+      href: "/",
+      title: t("根目录", "Root"),
+      "aria-label": t("根目录", "Root"),
+      ...(href === "/" ? { "aria-current": "page" } : {}),
+    },
+  });
+  root.append(createIcon("home"));
+  rootNavigation.append(root);
+  if (href === "/") return;
+  const parts = href.slice(1).split("/");
   let path = "/";
   for (let index = 0; index < parts.length; index++) {
     const name = parts[index];
-    if (index > 0) {
-      if (!path.endsWith("/")) path += "/";
-      path += encodeURIComponent(name);
-    }
-    if (index === 0) {
-      const root = createElement("a", {
-        attributes: {
-          href: path,
-          title: t("根目录", "Root"),
-          "aria-label": t("根目录", "Root"),
-        },
-      });
-      root.append(createIcon("home"));
-      breadcrumb.append(root);
-    } else if (index === parts.length - 1) {
+    path += encodeURIComponent(name);
+    if (index === parts.length - 1) {
       breadcrumb.append(createElement("b", { text: name }));
     } else {
       breadcrumb.append(createElement("a", {
@@ -193,6 +192,7 @@ function addBreadcrumb(href) {
       }));
     }
     if (index !== parts.length - 1) {
+      path += "/";
       breadcrumb.append(createElement("span", {
         className: "separator",
         text: "/",

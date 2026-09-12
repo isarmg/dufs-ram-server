@@ -111,7 +111,7 @@ fn platform_handle() -> sarmg_server_runtime::RuntimeHandle {
     sarmg_server_runtime::platform_handle(sarmg_server_runtime::ProductDescriptor {
         id: "dufs-ram".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        foundation_revision: "466ef3b7e19a5eea07292d5eeda1d014b47e5c59".into(),
+        foundation_revision: "45006e4b981666529f4e5003bbf6a76cb60578ff".into(),
         profile: "server-filesystem".into(),
         capabilities: vec!["server-runtime".into()],
     })

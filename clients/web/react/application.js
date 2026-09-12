@@ -19,6 +19,8 @@ const workspace = resolveWorkspaceConfig({ layout: "custom" });
 function mount(container, page) {
   if (mounted.has(container)) throw new Error("Dufs application is already mounted");
   mounted.add(container);
+  container.classList.add("sarmg-font-bootstrap");
+  container.setAttribute("aria-busy", "true");
   initializeLanguage();
   document.documentElement.dataset.sarmgAppearance = workspace.appearance;
   document.documentElement.dataset.sarmgSelection = workspace.selection;
@@ -26,6 +28,18 @@ function mount(container, page) {
   document.documentElement.style.setProperty("--sarmg-header-icon-size", workspace.headerIconSize);
   const root = createRoot(container);
   flushSync(() => root.render(page));
+  const fontReady = !document.fonts
+    ? Promise.resolve()
+    : Promise.allSettled([
+      document.fonts.load('400 16px "Sarmg Maple"', "文件管理器管理员登录 Upload Search"),
+      document.fonts.load('700 16px "Sarmg Maple"', "Dufs 文件管理器管理员登录 Upload Search"),
+      document.fonts.ready,
+    ]);
+  const fallback = new Promise(resolve => window.setTimeout(resolve, 4000));
+  void Promise.race([fontReady, fallback]).then(() => {
+    container.classList.remove("sarmg-font-bootstrap");
+    container.removeAttribute("aria-busy");
+  });
 }
 
 /** @param {HTMLElement} container
@@ -76,7 +90,19 @@ function Header({ client }) {
       h("nav", { className: "sarmg-header-navigation", "aria-label": t("主导航", "Main navigation") },
         h("a", { href: "/", "aria-current": "page" }, t("文件", "Files"))))),
     h("div", { className: "toolbox-right sarmg-header-actions", role: "group", "aria-label": t("全局操作", "Global actions") },
-      h(IconButton, { className: "new-folder hidden", "aria-label": t("新建文件夹", "New folder"), title: t("新建文件夹", "New folder") }, h(WorkspaceIcon, { name: "create" })),
+      h("div", { className: "dufs-file-actions", role: "group", "aria-label": t("文件操作", "File controls") },
+        h("nav", { className: "dufs-root-navigation", "aria-label": t("根目录导航", "Root directory navigation") }),
+        h(IconButton, { className: "control upload-file hidden", "aria-label": t("上传文件", "Upload files"), title: t("上传文件", "Upload files") }, h(FileIcon, { name: "upload" })),
+        h("input", { className: "visually-hidden", type: "file", id: "file", name: "file", "aria-label": t("选择要上传的文件", "Choose files to upload"), tabIndex: -1, multiple: true }),
+        h(IconButton, { className: "control upload-folder hidden", "aria-label": t("上传文件夹", "Upload folder"), title: t("上传文件夹", "Upload folder") }, h(FileIcon, { name: "folder" })),
+        h("input", { className: "visually-hidden", type: "file", id: "folder", name: "folder", "aria-label": t("选择要上传的文件夹", "Choose a folder to upload"), tabIndex: -1, webkitdirectory: "", multiple: true }),
+        h(IconButton, { className: "control new-folder hidden", "aria-label": t("新建文件夹", "New folder"), title: t("新建文件夹", "New folder") }, h(WorkspaceIcon, { name: "create" })),
+        h(IconButton, { className: "control new-file hidden", "aria-label": t("新建空文件", "New empty file"), title: t("新建空文件", "New empty file") }, h(FileIcon, { name: "file" })),
+        h("form", { className: "searchbar hidden" },
+          h("div", { className: "icon" }, h(FileIcon, { name: "search" })),
+          h("label", { className: "visually-hidden", htmlFor: "search" }, t("搜索文件或文件夹", "Search files or folders")),
+          h("input", { id: "search", name: "q", type: "text", maxLength: 128, autoComplete: "off", title: t("搜索文件或文件夹", "Search files or folders"), "aria-label": t("搜索文件或文件夹", "Search files or folders") }),
+          h("input", { type: "submit", hidden: true }))),
       h(IconButton, { "aria-label": t("重新载入页面", "Reload page"), title: t("重新载入页面", "Reload page"), onClick: () => window.location.reload() }, h(WorkspaceIcon, { name: "refresh" })),
       h(LanguageToggle), h(ThemeToggle),
       h(IconButton, { className: "logout-btn hidden", "aria-label": t("退出", "Sign out"), title: t("退出", "Sign out") },
@@ -96,18 +122,7 @@ function FileIcon({ name }) {
 
 function FileControls() {
   return h("section", { className: "sarmg-content-panel file-toolbar", "aria-label": t("文件操作", "File controls") },
-    h("nav", { className: "breadcrumb", "aria-label": t("当前文件夹", "Current folder") }),
-    h("div", { className: "toolbox" },
-      h(IconButton, { className: "control upload-file hidden", "aria-label": t("上传文件", "Upload files"), title: t("上传文件", "Upload files") }, h(FileIcon, { name: "upload" })),
-      h("input", { className: "visually-hidden", type: "file", id: "file", name: "file", "aria-label": t("选择要上传的文件", "Choose files to upload"), tabIndex: -1, multiple: true }),
-      h(IconButton, { className: "control upload-folder hidden", "aria-label": t("上传文件夹", "Upload folder"), title: t("上传文件夹", "Upload folder") }, h(FileIcon, { name: "folder" })),
-      h("input", { className: "visually-hidden", type: "file", id: "folder", name: "folder", "aria-label": t("选择要上传的文件夹", "Choose a folder to upload"), tabIndex: -1, webkitdirectory: "", multiple: true }),
-      h(IconButton, { className: "control new-file hidden", "aria-label": t("新建空文件", "New empty file"), title: t("新建空文件", "New empty file") }, h(FileIcon, { name: "file" }))),
-    h("form", { className: "searchbar hidden" },
-      h("div", { className: "icon" }, h(FileIcon, { name: "search" })),
-      h("label", { className: "visually-hidden", htmlFor: "search" }, t("搜索文件或文件夹", "Search files or folders")),
-      h("input", { id: "search", name: "q", type: "text", maxLength: 128, autoComplete: "off", title: t("搜索文件或文件夹", "Search files or folders"), "aria-label": t("搜索文件或文件夹", "Search files or folders") }),
-      h("input", { type: "submit", hidden: true })));
+    h("nav", { className: "breadcrumb", "aria-label": t("当前文件夹", "Current folder") }));
 }
 
 function FileContent() {

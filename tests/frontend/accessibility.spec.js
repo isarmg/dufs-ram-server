@@ -97,6 +97,10 @@ test("主要文件管理控件使用原生语义和键盘操作", async ({ appPa
   await expect(root).toHaveAttribute("href", "/");
   await expect(root).toHaveAttribute("title", "Root");
   await expect(root).toHaveText("");
+  await expect(root.locator("xpath=ancestor::header")).toHaveCount(1);
+  for (const selector of [".upload-file", ".upload-folder", ".new-folder", ".new-file", ".searchbar"]) {
+    await expect(page.locator(selector).locator("xpath=ancestor::header")).toHaveCount(1);
+  }
   const rootIcon = root.locator("svg");
   await expect(rootIcon).toHaveCount(1);
   await expect(rootIcon).toHaveAttribute("aria-hidden", "true");

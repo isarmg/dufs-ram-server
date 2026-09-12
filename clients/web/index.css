@@ -63,11 +63,53 @@ button {
   background-color: var(--bg-primary);
 }
 
+#dufs-root.sarmg-font-bootstrap {
+  min-height: 100dvh;
+  visibility: hidden;
+}
+
+.dufs-file-actions,
+.toolbox-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dufs-file-actions {
+  flex: 0 1 auto;
+}
+
+.dufs-root-navigation {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.dufs-root-navigation a {
+  display: inline-grid;
+  min-width: 44px;
+  min-height: 44px;
+  place-items: center;
+  color: var(--text-accent);
+}
+
+.dufs-root-navigation svg {
+  width: 1em;
+  height: 1em;
+}
+
 .file-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
+}
+
+.file-toolbar:has(.breadcrumb:empty) {
+  display: none;
 }
 
 .breadcrumb {
@@ -113,6 +155,7 @@ button {
   min-height: 44px;
 }
 
+.dufs-file-actions .control,
 .toolbox .control {
   display: inline-flex;
   align-items: center;
@@ -143,6 +186,8 @@ button {
   border: 1px var(--border-primary) solid;
   border-radius: var(--sarmg-radius-sm);
   margin-bottom: 2px;
+  min-width: 10rem;
+  flex: 1 1 18rem;
 }
 
 .searchbar #search {
@@ -427,6 +472,13 @@ button {
 }
 
 .toolbox-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-end;
   margin-left: auto;
   margin-right: 0;
 }
@@ -560,6 +612,15 @@ button {
     padding-right: 0;
   }
 
+  .dufs-file-actions {
+    flex: 1 1 100%;
+  }
+
+  .dufs-file-actions .searchbar {
+    flex: 1 1 100%;
+    width: auto;
+  }
+
   .toolbox {
     flex: 0 0 auto;
     margin-right: 0;
@@ -572,8 +633,10 @@ button {
   }
 
   .toolbox-right {
+    flex: 1 1 100%;
     max-width: 100%;
     min-width: 0;
+    justify-content: flex-start;
     margin-right: 0;
   }
 

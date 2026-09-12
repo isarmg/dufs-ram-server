@@ -177,7 +177,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 
 生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
 
-当前 Foundation Rust/Web 已固定正式 0.7.1 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.1 已完成独立构建和发布，见[最终验收记录](https://github.com/isarmg/sarmg-foundation-server/blob/main/consumers/react-filesystem-0.7.1-evidence.md)。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
+当前 Foundation Rust/Web 已固定正式 0.7.3 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.2 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
 
 ## 5. 浏览器目录界面
 
@@ -392,7 +392,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | ID | 当前特性 | 作用 | 删除后的影响 | 级别 |
 | --- | --- | --- | --- | --- |
 | T-01 | 固定 Rust 工具链 | Rust 1.98.0、edition 2024、Rustfmt、Clippy | 开发机结果可能漂移 | 开发运维 |
-| T-02 | 锁定不可变 Foundation 来源 | 当前固定 Foundation 0.7.1 的完整 Git revision、八个 Web Release tarball 和 Rust/Web 锁图；0.51.1 独立发行门已通过，后续变更仍须复验 | 未完成不可发布，禁止复制共享机制或可变分支 fallback | 开发运维 |
+| T-02 | 锁定不可变 Foundation 来源 | 当前固定 Foundation 0.7.3 的完整 Git revision、八个 Web Release tarball 和 Rust/Web 锁图；0.51.2 独立发行门已通过，后续变更仍须复验 | 未完成不可发布，禁止复制共享机制或可变分支 fallback | 开发运维 |
 | T-03 | Linux 构建守卫 | 编译阶段明确拒绝错误目标 | 错误平台可能到运行时才失败 | 保障 |
 | T-04 | Rust 模块分层 | `server.rs` 保留共享状态与模块协调；`router.rs`、`assets.rs`、`delete.rs`、`purge.rs` 分别负责请求路由、内置资源注册/摘要、删除提交事务和回收调度。`listing/{snapshot,walk}.rs` 隔离进程级快照/游标缓存与有界递归遍历；`rooted_fs/purge.rs` 隔离 fd-relative 删除执行器；`internal_names.rs` 与 `maintenance.rs` 提供服务端中性的内部名称和清理边界；`upload/{prepare,target,transfer,commit,failure,protocol,record}.rs` 隔离路径/会话准备、目标 identity/revision、传输、提交、失败、协议与检查点持久化。`server`、`listing`、`rooted_fs` 与 `upload` 的大段内联单元测试均位于各自 `tests.rs`，仍保留模块私有访问 | 拆分只移动内部职责，不改变 HTTP/上传协议，也不新增第三方依赖；重新合并不会减少能力，只降低边界清晰度、维护性和测试定位 | 开发运维 |
 | T-05 | 可复用 `lib.rs` | 测试可在进程内构造服务层 | 删除会增加只能启动外部进程的测试成本 | 开发运维 |

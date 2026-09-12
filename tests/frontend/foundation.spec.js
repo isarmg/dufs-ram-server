@@ -69,6 +69,19 @@ test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容
     expect(main.width).toBeGreaterThan(width - 65);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
+  const menuItems = page.locator(".dufs-file-actions > :is(.dufs-root-navigation, .upload-file, .upload-folder, .new-folder, .new-file, .searchbar)");
+  await expect(menuItems).toHaveCount(6);
+  const menuBar = page.locator(".sarmg-page-header .sarmg-header-actions");
+  expect(await menuItems.evaluateAll(nodes => nodes.every(node => {
+    return node.closest(".dufs-file-actions")?.parentElement?.matches(".sarmg-header-actions");
+  }))).toBe(true);
+  expect(await page.locator(".file-toolbar .dufs-file-actions")).toHaveCount(0);
+  const menuBarBox = await menuBar.boundingBox();
+  const headerBox = await page.locator(".sarmg-page-header").boundingBox();
+  expect(menuBarBox).not.toBeNull();
+  expect(headerBox).not.toBeNull();
+  expect(menuBarBox.y).toBeGreaterThanOrEqual(headerBox.y);
+  expect(menuBarBox.y + menuBarBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
   const button = page.getByRole("button", { name: "Switch to dark mode", exact: true });
   await button.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
