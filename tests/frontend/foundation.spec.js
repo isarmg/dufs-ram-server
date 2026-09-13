@@ -63,6 +63,7 @@ test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容
   await expect(page.locator(".sarmg-page-header .sarmg-product-identity")).toHaveText("Dufs");
   await expect(page.locator(".sarmg-header-navigation a[aria-current=page]")).toHaveText("Files");
   await expect(page.locator(".sarmg-instance-sidebar")).toHaveCount(0);
+  await page.evaluate(() => document.fonts.ready);
   for (const width of [1280, 768, 320]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -81,6 +82,11 @@ test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容
     return node.closest(".dufs-file-actions")?.parentElement?.matches(".sarmg-header-actions");
   }))).toBe(true);
   expect(await page.locator(".file-toolbar .dufs-file-actions")).toHaveCount(0);
+  await expect.poll(() => menuBar.evaluate(element => {
+    const header = element.closest(".sarmg-page-header");
+    return header !== null
+      && element.getBoundingClientRect().bottom <= header.getBoundingClientRect().bottom;
+  })).toBe(true);
   const menuBarBox = await menuBar.boundingBox();
   const headerBox = await page.locator(".sarmg-page-header").boundingBox();
   expect(menuBarBox).not.toBeNull();
