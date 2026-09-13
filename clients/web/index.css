@@ -242,7 +242,7 @@ button {
 }
 
 .main {
-  padding: 0 1em;
+  padding: var(--sarmg-content-spacing, var(--sarmg-space-4, 16px)) 1em;
 }
 
 .empty-folder {
@@ -673,7 +673,7 @@ button {
   }
 
   .main {
-    padding: 0 0.5em;
+    padding: var(--sarmg-content-spacing, var(--sarmg-space-4, 16px)) 0.5em;
   }
 
   .paths-table,

@@ -69,6 +69,9 @@ test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容
     const main = await page.locator(".main").boundingBox();
     expect(main.x).toBeLessThanOrEqual(32);
     expect(main.width).toBeGreaterThan(width - 65);
+    const responsiveHeader = await page.locator(".sarmg-page-header").boundingBox();
+    const responsiveFirstContent = await page.locator(".file-toolbar").boundingBox();
+    expect(Math.abs(responsiveFirstContent.y - (responsiveHeader.y + responsiveHeader.height) - 16)).toBeLessThan(2);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   const menuItems = page.locator(".dufs-file-actions > :is(.dufs-root-navigation, .upload-file, .upload-folder, .new-folder, .new-file, .searchbar)");

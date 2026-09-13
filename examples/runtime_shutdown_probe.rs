@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let runtime = ServerRuntime::builder(ProductDescriptor {
         id: "dufs-shutdown-fixture".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        foundation_revision: "80c49f2f811d8d47dbbcdb6c9521924de7d3184e".into(),
+        foundation_revision: "89eafaf171e409e6134fa669b140f615635baf5a".into(),
         profile: "server-filesystem".into(),
         capabilities: vec![],
     })
