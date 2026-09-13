@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  NODE_VERSION: "26.7.0"
   RUST_TOOLCHAIN: "1.98.0"
   SERVER_TARGET: "x86_64-unknown-linux-gnu"
   CARGO_TERM_COLOR: always
@@ -33,6 +34,15 @@ jobs:
         run: |
           set -euo pipefail
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+      - name: Build the embedded Web assets required by build.rs
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install locked Web dependencies and build platform assets
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:platform
       - name: Record the benchmark environment
         shell: bash
         run: |

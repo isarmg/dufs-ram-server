@@ -151,11 +151,14 @@ jobs:
                 "$label" "$run_id" >&2
               return 1
             fi
+            LAST_REQUIRED_RUN_ID="$run_id"
           }
 
           require_successful_run read-only-ci.yml 'read-only CI'
           require_successful_run dependency-audit.yml 'dependency audit'
           require_successful_run formal-release-e2e.yml 'formal release package E2E'
+          printf 'FORMAL_RELEASE_RUN_ID=%s\n' "$LAST_REQUIRED_RUN_ID" \
+            >> "$GITHUB_ENV"
 
       - name: Install the fixed Rust toolchain and cargo-audit
         shell: bash
@@ -186,31 +189,59 @@ jobs:
           npm audit --audit-level=high
           npm run build:platform
 
-      - name: Build the release binary
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
-          env \
-            CARGO_INCREMENTAL=0 \
-            DUFS_BUILD_GIT_SHA="$GITHUB_SHA" \
-            SOURCE_DATE_EPOCH="$source_date_epoch" \
-            TZ=UTC \
-            ZERO_AR_DATE=1 \
-            cargo +"$RUST_TOOLCHAIN" build \
-              --locked \
-              --release \
-              --target "$TARGET"
-
-      - name: Prepare and verify fixed release inputs
+      - name: Download and verify the exact formal-test candidate
         id: prepare_release_inputs
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
           asset_name="dufs-${VERSION}-${TARGET}"
-          source_binary="target/${TARGET}/release/dufs"
+          candidate_dir="${RUNNER_TEMP}/formal-release-candidate"
+          unpack_dir="${RUNNER_TEMP}/formal-release-unpacked"
+          install -d -m 0700 "$candidate_dir" "$unpack_dir"
+          gh run download "$FORMAL_RELEASE_RUN_ID" \
+            --name "formal-release-candidate-${GITHUB_SHA}" \
+            --dir "$candidate_dir"
+          mapfile -t archives < <(find -P "$candidate_dir" -maxdepth 1 \
+            -type f -name '*.tar.gz' -print)
+          if ((${#archives[@]} != 1)); then
+            printf 'Expected one formal candidate archive; found %s.\n' \
+              "${#archives[@]}" >&2
+            exit 1
+          fi
+          archive="${archives[0]}"
+          checksum="${archive}.sha256"
+          signature="${checksum}.sig"
+          public_key="${checksum}.pub.pem"
+          entry_count="$(find -P "$candidate_dir" -mindepth 1 -maxdepth 1 -printf x | wc -c)"
+          if [[ "$entry_count" != "4" ]]; then
+            printf 'Expected four formal candidate files; found %s.\n' "$entry_count" >&2
+            exit 1
+          fi
+          for path in "$archive" "$checksum" "$signature" "$public_key"; do
+            [[ -f "$path" && ! -L "$path" && "$(stat -c %h "$path")" == "1" ]] || {
+              printf 'Formal candidate file is missing or unsafe: %s.\n' "$path" >&2
+              exit 1
+            }
+          done
+          (cd "$candidate_dir" && sha256sum --check "${checksum##*/}")
+          openssl pkeyutl --verify --rawin --pubin --inkey "$public_key" \
+            --sigfile "$signature" --in "$checksum"
+          tar --extract --gzip --file "$archive" --directory "$unpack_dir" \
+            --no-same-owner
+          mapfile -t package_roots < <(find -P "$unpack_dir" -mindepth 1 \
+            -maxdepth 1 -type d -print)
+          if ((${#package_roots[@]} != 1)); then
+            printf 'Expected one formal package root; found %s.\n' \
+              "${#package_roots[@]}" >&2
+            exit 1
+          fi
+          package_root="${package_roots[0]}"
+          source_binary="$package_root/dufs"
+          grep -Fxq "source_sha=$GITHUB_SHA" "$package_root/BUILD-ENVIRONMENT.txt"
           install -d -m 0755 dist
           install -m 0755 "$source_binary" "dist/$asset_name"
 

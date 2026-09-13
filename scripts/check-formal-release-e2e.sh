@@ -9,6 +9,16 @@ cleanup() {
   local cleanup_failed=false
 
   trap - EXIT HUP INT TERM
+  if [[ "$status" -ne 0 && -n "${DUFS_FORMAL_E2E_DIAGNOSTICS_DIR:-}" && \
+    -n "$test_root" && -d "$test_root" ]]
+  then
+    install -d -m 0700 -- "$DUFS_FORMAL_E2E_DIAGNOSTICS_DIR"
+    find -P "$test_root" -type f \
+      \( -path '*/test-results/*' -o -path '*/playwright-report/*' -o \
+         -name '*.log' \) -size -16777216c \
+      -exec cp --parents --no-preserve=ownership -- {} \
+        "$DUFS_FORMAL_E2E_DIAGNOSTICS_DIR" \; || cleanup_failed=true
+  fi
   if [[ -n "$test_root" ]]; then
     case "${test_root##*/}" in
       dufs-formal-release-e2e.*)
@@ -38,6 +48,7 @@ trap 'exit 143' TERM
 
 for command_name in \
   chmod \
+  cp \
   cmp \
   env \
   find \
@@ -249,6 +260,18 @@ grep -Fxq "source_version=$version" \
   "$package_root/BUILD-ENVIRONMENT.txt"
 
 bash "$project_dir/scripts/check-release-runtime.sh" "$package_root/dufs"
+
+if [[ -n "${DUFS_FORMAL_E2E_EXPORT_DIR:-}" ]]; then
+  [[ ! -e "$DUFS_FORMAL_E2E_EXPORT_DIR" ]] || {
+    printf 'Formal release export path already exists: %s\n' \
+      "$DUFS_FORMAL_E2E_EXPORT_DIR" >&2
+    exit 1
+  }
+  install -d -m 0700 -- "$DUFS_FORMAL_E2E_EXPORT_DIR"
+  for artifact in "$archive" "$checksum" "$signature" "$public_key"; do
+    install -m 0644 -- "$artifact" "$DUFS_FORMAL_E2E_EXPORT_DIR/"
+  done
+fi
 
 printf 'formal signed release package E2E passed for %s at %s\n' \
   "$release_tag" "$source_sha"

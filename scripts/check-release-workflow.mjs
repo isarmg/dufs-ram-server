@@ -221,14 +221,17 @@ function checkFreshReleaseAudit(source, verify) {
   );
   const setupNode = stepBlock(verify, "Use the fixed Node.js release");
   const audit = stepBlock(verify, "Audit dependencies for this release attempt");
-  const build = stepBlock(verify, "Build the release binary");
+  const candidate = stepBlock(
+    verify,
+    "Download and verify the exact formal-test candidate",
+  );
   if (
     install.bodyStart >= audit.bodyStart ||
     setupNode.bodyStart >= audit.bodyStart ||
-    audit.bodyStart >= build.bodyStart
+    audit.bodyStart >= candidate.bodyStart
   ) {
     throw new Error(
-      "fresh dependency audit must follow fixed tool setup and precede the build",
+      "fresh dependency audit must follow fixed tool setup and precede candidate admission",
     );
   }
 
@@ -381,6 +384,10 @@ function checkWorkflow(source) {
     "timeout-minutes: 240",
     "dependency-audit.yml 'dependency audit'",
     "formal-release-e2e.yml 'formal release package E2E'",
+    'gh run download "$FORMAL_RELEASE_RUN_ID"',
+    'formal-release-candidate-${GITHUB_SHA}',
+    'openssl pkeyutl --verify --rawin --pubin',
+    'source_sha=$GITHUB_SHA',
     '.headSha == $sha',
     '.headBranch == $ref',
     '.conclusion == "success"',

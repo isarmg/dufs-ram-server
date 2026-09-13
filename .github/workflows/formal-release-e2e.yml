@@ -166,6 +166,26 @@ jobs:
 
       - name: Run the real formal signed-package path
         shell: bash
+        env:
+          DUFS_FORMAL_E2E_EXPORT_DIR: ${{ runner.temp }}/formal-release-candidate
+          DUFS_FORMAL_E2E_DIAGNOSTICS_DIR: ${{ runner.temp }}/formal-release-diagnostics
         run: |
           set -euo pipefail
           ./scripts/check-formal-release-e2e.sh
+      - name: Transfer the exact package that passed formal verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: formal-release-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/formal-release-candidate
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+          include-hidden-files: false
+      - name: Preserve formal-package diagnostics on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: formal-release-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/formal-release-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
