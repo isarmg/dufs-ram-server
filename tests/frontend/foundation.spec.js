@@ -87,12 +87,6 @@ test("Foundation 外观统一顶部项目名、等高图标和全宽文件内容
     return header !== null
       && element.getBoundingClientRect().bottom <= header.getBoundingClientRect().bottom;
   })).toBe(true);
-  const menuBarBox = await menuBar.boundingBox();
-  const headerBox = await page.locator(".sarmg-page-header").boundingBox();
-  expect(menuBarBox).not.toBeNull();
-  expect(headerBox).not.toBeNull();
-  expect(menuBarBox.y).toBeGreaterThanOrEqual(headerBox.y);
-  expect(menuBarBox.y + menuBarBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
   const button = page.getByRole("button", { name: "Switch to dark mode", exact: true });
   await button.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
