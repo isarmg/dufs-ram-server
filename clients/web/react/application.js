@@ -9,7 +9,7 @@ import { isAdministratorPassword } from "@sarmg/admin-web";
 
 /** @type {WeakSet<Element>} */
 const mounted = new WeakSet();
-const workspace = resolveWorkspaceConfig({ layout: "custom" });
+const workspace = resolveWorkspaceConfig();
 
 /** A single React root owns the authored page. File controllers own only the
  * opaque file/queue/dialog regions after the initial synchronous render.
