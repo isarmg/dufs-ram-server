@@ -479,13 +479,8 @@ test("生产前端源码不包含动态 HTML 注入接口或浏览器原生模�
 });
 
 test("中英文界面一致，切换保留会话、文件类型及用户文件名", async ({ appPage: page }) => {
-  await page.getByRole("button", { name: "Switch to Chinese", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Change language" });
-  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Switch to Chinese", exact: true })).toBeFocused();
-  await page.getByRole("button", { name: "Switch to Chinese", exact: true }).click();
-  await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
+  const switchToChinese = page.getByRole("button", { name: "Switch to Chinese", exact: true });
+  await switchToChinese.click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await expect(page.getByRole("table", { name: "文件列表", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "新建文件夹", exact: true })).toBeVisible();
@@ -495,7 +490,6 @@ test("中英文界面一致，切换保留会话、文件类型及用户文件�
   await expect(page.getByRole("link", { name: "existing-folder", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "special & # + 中文.txt", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "切换为英文", exact: true }).click();
-  await page.getByRole("dialog", { name: "切换语言" }).getByRole("button", { name: "确认", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("table", { name: "File list", exact: true })).toBeVisible();
   await expect(page.locator(".paths-table thead")).not.toContainText(/\p{Script=Han}/u);

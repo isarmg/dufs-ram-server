@@ -177,7 +177,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 
 生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
 
-当前 Foundation Rust/Web 已固定正式 0.8.1 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.9 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
+当前 Foundation Rust/Web 已固定正式 0.8.1 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.10 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
 
 ## 5. 浏览器目录界面
 
