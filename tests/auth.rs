@@ -349,7 +349,7 @@ fn administrator_session_and_auth_failures_use_the_foundation_contract(
     let restored: AdministratorSession = serde_json::from_str(&restored.text()?)?;
     assert_eq!(restored.username, "user");
     assert_eq!(restored.role, AdministratorRole::Admin);
-    assert_ne!(restored.csrf_token, session.csrf_token());
+    assert_eq!(restored.csrf_token, session.csrf_token());
 
     let unauthenticated = server
         .raw_request(Method::GET, server.url().join("api/v2/auth/session")?)

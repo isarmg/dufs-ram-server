@@ -49,5 +49,5 @@ async fn independent_static_services_drop_sessions_and_disallow_configuration_mu
             .await
             .is_err()
     );
-    assert!(!first.store().supports_management());
+    assert!(!first.store().supports_account_updates());
 }
