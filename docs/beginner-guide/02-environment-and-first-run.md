@@ -15,7 +15,7 @@
 
 [build.rs](../../build.rs) 会在编译期拒绝任何非 `x86_64-unknown-linux-gnu` 目标。启动时还会探测 `openat2`；精确 target 能编译仍不代表当前内核具备运行所需系统调用。
 
-Node.js 精确版本 26.7.0 用于 JavaScript 安全/类型检查、前端单元测试、文档检查、Playwright/部署测试和发布辅助脚本；仓库根目录的 [.node-version](../../.node-version) 是仓库级版本基准，并且必须与脚本常量、manifest/lockfile engine 和工作流声明交叉一致。`scripts/check.sh` 与 `scripts/package-release.sh` 不依赖 npm 的 engine warning：二者都会在审计、构建、安装依赖或运行发布自测前，要求该文件只有 `26.7.0` 一行且以一个 LF 结尾，并要求 `node --version` 的完整输出精确为 `v26.7.0`。任一声明或运行时不匹配都会立即失败。生产服务器运行已经构建好的 Dufs 二进制时不需要 Node.js。
+Node.js 精确版本由根目录 [.node-version](../../.node-version) 唯一声明，用于 JavaScript 类型检查、单元测试、文档检查、Playwright 和发布辅助脚本。工作流通过 `node-version-file` 读取它，本地检查和打包入口也会在运行依赖代码前核对实际 `node --version`。`package.json` 的 engine 表达支持范围，不复制精确版本。生产服务器运行已构建的 Dufs 二进制时不需要 Node.js。
 
 ## 2.2 先检查工具
 
@@ -39,7 +39,7 @@ ss --version
 
 仓库的 [rust-toolchain.toml](../../rust-toolchain.toml) 会让 rustup 自动选择固定工具链。若缺少工具链，rustup 可能需要联网下载。
 
-首次 Cargo 构建可能要从 crates.io 下载未缓存依赖；`npm ci` 可能访问 npm registry，Playwright 安装命令还会下载浏览器。离线环境需要事先准备对应 toolchain、依赖缓存或 vendored 依赖和浏览器制品。依赖审计的联网条件见[第 8 章](08-testing-debugging-and-change-workflow.md#810-完整-checksh-与干净工作树)。
+首次 Cargo 构建可能要从 crates.io 下载未缓存依赖；`npm ci` 可能访问 npm registry，Playwright 安装命令还会下载浏览器。离线环境需要事先准备对应 toolchain、依赖缓存或 vendored 依赖和浏览器制品。依赖审计的联网条件见[第 8 章](08-testing-debugging-and-change-workflow.md#810-日常集成与发行检查)。
 
 前端依赖按锁文件安装：
 

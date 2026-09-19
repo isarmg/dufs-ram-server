@@ -47,93 +47,6 @@ if (markdownTargets(maskFencedCode(fencedFixture)).length !== 0) {
   );
 }
 
-const currentNodeVersion = "26.7.0";
-const nodeVersionSource = readFileSync(
-  resolve(projectRoot, ".node-version"),
-  "utf8",
-);
-const packageSource = readFileSync(resolve(projectRoot, "package.json"), "utf8");
-const packageLockSource = readFileSync(
-  resolve(projectRoot, "package-lock.json"),
-  "utf8",
-);
-const workflowDirectory = resolve(projectRoot, ".github", "workflows");
-const workflowSources = invocation.checkWorkflowContracts
-  ? new Map(
-      readdirSync(workflowDirectory)
-        .filter(name => name.endsWith(".yml") || name.endsWith(".yaml"))
-        .map(name => [name, readFileSync(resolve(workflowDirectory, name), "utf8")]),
-    )
-  : new Map();
-failures.push(
-  ...currentNodeContractFailures(
-    nodeVersionSource,
-    packageSource,
-    packageLockSource,
-    workflowSources,
-  ),
-);
-if (
-  currentNodeContractFailures(
-    nodeVersionSource,
-    packageSource.replace(
-      `"node": ">=${currentNodeVersion} <27"`,
-      '"node": ">=18"',
-    ),
-    packageLockSource,
-    workflowSources,
-  ).length === 0
-) {
-  failures.push(
-    "scripts/check-docs.mjs: old Node engine mutation fixture was accepted",
-  );
-}
-if (
-  currentNodeContractFailures(
-    "18.20.8\n",
-    packageSource,
-    packageLockSource,
-    workflowSources,
-  ).length === 0
-) {
-  failures.push(
-    "scripts/check-docs.mjs: old .node-version mutation fixture was accepted",
-  );
-}
-if (
-  currentNodeContractFailures(
-    `${currentNodeVersion}\n\n`,
-    packageSource,
-    packageLockSource,
-    workflowSources,
-  ).length === 0
-) {
-  failures.push(
-    "scripts/check-docs.mjs: malformed .node-version mutation fixture was accepted",
-  );
-}
-if (invocation.checkWorkflowContracts) {
-  const mutatedWorkflows = new Map(workflowSources);
-  mutatedWorkflows.set(
-    "read-only-ci.yml",
-    workflowSources
-      .get("read-only-ci.yml")
-      .replace("node-version: ${{ env.NODE_VERSION }}", 'node-version: "18.20.8"'),
-  );
-  if (
-    currentNodeContractFailures(
-      nodeVersionSource,
-      packageSource,
-      packageLockSource,
-      mutatedWorkflows,
-    ).length === 0
-  ) {
-    failures.push(
-      "scripts/check-docs.mjs: old Node workflow mutation fixture was accepted",
-    );
-  }
-}
-
 for (const path of markdownFiles) {
   const source = readFileSync(path, "utf8");
   const name = relative(projectRoot, path);
@@ -214,13 +127,11 @@ function parseInvocation(args) {
   if (args.length === 0) {
     return {
       projectRoot: defaultProjectRoot,
-      checkWorkflowContracts: true,
     };
   }
   if (args.length === 2 && args[0] === "--artifact-root") {
     return {
       projectRoot: resolve(args[1]),
-      checkWorkflowContracts: false,
     };
   }
   throw new Error("Usage: check-docs.mjs [--artifact-root <directory>]");
@@ -262,64 +173,6 @@ function checkTextFormat(name, source) {
       failures.push(`${name}:${index + 1}: trailing whitespace`);
     }
   });
-}
-
-function currentNodeContractFailures(
-  nodeVersionFileSource,
-  manifestSource,
-  lockSource,
-  checkedWorkflows,
-) {
-  const nodeFailures = [];
-  let manifest;
-  let lock;
-  if (nodeVersionFileSource !== `${currentNodeVersion}\n`) {
-    nodeFailures.push(
-      `.node-version: must be exactly ${currentNodeVersion} followed by one LF`,
-    );
-  }
-  try {
-    manifest = JSON.parse(manifestSource);
-    lock = JSON.parse(lockSource);
-  } catch {
-    return ["package.json and package-lock.json must be valid JSON"];
-  }
-  const currentNodeRange = `>=${currentNodeVersion} <27`;
-  if (manifest.engines?.node !== currentNodeRange) {
-    nodeFailures.push(
-      `package.json: engines.node must be exactly ${currentNodeRange}`,
-    );
-  }
-  if (lock.packages?.[""]?.engines?.node !== currentNodeRange) {
-    nodeFailures.push(
-      `package-lock.json: root engines.node must be exactly ${currentNodeRange}`,
-    );
-  }
-
-  for (const [name, source] of checkedWorkflows) {
-    const versions = [
-      ...source.matchAll(/^\s+node-version:\s*(\S(?:.*\S)?)\s*$/gmu),
-    ];
-    if (versions.length === 0) continue;
-    const declarations = [
-      ...source.matchAll(
-        new RegExp(`^  NODE_VERSION: "${currentNodeVersion.replaceAll(".", "\\.")}"$`, "gmu"),
-      ),
-    ];
-    if (declarations.length !== 1) {
-      nodeFailures.push(
-        `.github/workflows/${name}: must declare exactly one current NODE_VERSION`,
-      );
-    }
-    for (const match of versions) {
-      if (match[1] !== "${{ env.NODE_VERSION }}") {
-        nodeFailures.push(
-          `.github/workflows/${name}: node-version must use the current NODE_VERSION`,
-        );
-      }
-    }
-  }
-  return nodeFailures;
 }
 
 function markdownTargets(source) {

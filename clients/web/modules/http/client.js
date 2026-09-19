@@ -1,10 +1,14 @@
 import { t, getLocale } from "../../dist/platform.js";
 import {
-  OPERATION_STATE_HEADER,
   TARGET_REVISION_HEADER,
   UPLOAD_ID_HEADER,
   classifyUploadResponse,
 } from "../upload/protocol.js";
+import {
+  OPERATION_ID_HEADER,
+  OPERATION_STATE_HEADER,
+  classifyOperationResponse,
+} from "../operations/protocol.js";
 import { platformErrorCode } from "./platform-error.js";
 import {
   ERROR_RESPONSE_BODY_LIMIT,
@@ -25,7 +29,7 @@ export const PAGE_EXPIRED_MESSAGE =
 export const RESULT_UNKNOWN_MESSAGE =
   t("结果不确定，请刷新文件夹核对实际状态后再重试。", "The result is unknown; refresh the folder to verify what happened before trying again.");
 export const REQUEST_TIMEOUT_MS = 30 * 1000;
-export const OPERATION_ID_HEADER = "X-Dufs-Operation-Id";
+export { OPERATION_ID_HEADER };
 export const SOURCE_REVISION_HEADER = "X-Dufs-Source-Revision";
 export { OPERATION_STATE_HEADER };
 
@@ -264,28 +268,12 @@ export async function assertResponse(response, onUnauthorized) {
       operationState,
     });
   }
-  if (response.ok && !operationState) return response;
-  if (response.ok && operationState === "succeeded") return response;
-  const validOperationStates = [
-    "running",
-    "succeeded",
-    "failed",
-    "rejected",
-    "unknown",
-    "committed",
-    "not-seen",
-  ];
-  const contradictoryOperationState =
-    Boolean(operationState) &&
-    (
-      !validOperationStates.includes(operationState) ||
-      (response.ok && operationState !== "succeeded") ||
-      (
-        !response.ok &&
-        ["succeeded", "committed"].includes(operationState)
-      )
-    );
-  if (contradictoryOperationState) {
+  const operationResult = classifyOperationResponse(
+    response.status,
+    operationState,
+  );
+  if (operationResult.kind === "success") return response;
+  if (operationResult.kind === "invalid") {
     throw new RequestError(
       t("操作结果无效。{0}", "Invalid operation result. {0}", [RESULT_UNKNOWN_MESSAGE]),
       {
@@ -302,7 +290,7 @@ export async function assertResponse(response, onUnauthorized) {
     await requestTextError(response),
     response.headers.get("content-type") || "",
   );
-  const outcomeUnknown = ["running", "unknown"].includes(operationState);
+  const outcomeUnknown = operationResult.outcomeUnknown;
   const errorMetadata = {
     ...requestErrorMetadata(detail, response.headers),
     ...authoritativeOperationMetadata(

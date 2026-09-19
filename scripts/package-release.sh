@@ -1226,23 +1226,10 @@ install_release_support_tree() {
   local package_root="$2"
   local entry
   local -a entries=(
-    .node-version
-    build.rs
-    Cargo.lock
-    Cargo.toml
-    clients
     config
     deploy
-    docs
     LICENSE-APACHE
-    package-lock.json
-    package.json
-    playwright.config.js
-    README.md
-    rust-toolchain.toml
-    scripts
-    src
-    tests
+    docs/runtime-package.md
   )
 
   [[ -d "$source_root" && ! -L "$source_root" ]] || {
@@ -1282,21 +1269,22 @@ install_release_support_tree() {
     -exec chmod 0755 -- {} +
   find -P "$package_root" -xdev -type f ! -perm /0111 \
     -exec chmod 0644 -- {} +
+  mv -- "$package_root/docs/runtime-package.md" "$package_root/README.md"
+  rmdir -- "$package_root/docs"
   validate_extracted_source_tree "$package_root"
 
 }
 
 verify_release_documentation_layout() {
   local package_root="$1"
-  local node_command="$2"
   local required_path
 
   for required_path in \
-    docs/README.md \
-    docs/beginner-guide/README.md \
-    docs/project-workflow.md \
-    docs/feature-inventory-and-tradeoffs.md \
-    docs/operations.md
+    README.md \
+    LICENSE-APACHE \
+    config/dufs.yaml.example \
+    deploy/dufs.service \
+    deploy/nginx-dufs.conf
   do
     [[ -f "$package_root/$required_path" && \
       ! -L "$package_root/$required_path" ]] || {
@@ -1305,16 +1293,12 @@ verify_release_documentation_layout() {
       return 1
     }
   done
-  [[ "$(stat -Lc '%a' -- "$package_root/docs")" == "755" && \
-    "$(stat -Lc '%a' -- "$package_root/docs/README.md")" == "644" && \
-    "$(stat -Lc '%a' -- "$package_root/scripts/package-release.sh")" == "755" ]] || {
+  [[ "$(stat -Lc '%a' -- "$package_root/README.md")" == "644" && \
+    "$(stat -Lc '%a' -- "$package_root/config")" == "755" && \
+    "$(stat -Lc '%a' -- "$package_root/deploy")" == "755" ]] || {
     printf 'Release support tree has non-canonical public modes.\n' >&2
     return 1
   }
-
-  run_node_entrypoint "$node_command" \
-    "$package_root/scripts/check-docs.mjs" \
-    --artifact-root "$package_root"
 }
 
 write_release_package_checksums() {
@@ -2000,7 +1984,7 @@ output_dir_was_set=false
 self_test=false
 required_cargo_cyclonedx_version="0.5.9"
 required_cargo_audit_version="0.22.2"
-required_node_version="26.7.0"
+IFS= read -r required_node_version < "$project_dir/.node-version"
 rustsec_advisory_database_url="https://github.com/RustSec/advisory-db.git"
 rustsec_advisory_database_maximum_age_seconds=604800
 rustsec_advisory_database_maximum_future_skew_seconds=300
@@ -2071,7 +2055,7 @@ git_command="$(command -v git)"
 node_command="$(command -v node)"
 npm_command="$(command -v npm)"
 # The package entrypoint is independently guarded because --self-test does not
-# call check.sh, while the formal path must fail before any dependency code.
+# call check-release.sh, while the formal path must fail before any dependency code.
 dufs_require_exact_node_version "$project_dir" "$required_node_version" "$node_command"
 mv_help="$(LC_ALL=C mv --help 2>&1)"
 if [[ "$mv_help" != *"--no-copy"* || \
@@ -2755,7 +2739,7 @@ validate_private_directory_binding \
   'Quality-gate temporary directory'
 (
   cd "$quality_source"
-  "${quality_environment[@]}" ./scripts/check.sh
+  "${quality_environment[@]}" ./scripts/check-release.sh
 )
 validate_output_directory "$output_dir" "$current_uid"
 validate_public_output_binding \

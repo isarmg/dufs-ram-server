@@ -30,129 +30,40 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
         .and_then(|value| value.strip_suffix('/'))
         .ok_or("Embedded asset prefix has an unexpected form")?;
 
-    let assets = [
-        (
-            "login.js",
-            format!("{asset_prefix}login.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/platform-session.js",
-            format!("{asset_prefix}modules/platform-session.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "index.js",
-            index_js,
-            "application/javascript; charset=UTF-8",
-        ),
-        ("index.css", index_css, "text/css; charset=UTF-8"),
-        (
-            "login.css",
-            format!("{asset_prefix}login.css"),
-            "text/css; charset=UTF-8",
-        ),
-        ("favicon.ico", favicon, "image/x-icon"),
-        (
-            "modules/app.js",
-            format!("{asset_prefix}modules/app.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/http/client.js",
-            format!("{asset_prefix}modules/http/client.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/http/platform-error.js",
-            format!("{asset_prefix}modules/http/platform-error.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/http/headers.js",
-            format!("{asset_prefix}modules/http/headers.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/http/response_buffer.js",
-            format!("{asset_prefix}modules/http/response_buffer.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/listing/controller.js",
-            format!("{asset_prefix}modules/listing/controller.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/operations/dialogs.js",
-            format!("{asset_prefix}modules/operations/dialogs.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/operations/file_operations.js",
-            format!("{asset_prefix}modules/operations/file_operations.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/shared/dom.js",
-            format!("{asset_prefix}modules/shared/dom.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/shared/index_data.js",
-            format!("{asset_prefix}modules/shared/index_data.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/shared/mutation_effect.js",
-            format!("{asset_prefix}modules/shared/mutation_effect.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/shared/path.js",
-            format!("{asset_prefix}modules/shared/path.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/manager.js",
-            format!("{asset_prefix}modules/upload/manager.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/preflight.js",
-            format!("{asset_prefix}modules/upload/preflight.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/protocol.js",
-            format!("{asset_prefix}modules/upload/protocol.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/queue.js",
-            format!("{asset_prefix}modules/upload/queue.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/selection.js",
-            format!("{asset_prefix}modules/upload/selection.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/transport.js",
-            format!("{asset_prefix}modules/upload/transport.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-        (
-            "modules/upload/view.js",
-            format!("{asset_prefix}modules/upload/view.js"),
-            "application/javascript; charset=UTF-8",
-        ),
-    ];
-    let mut assets = assets
-        .into_iter()
-        .map(|(name, path, content_type)| (name.to_owned(), path, content_type))
-        .collect::<Vec<_>>();
+    let web_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("clients/web");
+    let mut web_files = [
+        "login.js",
+        "index.js",
+        "index.css",
+        "login.css",
+        "favicon.ico",
+    ]
+    .into_iter()
+    .map(|name| web_root.join(name))
+    .collect::<Vec<_>>();
+    collect_javascript_files(&web_root.join("modules"), &mut web_files)?;
+    web_files.sort();
+    let mut assets = Vec::with_capacity(web_files.len());
+    for path in web_files {
+        let name = path
+            .strip_prefix(&web_root)?
+            .to_str()
+            .ok_or("Web asset path is not UTF-8")?
+            .replace('\\', "/");
+        let content_type = match path.extension().and_then(|value| value.to_str()) {
+            Some("js") => "application/javascript; charset=UTF-8",
+            Some("css") => "text/css; charset=UTF-8",
+            Some("ico") => "image/x-icon",
+            _ => panic!("unexpected Web runtime asset"),
+        };
+        let served_path = match name.as_str() {
+            "index.js" => index_js.clone(),
+            "index.css" => index_css.clone(),
+            "favicon.ico" => favicon.clone(),
+            _ => format!("{asset_prefix}{name}"),
+        };
+        assets.push((name, served_path, content_type));
+    }
     let mut platform = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/clients/web/dist"))?
         .map(|entry| entry.map(|value| value.path()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -255,6 +166,27 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
         .send()?;
     assert_eq!(mkdir.status(), StatusCode::BAD_REQUEST);
     assert!(!server.path().join(reserved_component).exists());
+    Ok(())
+}
+
+fn collect_javascript_files(
+    directory: &std::path::Path,
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<(), std::io::Error> {
+    for entry in std::fs::read_dir(directory)? {
+        let path = entry?.path();
+        let metadata = std::fs::symlink_metadata(&path)?;
+        assert!(!metadata.file_type().is_symlink());
+        if metadata.is_dir() {
+            collect_javascript_files(&path, files)?;
+        } else {
+            assert_eq!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("js")
+            );
+            files.push(path);
+        }
+    }
     Ok(())
 }
 

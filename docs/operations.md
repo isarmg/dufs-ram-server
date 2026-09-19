@@ -173,7 +173,7 @@ Foundation 是编译期供应链输入，不是运行时共享服务。当前 Ru
 
 自动 GitHub Release 是面向直接下载运行的便捷通道：其二进制在 `ubuntu-24.04` 托管 runner 上构建，必须匹配目标 CPU、glibc、动态加载器与 `openat2` 内核能力。需要 CycloneDX SBOM、第三方和标准库许可证清单、构建环境记录、可重复归档及独立公钥签名时，仍必须执行下述本地正式发布流程；不能把同一 Release 中的 checksum 当作独立信任根。
 
-发布包由 `scripts/package-release.sh` 从干净 Git 提交构建。`Cargo.toml` 的版本必须存在精确的 `v<version>` tag，且该 tag 必须指向当前 HEAD。脚本强制执行完整 `scripts/check.sh`，不是依赖调用者事先声称检查通过；门禁后、签名前和发布前都会再次核对 HEAD、tag、版本与干净状态。启动检查显式拒绝 `refs/replace/*`、legacy grafts 和仓库私有 `info/attributes`。生产编排与自测夹具分别由 `scripts/package-release.sh` 和 `scripts/lib/package-release-self-test.sh` 维护；后者只能由 `--self-test` 分支加载，不参与正式发行控制流。
+发布包由 `scripts/package-release.sh` 从干净 Git 提交构建。`Cargo.toml` 的版本必须存在精确的 `v<version>` tag，且该 tag 必须指向当前 HEAD。脚本强制执行完整 `scripts/check-release.sh`，不是依赖调用者事先声称检查通过；门禁后、签名前和发布前都会再次核对 HEAD、tag、版本与干净状态。运行包只携带二进制、配置/网关样例、运行说明、许可证、SBOM、依赖清单、构建记录和校验文件；源码、测试和完整教程由 `source_sha` 指向的仓库提交提供。
 
 进入构建前，Git 索引和目标 commit tree 中的条目必须都是 mode `100644/100755` 的普通 blob；tracked symlink（`120000`）、submodule/gitlink（`160000`）及其他类型一律拒绝。权限为 `0700` 的私有 bare façade 只含由脚本摘要锁定的最小 local config，并通过 object alternates 读取目标对象库；所有决定源码身份的 Git 命令都清空 HOME、system/global 配置并禁用额外 attributes/replace。
 

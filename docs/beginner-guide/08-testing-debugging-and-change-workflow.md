@@ -11,7 +11,7 @@
 - 理解 Rust fixture 和 Playwright fixture 为何不会操作真实共享目录；
 - 使用后端日志、浏览器 DevTools 和 Playwright trace 定位问题；
 - 按固定顺序完成一次低风险修改；
-- 理解为什么 `scripts/check.sh` 会在存在已跟踪改动或未忽略的新文件时最终失败。
+- 理解日常、集成和发行检查各自验证什么。
 
 ## 8.1 测试不是一个命令，而是一组不同证据
 
@@ -36,7 +36,7 @@ flowchart TD
     B --> C[相关 Rust 集成测试]
     C --> D[相关 Playwright 文件或场景]
     D --> E[完整 Rust 与双浏览器矩阵]
-    E --> F[干净源码上的 scripts/check.sh]
+    E --> F[干净源码上的 scripts/check-release.sh]
 ```
 
 越早发现问题，修复成本通常越低。因此先跑靠上的小检查，通过后再向下扩大。
@@ -465,9 +465,9 @@ Network 重点看：
 4. 两个浏览器只有一个失败，重点看标准兼容、焦点、下载和事件时序；
 5. 单独运行通过、全套并行失败，重点找共享固定路径、账号、端口或全局状态。
 
-## 8.10 完整 `check.sh` 与干净工作树
+## 8.10 日常、集成与发行检查
 
-权威本地总门禁是：
+日常开发入口是：
 
 ```sh
 ./scripts/check.sh
@@ -478,21 +478,17 @@ Network 重点看：
 - 必需工具检查，并在任何耗时步骤前把 [.node-version](../../.node-version) 的精确单行内容及实际 `node --version` 同时锁定到 26.7.0；
 - Bash 语法检查；
 - 可用时的 ShellCheck；
-- release 自测与真实部署配置测试；
 - Rustfmt、Clippy、全 targets/features 测试；
-- 固定版本覆盖率和 Cargo audit；
-- `npm ci`、JavaScript 安全、strict 类型、文档和 Node 单测；
-- Chromium、Firefox，以及本机存在时的 Edge；
-- npm audit；
-- Git 空白和工作树状态检查。
+- JavaScript 安全、strict 类型、文档、依赖边界和 Node 单测；
+- Git 空白检查。工作树可以包含正在开发的修改。
 
-完整门禁默认不是纯离线流程：缓存缺失时 `npm ci` 会下载包，`cargo audit` 会更新/读取 RustSec advisory 与 crates.io yanked 数据，`npm audit` 会查询 registry；Playwright 浏览器也必须已经安装。正式包 E2E 还会在隔离 clone 中重跑整套门禁、真实构建/SBOM/签名/原子发布和外部验收。受限网络或 air-gapped CI 应显式准备锁定依赖、advisory/registry 策略和浏览器制品，并记录哪些审计因策略被替代，不能静默跳过后仍宣称与默认门禁等价。
+真实部署和浏览器验收使用 `./scripts/check-integration.sh`。它复用已构建的候选二进制；`--deployment-self-test` 才额外运行检查器自身的清理故障注入。
 
-它的工具链不止 `cargo`、Git、Node、npm、nginx、`systemd-analyze`、`cargo-audit`、固定的 `cargo-llvm-cov 0.8.6` 和 Playwright 浏览器；间接执行的部署与 release 自测还要求 curl、OpenSSL、tar/gzip、flock、sha256sum、支持 `--update=none --no-copy` 的 GNU `mv`，以及支持 Linux `RENAME_NOREPLACE` 的发布文件系统。发布脚本不会把 `--update=none` 的静默跳过当成成功，只有 source 消失且 destination 的设备号/inode 与原 source 相同时才确认发布。权威清单以 [scripts/check.sh](../../scripts/check.sh) 及其调用脚本的启动检查为准，更具体的部署工具准备见[第 9 章](09-deployment-security-and-operations.md)。
+干净提交上的正式发行入口是 `./scripts/check-release.sh`。它增加审计、覆盖率、部署、打包自测、release binary、完整浏览器矩阵和 clean-tree 校验。完整发行门可能访问依赖与审计网络；受限环境必须预先准备锁定缓存和浏览器制品。
 
-### 为什么正在改代码时它最终会失败
+### 为什么只有发行门要求干净源码
 
-非发布隔离模式下，脚本末尾执行的语义相当于：
+`check-release.sh` 末尾执行的语义相当于：
 
 ```sh
 git diff --check
@@ -508,14 +504,14 @@ git status --porcelain
 
 `target/`、`node_modules/`、`test-results/` 等被忽略的生成物不会仅因为存在就触发这条 clean-tree 失败。
 
-因此，在一个正在开发的脏工作树中，可能出现“所有测试都通过，最后仍失败”。这不表示前面的测试失败，而是源码身份门要求完整检查对应一个可复现的干净提交。
+日常 `check.sh` 不执行 clean-tree 断言；脏工作树只会在正式发行门中失败，因为发行证据必须对应一个可复现提交。
 
 正确做法是：
 
 1. 开发阶段运行本章列出的分层命令；
 2. 用 `git status --short` 区分自己的改动和原有未提交改动；
 3. 在获得提交权限并完成预提交检查后，把预期内容形成一个干净提交；
-4. 在该干净提交或独立干净 checkout 上运行 `./scripts/check.sh`；
+4. 在该干净提交或独立干净 checkout 上运行 `./scripts/check-release.sh`；
 5. 若门禁失败，修复后重新形成干净源码，再完整运行。
 
 不要为了让脚本显示绿色而删除、覆盖或重置别人的未提交改动。完整门禁要求干净树，不代表它授权清理工作区。
@@ -622,12 +618,14 @@ git diff -- 相关文件
 - 错误和 unknown 语义没有被“简化”为盲目重试；
 - 文档、代码和测试描述的是同一行为。
 
-### 第九步：在干净源码上跑权威总门禁
+### 第九步：运行与交付阶段对应的总门禁
 
 完成分层验证并形成干净提交后：
 
 ```sh
 ./scripts/check.sh
+# 准备发行时，在干净提交或独立干净 checkout 中运行：
+./scripts/check-release.sh
 ```
 
 这一步是最终汇总证据，不替代前面快速、可定位的反馈环。
@@ -646,7 +644,7 @@ git diff -- 相关文件
 | 上传协议或队列 | Rust定向测试、Node单测、JS类型 | `tests/http.rs`、`upload.spec.js` | 全 Rust + 双浏览器 |
 | HTML/CSS/焦点/按钮布局 | JS安全、类型 | `accessibility.spec.js` 和相关业务 spec | Chromium + Firefox |
 | state store、路径或持久性 | fmt、check、模块单测 | browser_api/http/shutdown 等故障测试 | 全 Rust、覆盖率、相关浏览器流程 |
-| 部署样例或服务配置 | 文档和格式检查 | 按[第 9 章](09-deployment-security-and-operations.md)执行部署门 | 完整 `check.sh` |
+| 部署样例或服务配置 | 文档和格式检查 | 按[第 9 章](09-deployment-security-and-operations.md)执行部署门 | `check-integration.sh`；发行前再跑 `check-release.sh` |
 
 “最小检查”不是交付标准，而是最快反馈入口。改动越接近文件提交、崩溃恢复、认证或公开协议，越应该扩大测试范围。
 
@@ -664,6 +662,6 @@ git diff -- 相关文件
 - [ ] 涉及写请求时保留幂等、冲突和 unknown 语义；
 - [ ] 没有把测试证书、账号、临时路径或敏感值带入生产配置；
 - [ ] `git diff --check` 通过，并已单独检查 `git status` 中不受该命令覆盖的新文件；
-- [ ] 权威 `scripts/check.sh` 已在干净源码上通过，或明确记录尚未执行的原因。
+- [ ] 日常 `scripts/check.sh` 已通过；若准备发行，`scripts/check-release.sh` 已在干净源码上通过或明确记录尚未执行的原因。
 
 好的测试工作流不是“运行最多的命令”，而是让每一种风险都由最合适、最容易解释的证据覆盖。

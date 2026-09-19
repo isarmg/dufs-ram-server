@@ -16,7 +16,79 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DUFS_BUILD_GIT_SHA");
     emit_git_rerun_paths();
     println!("cargo:rustc-env=DUFS_BUILD_GIT_SHA={}", build_git_sha());
+    embed_web_assets();
     embed_platform_assets();
+}
+
+fn embed_web_assets() {
+    let manifest = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let root = manifest.join("clients/web");
+    let modules = root.join("modules");
+    println!("cargo:rerun-if-changed={}", root.display());
+
+    let mut files = [
+        "login.js",
+        "index.js",
+        "index.css",
+        "login.css",
+        "favicon.ico",
+    ]
+    .into_iter()
+    .map(|name| root.join(name))
+    .collect::<Vec<_>>();
+    collect_web_modules(&modules, &mut files);
+    files.sort();
+
+    let mut generated = String::from("&[\n");
+    for path in files {
+        let metadata = std::fs::symlink_metadata(&path)
+            .unwrap_or_else(|error| panic!("required Web asset {}: {error}", path.display()));
+        assert!(metadata.is_file() && !metadata.file_type().is_symlink());
+        let name = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace('\\', "/");
+        let content_type = match path.extension().and_then(|value| value.to_str()) {
+            Some("js") => "application/javascript; charset=UTF-8",
+            Some("css") => "text/css; charset=UTF-8",
+            Some("ico") => "image/x-icon",
+            _ => panic!("unsupported Web asset: {name}"),
+        };
+        generated.push_str(&format!(
+            "EmbeddedAsset {{ name: {name:?}, contents: include_bytes!({path:?}), content_type: {content_type:?} }},\n",
+        ));
+    }
+    generated.push_str("]\n");
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    std::fs::write(output.join("web-assets.rs"), generated).unwrap();
+}
+
+fn collect_web_modules(directory: &Path, files: &mut Vec<std::path::PathBuf>) {
+    let mut entries = std::fs::read_dir(directory)
+        .unwrap_or_else(|error| {
+            panic!("read Web module directory {}: {error}", directory.display())
+        })
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    entries.sort();
+    for path in entries {
+        let metadata = std::fs::symlink_metadata(&path).unwrap();
+        assert!(
+            !metadata.file_type().is_symlink(),
+            "Web asset symlink is forbidden"
+        );
+        if metadata.is_dir() {
+            collect_web_modules(&path, files);
+        } else {
+            assert_eq!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("js")
+            );
+            files.push(path);
+        }
+    }
 }
 
 fn embed_platform_assets() {

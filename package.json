@@ -10,12 +10,14 @@
   "scripts": {
     "build:platform": "node scripts/build-platform.mjs",
     "check:docs": "node scripts/check-docs.mjs",
+    "check:independence": "node scripts/check-independence.mjs",
     "check:js": "node scripts/check-js.mjs",
     "check:types": "tsc -p clients/web/tsconfig.json",
     "test:frontend:unit": "node --test tests/frontend/unit/*.test.mjs",
-    "test:frontend": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && node tests/frontend/run.mjs",
-    "test:frontend:headed": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && node tests/frontend/run.mjs --headed",
-    "test:frontend:edge": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && node tests/frontend/run.mjs --edge --project=edge",
+    "test:frontend": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && DUFS_FRONTEND_BINARY=$PWD/target/x86_64-unknown-linux-gnu/debug/dufs npm run test:frontend:run",
+    "test:frontend:run": "node scripts/run-frontend-prepared.mjs",
+    "test:frontend:headed": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && DUFS_FRONTEND_BINARY=$PWD/target/x86_64-unknown-linux-gnu/debug/dufs npm run test:frontend:run -- --headed",
+    "test:frontend:edge": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && DUFS_FRONTEND_BINARY=$PWD/target/x86_64-unknown-linux-gnu/debug/dufs npm run test:frontend:run -- --edge --project=edge",
     "test:frontend:install": "playwright install chromium firefox"
   },
   "dependencies": {

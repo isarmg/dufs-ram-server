@@ -343,8 +343,6 @@ run_early_cleanup_self_test() {
 if [[ "$deployment_mode" == "self-test" ]]; then
   run_early_cleanup_self_test
   exit 0
-elif [[ "$deployment_mode" == "normal" ]]; then
-  run_early_cleanup_self_test
 fi
 
 tmp_root="${TMPDIR:-/tmp}"

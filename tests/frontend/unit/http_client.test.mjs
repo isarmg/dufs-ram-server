@@ -4,10 +4,65 @@ import test from "node:test";
 import {
   RequestError,
   assertDiscardUploadResponse,
+  assertResponse,
   queryUnknownUpload,
+  requestNoContent,
 } from "../../../clients/web/modules/http/client.js";
 
 const uploadId = "00000000-0000-4000-8000-000000000001";
+
+test("operation success is bound to the succeeded terminal state", async () => {
+  const operationId = "00000000-0000-4000-8000-000000000009";
+  const response = (status, state, id = operationId) => new Response(null, {
+    status,
+    headers: {
+      "x-dufs-operation-id": id,
+      "x-dufs-operation-state": state,
+    },
+  });
+
+  assert.equal((await assertResponse(response(204, "succeeded"))).status, 204);
+  for (const [status, state] of [
+    [204, "unknown"],
+    [204, "failed"],
+    [204, "running"],
+    [409, "succeeded"],
+  ]) {
+    await assert.rejects(
+      assertResponse(response(status, state)),
+      error => error instanceof RequestError &&
+        error.code === "invalid_operation_result" &&
+        error.outcomeUnknown === true &&
+        error.operationState === "unknown",
+      `HTTP ${status} with ${state}`,
+    );
+  }
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  globalThis.window = globalThis;
+  globalThis.fetch = async () => response(
+    204,
+    "succeeded",
+    "00000000-0000-4000-8000-000000000010",
+  );
+  try {
+    await assert.rejects(
+      requestNoContent(
+        "https://example.invalid/mutation",
+        { method: "POST" },
+        { operationId, outcomeUnknown: true },
+      ),
+      error => error instanceof RequestError &&
+        error.code === "invalid_operation_result" &&
+        error.operationId === operationId &&
+        error.outcomeUnknown === true,
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
 
 test("discard accepts only a bound 204 rejected upload envelope", async () => {
   const validHeaders = {

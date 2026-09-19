@@ -32,7 +32,7 @@ Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责
 
 本 fork 托管在 `https://github.com/isarmg/dufs-ram-server`，Server 与内置 React Web 同属本仓库，不创建空 Client 仓库。只读 GitHub Actions 门禁不会创建或修改远端 tag、Release 或正式制品；版本 tag 工作流只在 tag、Cargo 版本和源码提交完全一致且全部质量门通过后构建便捷二进制，并生成只绑定当前版本和源码提交的发布说明。需要独立公钥验证、SBOM、许可证清单和构建环境记录的正式制品仍由 `scripts/package-release.sh` 从当前提交生成。
 
-发布包完整保留仓库的 `docs/` 层次，并携带教程本地链接所引用的 `clients/web/`、`src/`、`tests/`、`scripts/`、部署样例和构建配置；这些支持材料用于离线阅读与核对，不是运行 Dufs 的额外依赖。打包和 `--self-test` 会先用包内文档检查器验证所有本地链接，再把除 `SHA256SUMS` 自身外的全部普通文件写入清单；此后只做只读覆盖校验，使 checksum 成为包内最后一次内容变更。发布生产流程位于 `scripts/package-release.sh`，其大型故障/攻击回归夹具已隔离到 `scripts/lib/package-release-self-test.sh`，日常维护生产路径不再需要穿过测试实现。
+运行发布包只包含二进制、配置与网关样例、运行说明、许可证、SBOM、依赖清单、构建记录和校验文件。完整教程、源码和开发测试保留在与包内 `source_sha` 对应的仓库提交中，不再扩大生产包的运行信任边界。发布生产流程位于 `scripts/package-release.sh`，其故障回归夹具隔离在 `scripts/lib/package-release-self-test.sh`。
 
 ## 环境要求
 
@@ -41,7 +41,7 @@ Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责
 - Rust、rustc 和 Cargo 1.98.0，源码使用 Rust 2024 edition；
 - Foundation 认证使用 Core/Static/Axum/Auth 与当前合同；Rust 固定正式 0.8.1 和完整 revision `85348eb99cbea7798a2a3f8ea55baf0179708322`，Web 固定同版 Release tarball 与锁文件 integrity，不依赖相邻工作区。Dufs 0.51.10 已按当前 Foundation 供应链重新验收；禁止复制平台实现或使用可变分支作为发布来源；
 - 建议使用 rustup；`rust-toolchain.toml` 已固定工具链并包含 Clippy、Rustfmt；
-- `.node-version` 是当前 Node 的仓库级版本基准，内容精确为 `26.7.0`，并且必须与脚本常量、manifest/lockfile engine 和工作流声明交叉一致；`scripts/check.sh` 和 `scripts/package-release.sh` 均在任何审计、构建或依赖代码前比对完整 `node --version` 输出并拒绝其他版本。Node 只用于前端/文档门禁和发布 SBOM 规范化，不是生产运行依赖；
+- `.node-version` 是 Node 精确版本的唯一来源；本地脚本从该文件读取版本，GitHub Actions 通过 `node-version-file` 使用它。`package.json` 的 engine 只声明支持范围。Node 只用于前端、检查和发布辅助，不是生产运行依赖；
 - 本地开发门在安装 ShellCheck 时执行 `--severity=warning`，缺失时明确跳过而不会联网安装；远程 CI 按 SHA-256 固定并强制使用 ShellCheck 0.11.0，正式发布也要求 ShellCheck 可用；
 - 本地签名发布还要求可用的 `/proc/self/fd`、OpenSSL、`cargo-cyclonedx 0.5.9`、`cargo-audit 0.22.2`、支持 `mv --update=none --no-copy` 的 GNU coreutils、支持 Linux `RENAME_NOREPLACE` 的发布文件系统，以及固定 Rust 1.98.0 sysroot 中经过摘要审核的标准库版权文件；脚本只在 source 消失且 destination 仍是同一设备号/inode 的实体目录时确认发布，并把 `--update=none` 的静默跳过判为碰撞失败。这些不是 Dufs 生产进程依赖。
 
@@ -50,27 +50,34 @@ Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责
 ## 编译
 
 ```sh
-cargo build --release --locked
+npm ci --ignore-scripts --no-audit --no-fund
+npm run build:platform
+cargo build --release --locked --target x86_64-unknown-linux-gnu
+./target/x86_64-unknown-linux-gnu/release/dufs --version
 ```
 
 生成的可执行文件位于：
 
 ```text
-target/release/dufs
+target/x86_64-unknown-linux-gnu/release/dufs
 ```
 
 也可以直接从当前本地源码安装：
 
 ```sh
+npm ci --ignore-scripts --no-audit --no-fund
+npm run build:platform
 cargo install --locked --path .
 ```
+
+`build.rs` 会嵌入 `clients/web/dist`，因此干净检出必须先完成前两步。
 
 ## 快速开始
 
 先生成密码哈希：
 
 ```sh
-./target/release/dufs hash-password
+./target/x86_64-unknown-linux-gnu/release/dufs hash-password
 ```
 
 再把 `$argon2id$…` 替换为命令输出的完整 PHC，并保存为共享根之外、权限为 `0600` 的 YAML：
@@ -85,7 +92,7 @@ auth:
 
 ```sh
 chmod 0600 /受保护配置目录/dufs.yaml
-./target/release/dufs --config /受保护配置目录/dufs.yaml
+./target/x86_64-unknown-linux-gnu/release/dufs --config /受保护配置目录/dufs.yaml
 ```
 
 未指定 `--bind` 时，Dufs 默认只监听 `127.0.0.1:5000`。需要从其他主机上的网关回源时，必须显式指定内网 IP，并通过防火墙或 ACL 限制来源；需要 IPv6 时可显式使用 `--bind ::1` 或其他 IPv6 地址。CLI/YAML 至少要提供一个监听地址且不能重复，空的 `bind: []` 或完全重复的 IP 会在创建任何运行时资源前报错退出。全部地址都成功绑定后才初始化共享根和持久状态，运行时构建成功后再统一启动 accept；因此后项绑定失败不会打开、创建或修改状态库，也不会短暂发布前面的地址。多个 listener 先各自等待可读，只有取得共享连接许可后才从内核 backlog 接受 socket；因此空闲地址不预占许可，用户态已接受连接的总数也不会超过全局上限。
@@ -325,7 +332,7 @@ request-timeout: 300
 
 ```sh
 chmod 0600 ./dufs.yaml
-./target/release/dufs --config ./dufs.yaml
+./target/x86_64-unknown-linux-gnu/release/dufs --config ./dufs.yaml
 ```
 
 YAML 拒绝未知字段和空的 `bind` 列表。`development` 默认为 false，仅用于回环 HTTP 联调。`state-dir` 必须由 YAML 或命令行提供，目录及固定数据库必须满足私有目录约束。命令行显式配置覆盖 YAML。`max-search-entries` 必须位于 1–100000。生产配置只来自命令行和 YAML，不读取 DUFS_* 环境变量。
@@ -354,7 +361,7 @@ Dufs
 默认回环监听适合网关与 Dufs 位于同一主机的部署，无需额外传入 `--bind`：
 
 ```sh
-./target/release/dufs --config /etc/dufs/dufs.yaml
+./target/x86_64-unknown-linux-gnu/release/dufs --config /etc/dufs/dufs.yaml
 ```
 
 网关位于其他主机时，可显式绑定服务器内网 IP；只有确有多网卡监听需求时才使用 0.0.0.0，并用防火墙只允许网关访问。生产同源模式要求外部 HTTPS Origin，网关必须固定并覆盖规范 Host。Foundation 登录来源预算使用真实 TCP peer，网关另外按实际客户端来源限流。
@@ -409,7 +416,7 @@ Authorization、Proxy-Authorization、Cookie 和 CSRF 请求头会在自定义�
 示例：
 
 ```sh
-./target/release/dufs \
+./target/x86_64-unknown-linux-gnu/release/dufs \
   --config /受保护配置目录/dufs.yaml \
   --log-format '$time_iso8601 $log_level $remote_addr $remote_user "$request" $status operation_id=$operation_id operation_state=$operation_state' \
   --log-file ./dufs.log
@@ -462,12 +469,12 @@ Rust 检查：
 cargo fmt --all --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-targets --all-features
-cargo llvm-cov --locked --all-targets --all-features --fail-under-lines 70 --fail-under-file-lines 1
+cargo llvm-cov --locked --all-targets --all-features --fail-under-lines 70
 cargo fetch --locked
 cargo audit --deny yanked
 ```
 
-审查文档记录的一次 `0.48.0` 验收快照中，Rust 行覆盖率为 77.40%（13,165 行中 2,975 行未覆盖）；后续代码会改变该固定数字，当前结论必须以本次 `scripts/check.sh` 的即时输出为准。门禁总量底线保持 70%，逐文件底线为 1%，为平台错误分支和工具版本的轻微行号变化保留余量，同时防止大幅覆盖率回退。
+Rust 覆盖率门保留总行覆盖率 70% 的底线，并输出逐文件报告供审查；普通开发检查不重复执行插桩测试。
 
 首次准备前端测试：
 
@@ -491,17 +498,17 @@ npm audit --audit-level=high
 
 当前 Playwright 必需矩阵覆盖 Chromium 和 Firefox；已安装 Microsoft Edge 时可执行 `npm run test:frontend:edge`。测试通过本地 HTTPS 网关转发到 Dufs 的 HTTP 动态端口，与生产部署边界一致。`tests/data/key_pkcs8.pem` 是公开、固定且仅供 localhost 自动化使用的测试私钥，绝不能作为生产网关密钥部署。
 
-完整本地检查可使用：
+日常开发检查可使用：
 
 ```sh
 ./scripts/check.sh
 ```
 
-该门禁还会用生产解析器校验 YAML 示例，以占位可执行文件做 systemd 静态验证，并让真实 nginx 对 mock upstream 执行隔离行为测试；它不启动真实 systemd unit 与 Dufs/nginx 组合，生产数据副本上的启动、readiness 和 CRUD 冒烟仍是发布/部署必做项。门禁还执行原子发布目录的 no-clobber、Git replace/private-attributes 来源替换、许可证生成和 npm cache 播种自测，并要求 Rust 总行覆盖率至少 70%、每个被插桩源码文件的行覆盖率至少 1%，避免零覆盖模块被总量掩盖；它还以保守源码门检查 Markdown 的 inline/reference-style 本地链接和标题锚点，围栏代码块不参与链接解析，检查树中的符号链接会失败。JavaScript 安全检查使用固定的 Acorn 8.17.0 解析 AST，并以词法常量模型识别字符串拼接、模板、`join`、别名、反射及动态全局属性访问；动态 computed 解构的属性名无法静态求值时会失败关闭，变量声明、赋值表达式、默认参数、嵌套模式和 const alias 都有内置负例。TypeScript 5.8.3 另以 `allowJs + checkJs + strict + noEmit` 检查全部生产 JavaScript；请求、错误、上传协议、传输与 DOM 边界都用 JSDoc 从 `unknown` 显式收窄，显式或隐式 `any` 都不能绕过门禁。这是在保留原生 JavaScript 部署方式下的完整 strict 检查，但仍不等价于迁移为 `.ts`、ESLint 或完整跨过程污点证明。本地开发门在缺少 ShellCheck 时仍保持离线可用，但正式发布会失败关闭。Playwright 保留一次重试来收集诊断，但 `failOnFlakyTests` 会让“首轮失败、重试通过”仍然阻断门禁。发布包构建、签名验证、备份、current-only 版本切换和恢复步骤见[生产运维文档](docs/operations.md)。
+该入口执行格式、Clippy、Rust 测试、前端构建、类型/文档/依赖边界检查和 Node 单测，允许工作树包含正在开发的修改。`./scripts/check-integration.sh` 执行真实部署与双浏览器验收；加 `--deployment-self-test` 才运行部署检查器自身的故障注入。`./scripts/check-release.sh` 是干净提交上的完整发行门，另含审计、覆盖率、打包自测、release binary 和正式浏览器矩阵。
 
-`.github/workflows/read-only-ci.yml` 只在 `pull_request`、`push` 或人工触发时读取源码：工作流权限固定为 `contents: read`，checkout 不持久化凭据，所有 Action 固定到完整 commit SHA。全部 Node 任务只使用当前固定版本 26.7.0，静态层同时固定 TypeScript 5.8.3 和经 SHA-256 校验的 ShellCheck 0.11.0；Rust 层固定 1.98.0；质量层运行总量 70% 且逐文件 1% 的 Rust 行覆盖率、真实 nginx/mock upstream 部署行为、发布脚本自测和 release binary smoke；浏览器层按 lockfile 的 Playwright 1.61.1 与 `@axe-core/playwright` 4.12.1 分开运行 Chromium 和 Firefox。Playwright 会在 runner 工作目录生成 retain-on-failure trace，但当前工作流不向 GitHub 上传该诊断目录；启用远程 artifact 需要另行明确授权并重新审查其中可能包含的请求与页面数据。独立依赖审计工作流在 lockfile/manifest 的 push、PR、每周计划或人工触发时联网运行固定的 cargo-audit 0.22.2 与 npm audit，避免漏掉直接推送同时不让无关变更承担审计数据库网络噪声。`read-only-ci.yml` 的静态、Rust 和浏览器 job 使用 `ubuntu-24.04`，需要 nginx 1.25.1+ 的质量 job 使用 x64 `ubuntu-26.04`；同样执行真实部署检查的正式包 E2E 也使用该 26.04 标签。GitHub 当前将 26.04 镜像标为 preview；不可调度或镜像变化导致的门禁失败不得绕过，应等待官方 runner 恢复或经评审改用新的 current 基线。工作流在日志记录实际 `ImageOS`、`ImageVersion` 和工具版本；GitHub 托管镜像中的 Bash、Git、curl、内核和系统库并没有被仓库逐包钉死。只读门不接触签名密钥、不创建发布，也不替代发布 tag 上的完整 `scripts/check.sh`。
+`.github/workflows/read-only-ci.yml` 只在 `pull_request`、`push` 或人工触发时读取源码：工作流权限固定为 `contents: read`，checkout 不持久化凭据，所有 Action 固定到完整 commit SHA。全部 Node 任务只使用当前固定版本 26.7.0，静态层同时固定 TypeScript 5.8.3 和经 SHA-256 校验的 ShellCheck 0.11.0；Rust 层固定 1.98.0；质量层运行总行覆盖率 70% 的 Rust 覆盖率报告、真实 nginx/mock upstream 部署行为、发布脚本自测和 release binary smoke；浏览器层按 lockfile 的 Playwright 1.61.1 与 `@axe-core/playwright` 4.12.1 分开运行 Chromium 和 Firefox。Playwright 会在 runner 工作目录生成 retain-on-failure trace，但当前工作流不向 GitHub 上传该诊断目录；启用远程 artifact 需要另行明确授权并重新审查其中可能包含的请求与页面数据。独立依赖审计工作流在 lockfile/manifest 的 push、PR、每周计划或人工触发时联网运行固定的 cargo-audit 0.22.2 与 npm audit，避免漏掉直接推送同时不让无关变更承担审计数据库网络噪声。`read-only-ci.yml` 的静态、Rust 和浏览器 job 使用 `ubuntu-24.04`，需要 nginx 1.25.1+ 的质量 job 使用 x64 `ubuntu-26.04`；同样执行真实部署检查的正式包 E2E 也使用该 26.04 标签。GitHub 当前将 26.04 镜像标为 preview；不可调度或镜像变化导致的门禁失败不得绕过，应等待官方 runner 恢复或经评审改用新的 current 基线。工作流在日志记录实际 `ImageOS`、`ImageVersion` 和工具版本；GitHub 托管镜像中的 Bash、Git、curl、内核和系统库并没有被仓库逐包钉死。只读门不接触签名密钥、不创建发布，也不替代发布 tag 上的完整 `scripts/check-release.sh`。
 
-`.github/workflows/release-binary.yml` 只接受 `v<version>` tag push，复核 tag、Cargo 版本和 workflow commit 完全一致，并等待同一 tag/SHA 的只读 CI、依赖审计和正式包 E2E 全部成功。只读构建 job 生成嵌入完整 Git SHA 的 GNU/Linux x86-64 二进制、SHA-256，以及仅含当前版本和源码提交的确定性发布说明；最小写权限 job 只消费并复核这些不可变输入。
+`.github/workflows/release-binary.yml` 只接受 `v<version>` tag push。正式包验收、当前发布尝试的依赖审计、候选构建和发布通过 `needs` 形成同一条依赖链；不再轮询其他工作流运行记录。最小写权限 job 只下载并复核本次 `verify_build` 输出的 artifact ID 和摘要，不检出或重新构建源码。
 
 质量层把覆盖率、部署、发布脚本自测和 release binary smoke 作为独立步骤；只要各自前置条件成功且工作流未被取消，前一项实质检查失败不会跳过后面的独立检查，使一次运行尽量同时报告全部根因且避免缺少工具产生级联报错。
 
@@ -512,7 +519,7 @@ git diff --check
 git status --short
 ```
 
-创建版本时应先确认工作树干净，再用发布脚本从与 Cargo 版本一致、精确指向 `HEAD` 的 Git tag 构建。脚本不会直接在可变 checkout 中跑发布门禁：它先从摘要锁定的 bare façade 生成并验证目标 commit archive，在没有 `.git` 的私有副本中以 `env -i`、固定工具路径/工具链及独立 HOME、Cargo home/target、npm cache 和临时目录强制执行完整 `scripts/check.sh`。Cargo 依赖先 vendor 后离线使用；npm 播种器只从 `package-lock.json` 的 HTTPS URL 与 SHA-512 integrity 接受并重新散列宿主 cache 内容，随后使用私有 cache 与 `prefer-offline`，缺失包和 `npm audit` 仍可能需要网络。发布门固定要求 cargo-audit 0.22.2。宿主 RustSec Git 数据库只有在 canonical origin、`HEAD=FETCH_HEAD`、实体 `FETCH_HEAD` 时间戳不得比当前时间早超过 7 天或晚超过 300 秒，并通过完整物理/Git/内容封存检查时才可复用；检查还拒绝 alternates、不安全 Git 元数据、symlink/submodule/特殊项、untracked 路径及 tracked 内容或 mode 不匹配。合格输入以无硬链接私有 clone 封存 revision、fetch epoch、index/config 校验和；不合格、过期或缺失时，在运行任何项目或依赖代码前用 dummy lockfile 在私有数据库中联网刷新，网络不可用即失败关闭。脚本先对封存数据库执行 `cargo audit --db … --no-fetch --no-yanked` 预审计，再以 `cargo fetch --locked` 在私有 Cargo home 填充完整锁图所需的 crates.io 索引项，并执行 `--deny yanked`；索引缺失或依赖已撤回都不能被当作绿色结论。隔离门通过必填 `DUFS_QUALITY_AUDIT_DB` 使用同一封存，`scripts/check.sh` 也在其他项目/依赖步骤前先审计。封存时校验 seal 与新鲜度，预审计及 yanked 检查后重验 seal；完整门禁后重验 seal 与新鲜度，随后销毁质量树及其 RustSec 数据库。门禁后还通过独立 snapshot index 复验 tracked 内容/mode 和非忽略新增路径，再从同一 commit 全新解包用于签名构建。`BUILD-ENVIRONMENT.txt` 记录 advisory revision 和 fetch epoch，但不宣称记录内部 index/config 封存摘要。
+创建版本时应先确认工作树干净，再用发布脚本从与 Cargo 版本一致、精确指向 `HEAD` 的 Git tag 构建。脚本不会直接在可变 checkout 中跑发布门禁：它先从摘要锁定的 bare façade 生成并验证目标 commit archive，在没有 `.git` 的私有副本中以 `env -i`、固定工具路径/工具链及独立 HOME、Cargo home/target、npm cache 和临时目录强制执行完整 `scripts/check-release.sh`。Cargo 依赖先 vendor 后离线使用；npm 播种器只从 `package-lock.json` 的 HTTPS URL 与 SHA-512 integrity 接受并重新散列宿主 cache 内容，随后使用私有 cache 与 `prefer-offline`，缺失包和 `npm audit` 仍可能需要网络。发布门固定要求 cargo-audit 0.22.2。宿主 RustSec Git 数据库只有在 canonical origin、`HEAD=FETCH_HEAD`、实体 `FETCH_HEAD` 时间戳不得比当前时间早超过 7 天或晚超过 300 秒，并通过完整物理/Git/内容封存检查时才可复用；检查还拒绝 alternates、不安全 Git 元数据、symlink/submodule/特殊项、untracked 路径及 tracked 内容或 mode 不匹配。合格输入以无硬链接私有 clone 封存 revision、fetch epoch、index/config 校验和；不合格、过期或缺失时，在运行任何项目或依赖代码前用 dummy lockfile 在私有数据库中联网刷新，网络不可用即失败关闭。脚本先对封存数据库执行 `cargo audit --db … --no-fetch --no-yanked` 预审计，再以 `cargo fetch --locked` 在私有 Cargo home 填充完整锁图所需的 crates.io 索引项，并执行 `--deny yanked`；索引缺失或依赖已撤回都不能被当作绿色结论。隔离门通过必填 `DUFS_QUALITY_AUDIT_DB` 使用同一封存，`scripts/check-release.sh` 也在其他项目/依赖步骤前先审计。封存时校验 seal 与新鲜度，预审计及 yanked 检查后重验 seal；完整门禁后重验 seal 与新鲜度，随后销毁质量树及其 RustSec 数据库。门禁后还通过独立 snapshot index 复验 tracked 内容/mode 和非忽略新增路径，再从同一 commit 全新解包用于签名构建。`BUILD-ENVIRONMENT.txt` 记录 advisory revision 和 fetch epoch，但不宣称记录内部 index/config 封存摘要。
 
 源树预检、隔离快照和每次解包检查会拒绝 symlink、submodule 及任何非普通文件/目录条目。脚本还会拒绝 Git replace refs、legacy grafts 和仓库私有 attributes；façade 只使用摘要锁定的最小 local config，所有 Git 命令清空 system/global 配置并禁用额外 attributes/replace。检查后、签名前和发布前都会重新确认 commit/tag/版本及原 checkout 的干净状态；前后两份源码 archive 还会复核 commit、tree、mode、额外路径和 SHA-256。
 

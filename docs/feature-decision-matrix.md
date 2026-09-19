@@ -121,7 +121,7 @@
 | DFM-081 | 原生 dialog、键盘、focus return、live region、forced colors | `clients/web/modules/operations/dialogs.js`、`clients/web/index.css` | 建议保留 | 中 | 键盘/低视力用户无法可靠操作 | Chromium/Firefox、axe标签、Escape、320px；非完整 WCAG 声明 |
 | DFM-082 | TypeScript strict `checkJs`+JSDoc，外部输入为 unknown | `clients/web/tsconfig.json`、`scripts/check-js.mjs` | 开发运维 | 中 | 前端协议漂移更晚发现 | 无 any；runtime guard 仍必需；不等于迁移 `.ts` |
 | DFM-083 | Acorn AST 安全门与内置正负对抗样例 | `scripts/check-js.mjs` | 开发运维 | 高 | 动态 HTML/prompt/反射别名绕过文本搜索 | computed/destructure/alias/reflect；非通用污点证明 |
-| DFM-084 | 统一 Rust/JS/浏览器/部署/文档/审计门 | `scripts/check.sh`、`scripts/check-deployment.sh` | 开发运维 | 高 | 协议、路径、样例和依赖漂移进入发布 | fmt/clippy/test/coverage/audit/checkJs/Playwright/nginx/systemd |
+| DFM-084 | 日常、集成与发行三级质量门 | `scripts/check.sh`、`scripts/check-integration.sh`、`scripts/check-release.sh` | 开发运维 | 高 | 协议、路径、样例和依赖漂移进入发布 | 日常快速反馈；候选二进制集成；发行覆盖率/审计/Playwright/nginx/systemd |
 | DFM-085 | exact-source、vendor 构建、SBOM/notice/checksum/signature | `scripts/package-release.sh` | 开发运维 | 高 | 无法证明源码/依赖/制品一致或发现篡改 | clean tag=version=HEAD、SHA、no-clobber、强算法、独立固定公钥 |
 | DFM-086 | 中文 README/指南/流程/功能/运维文档是交付合同 | `README.md`、`docs/`、`scripts/check-docs.mjs` | 开发运维 | 中 | 开发者凭旧经验重建已删除兼容分支 | 只保留五类；links/anchors；协议/路径变更同步 |
 

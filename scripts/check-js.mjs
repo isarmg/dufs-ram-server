@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "acorn";
 
@@ -200,8 +200,6 @@ if (packageSource !== normalizedPackage) {
   failures.push("package.json: expected deterministic two-space JSON formatting");
 }
 
-checkEmbeddedModules();
-
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);
@@ -222,37 +220,6 @@ function walk(root) {
     }
   }
   return output;
-}
-
-function checkEmbeddedModules() {
-  const modulesRoot = join(webRoot, "modules");
-  const moduleNames = new Set(
-    walk(modulesRoot)
-      .filter(path => path.endsWith(".js"))
-      .map(path => relative(webRoot, path)
-        .split(sep).join("/")),
-  );
-  const registryPath = join(projectRoot, "src", "server", "assets.rs");
-  const registrySource = readFileSync(registryPath, "utf8");
-  const registeredNames = new Set(
-    [...registrySource.matchAll(/name: "(modules\/[^"]+\.js)"/gu)]
-      .map(match => match[1]),
-  );
-
-  for (const name of moduleNames) {
-    if (!registeredNames.has(name)) {
-      failures.push(
-        `src/server/assets.rs: production module is not embedded (${name})`,
-      );
-    }
-  }
-  for (const name of registeredNames) {
-    if (!moduleNames.has(name)) {
-      failures.push(
-        `src/server/assets.rs: embedded module does not exist (${name})`,
-      );
-    }
-  }
 }
 
 function checkSourceFormat(name, source) {

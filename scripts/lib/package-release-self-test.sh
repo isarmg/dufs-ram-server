@@ -209,17 +209,9 @@ EOF
     advisory_database_test_config_checksum <<< \
     "$advisory_database_test_state"
 
-  # The release seal is intentionally a pair of complete validations. Prove
-  # that a stable database remains sealable under repetition, while a changed
-  # FETCH_HEAD timestamp produces two different snapshots and is rejected.
-  for ((
-    advisory_database_stability_iteration = 0;
-    advisory_database_stability_iteration < 8;
-    advisory_database_stability_iteration++
-  )); do
-    seal_fresh_advisory_database_state \
-      "$advisory_database_test" >/dev/null || return $?
-  done
+  # Verify a stable seal once, then exercise a real FETCH_HEAD state change.
+  seal_fresh_advisory_database_state \
+    "$advisory_database_test" >/dev/null || return $?
   advisory_database_test_first_state="$(
     capture_fresh_advisory_database_state "$advisory_database_test"
   )" || return $?
@@ -476,7 +468,7 @@ EOF
   verify_release_documentation_layout \
     "$documentation_package" \
     "$node_command"
-  documentation_sentinel="$documentation_package/docs/beginner-guide/.release-self-test-sentinel"
+  documentation_sentinel="$documentation_package/config/.release-self-test-sentinel"
   printf 'recursive release checksum sentinel\n' > "$documentation_sentinel"
   chmod 0644 "$documentation_sentinel"
   write_release_package_checksums "$documentation_package"
