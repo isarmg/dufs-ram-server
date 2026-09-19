@@ -39,7 +39,7 @@ Dufs 采用 Foundation 正式的 `web-react-admin` Profile。React 19.2.8 负责
 - 唯一可编译、测试、部署和正式发布的服务端 target 是 `x86_64-unknown-linux-gnu`；`build.rs` 同时检查 `arch=x86_64`、`os=linux`、`env=gnu` 和 64 位指针，其他 target 在编译期直接失败；
 - 运行内核必须提供 `openat2`；不支持时程序会拒绝启动，二进制还必须匹配 CPU、libc 和动态加载器 ABI；
 - Rust、rustc 和 Cargo 1.98.0，源码使用 Rust 2024 edition；
-- Foundation 认证使用 Core/Static/Axum/Auth 与当前合同；Rust 固定正式 0.8.1 和完整 revision `85348eb99cbea7798a2a3f8ea55baf0179708322`，Web 固定同版 Release tarball 与锁文件 integrity，不依赖相邻工作区。Dufs 0.51.10 已按当前 Foundation 供应链重新验收；禁止复制平台实现或使用可变分支作为发布来源；
+- Foundation 认证使用 Core/Static/Axum/Auth 与当前合同；Rust 固定正式 0.8.2 和完整 revision `e349d8a3b63b6d9f2c41d1515a4909ce8e9821a5`，Web 固定同版 Release tarball 与锁文件 integrity，不依赖相邻工作区。Dufs 0.51.11 已按当前 Foundation 供应链重新验收；禁止复制平台实现或使用可变分支作为发布来源；
 - 建议使用 rustup；`rust-toolchain.toml` 已固定工具链并包含 Clippy、Rustfmt；
 - `.node-version` 是 Node 精确版本的唯一来源；本地脚本从该文件读取版本，GitHub Actions 通过 `node-version-file` 使用它。`package.json` 的 engine 只声明支持范围。Node 只用于前端、检查和发布辅助，不是生产运行依赖；
 - 本地开发门在安装 ShellCheck 时执行 `--severity=warning`，缺失时明确跳过而不会联网安装；远程 CI 按 SHA-256 固定并强制使用 ShellCheck 0.11.0，正式发布也要求 ShellCheck 可用；
