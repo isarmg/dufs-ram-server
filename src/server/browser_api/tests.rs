@@ -77,7 +77,11 @@ async fn path_wait_capacity_rejects_tracked_mutation_and_preserves_same_id_retry
     assert_eq!(body["retry_after"], 1);
     assert_eq!(body["state"], "rejected");
 
-    let retry = tokio::time::timeout(Duration::from_secs(1), async {
+    // The state-store actor performs the abandoned-reservation cleanup on its
+    // dedicated thread. Full coverage runs execute hundreds of filesystem
+    // tests concurrently, so allow scheduler delay without weakening the
+    // assertion that the same operation ID eventually becomes reusable.
+    let retry = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match server
                 .state

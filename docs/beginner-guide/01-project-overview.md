@@ -187,9 +187,9 @@ dufs-ram/
 
 Tokio 提供异步任务、网络、信号和同步原语；Hyper 提供底层 HTTP/1.1 服务。项目需要精确控制连接、正文流、超时和停机，因此没有采用更高层的全家桶框架。
 
-### 原生 HTML/CSS/JavaScript
+### React 与原生 ES Modules
 
-页面功能集中，不需要复杂客户端路由和组件生态。原生模块避免生产 Node 运行时和大前端构建链；代价是开发者要自己维护状态边界、DOM 更新和 JSDoc 类型。
+页面没有客户端路由，但并非纯原生 DOM 应用。React 与 Foundation UI 负责登录、导航和页面骨架；列表、文件操作及上传状态机继续由原生 ES modules 管理各自的 DOM 区域。Vite 只在构建阶段打包 React 平台资源，生产仍不需要 Node.js 服务。这样的混合结构复用了统一组件和认证客户端，也要求开发者明确维护 React 与业务控制器之间的 DOM 所有权，并用 JSDoc 与 TypeScript `checkJs` 约束模块接口。
 
 ### SQLite
 
