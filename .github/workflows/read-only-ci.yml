@@ -76,18 +76,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          scripts=(
-            scripts/check.sh
-            scripts/check-integration.sh
-            scripts/check-release.sh
-            scripts/check-coverage.sh
-            scripts/check-deployment.sh
-            scripts/check-formal-release-e2e.sh
-            scripts/package-release.sh
-            tests/data/generate_tls_certs.sh
-          )
-          bash -n "${scripts[@]}"
-          shellcheck --severity=warning "${scripts[@]}"
+          DUFS_REQUIRE_SHELLCHECK=1 ./scripts/check-shell.sh
       - name: Check JavaScript and Markdown
         run: |
           node scripts/check-release-workflow.mjs
@@ -284,13 +273,11 @@ jobs:
           ./node_modules/.bin/playwright --version
           npm run build:platform
           ./node_modules/.bin/playwright install --with-deps "$BROWSER"
-      - name: Build the test server
-        run: cargo +"$RUST_TOOLCHAIN" build --locked --quiet --target "$SERVER_TARGET"
-      - name: Run the isolated browser project
+      - name: Build the candidate and run the isolated browser project
         env:
           BROWSER: ${{ matrix.browser }}
-          DUFS_FRONTEND_BINARY: ${{ github.workspace }}/target/x86_64-unknown-linux-gnu/debug/dufs
-        run: npm run test:frontend:run -- --project="$BROWSER"
+          RUSTUP_TOOLCHAIN: ${{ env.RUST_TOOLCHAIN }}
+        run: node scripts/build-frontend-candidate.mjs --project="$BROWSER"
       - name: Preserve browser diagnostics on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

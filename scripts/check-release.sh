@@ -32,49 +32,11 @@ require systemd-analyze
 # dependency code, or browser tooling can create a false-green quality result.
 dufs_require_exact_node_version "$project_dir" "$required_node_version" node
 
-shell_scripts=(
-  scripts/check.sh
-  scripts/check-release.sh
-  scripts/check-integration.sh
-  scripts/check-coverage.sh
-  scripts/check-deployment.sh
-  scripts/check-formal-release-e2e.sh
-  scripts/check-release-runtime.sh
-  scripts/package-release.sh
-  scripts/lib/package-release-self-test.sh
-  scripts/lib/toolchain.sh
-  tests/data/generate_tls_certs.sh
-)
-
 run rustc --version
 run cargo --version
 run node --version
 run npm --version
-run bash -n "${shell_scripts[@]}"
-if command -v shellcheck >/dev/null 2>&1; then
-  run shellcheck --version
-  if [[ "${DUFS_REQUIRE_SHELLCHECK:-}" == "1" ]]; then
-    shellcheck_version="$(
-      shellcheck --version | while IFS= read -r line; do
-        if [[ "$line" == "version: "* ]]; then
-          printf '%s\n' "${line#version: }"
-          break
-        fi
-      done
-    )"
-    if [[ "$shellcheck_version" != "0.11.0" ]]; then
-      printf 'ShellCheck 0.11.0 is required; found %s\n' \
-        "${shellcheck_version:-unknown}" >&2
-      exit 1
-    fi
-  fi
-  run shellcheck --severity=warning "${shell_scripts[@]}"
-elif [[ "${DUFS_REQUIRE_SHELLCHECK:-}" == "1" ]]; then
-  printf 'required command is unavailable: shellcheck\n' >&2
-  exit 1
-else
-  printf '\n==> SKIP: 未安装 ShellCheck；CI 会固定使用 0.11.0 并强制执行。\n'
-fi
+run ./scripts/check-shell.sh
 
 cargo_audit_version="$(cargo audit --version 2>/dev/null)" || {
   printf 'required Cargo subcommand is unavailable: cargo audit\n' >&2
@@ -125,7 +87,8 @@ run cargo clippy --locked --target x86_64-unknown-linux-gnu --all-targets --all-
 run cargo test --locked --target x86_64-unknown-linux-gnu --all-targets --all-features
 run ./scripts/check-coverage.sh
 run cargo build --locked --release --target x86_64-unknown-linux-gnu
-run bash scripts/check-release-runtime.sh "${CARGO_TARGET_DIR:-$project_dir/target}/x86_64-unknown-linux-gnu/release/dufs"
+release_binary="${CARGO_TARGET_DIR:-$project_dir/target}/x86_64-unknown-linux-gnu/release/dufs"
+run bash scripts/check-release-runtime.sh "$release_binary"
 
 run ./node_modules/.bin/tsc --version
 run node scripts/check-release-workflow.mjs
@@ -134,11 +97,11 @@ run npm run check:types
 run npm run check:docs
 run npm run check:independence
 run npm run test:frontend:unit
-run env DUFS_FRONTEND_BINARY="${CARGO_TARGET_DIR:-$project_dir/target}/x86_64-unknown-linux-gnu/release/dufs" npm run test:frontend:run
+run env DUFS_FRONTEND_BINARY="$release_binary" npm run test:frontend:run
 if [[ "${DUFS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then
   printf '\n==> SKIP: 隔离正式发布门不运行未固定的宿主 Microsoft Edge；Chromium 与 Firefox 已作为必需矩阵执行。\n'
 elif command -v microsoft-edge >/dev/null 2>&1 || command -v microsoft-edge-stable >/dev/null 2>&1; then
-  run npm run test:frontend:edge
+  run env DUFS_FRONTEND_BINARY="$release_binary" npm run test:frontend:run -- --edge --project=edge
 else
   printf '\n==> SKIP: 未安装 Microsoft Edge；Chromium 与 Firefox 已作为必需矩阵执行。\n'
 fi

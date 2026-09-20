@@ -27,30 +27,11 @@ require stat
 IFS= read -r required_node_version < .node-version
 dufs_require_exact_node_version "$project_dir" "$required_node_version" node
 
-shell_scripts=(
-  scripts/check.sh
-  scripts/check-integration.sh
-  scripts/check-release.sh
-  scripts/check-coverage.sh
-  scripts/check-deployment.sh
-  scripts/check-formal-release-e2e.sh
-  scripts/check-release-runtime.sh
-  scripts/package-release.sh
-  scripts/lib/package-release-self-test.sh
-  scripts/lib/toolchain.sh
-  tests/data/generate_tls_certs.sh
-)
-
 run rustc --version
 run cargo --version
 run node --version
 run npm --version
-run bash -n "${shell_scripts[@]}"
-if command -v shellcheck >/dev/null 2>&1; then
-  run shellcheck --severity=warning "${shell_scripts[@]}"
-else
-  printf '\n==> SKIP: 未安装 ShellCheck；CI 会执行固定版本。\n'
-fi
+run ./scripts/check-shell.sh
 
 run npm run build:platform
 run cargo fmt --all --check
