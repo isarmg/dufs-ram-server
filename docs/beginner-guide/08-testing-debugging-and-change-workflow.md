@@ -476,7 +476,7 @@ Network 重点看：
 [scripts/check.sh](../../scripts/check.sh) 会依次执行：
 
 - 必需工具检查，并在任何耗时步骤前把 [.node-version](../../.node-version) 的精确单行内容及实际 `node --version` 同时锁定到 26.7.0；
-- 自动发现 `scripts/` 与 `tests/` 中未忽略的 Shell 源，逐文件执行 Bash 语法检查，并在可用时运行 ShellCheck；
+- 在 Git 工作区自动发现 `scripts/` 与 `tests/` 中未忽略的 Shell 源；在已验证且不含 `.git` 的发行归档中扫描同一目录，逐文件执行 Bash 语法检查，并在可用时运行 ShellCheck；
 - 工作流权限策略、Rustfmt、JavaScript 安全、文档和依赖边界等轻量检查；
 - Web 构建、strict 类型与 Node 单测；
 - Clippy 和全 targets/features Rust 测试；

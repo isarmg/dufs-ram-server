@@ -4,17 +4,26 @@ set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 
-command -v git >/dev/null 2>&1 || {
-  printf 'required command is unavailable: git\n' >&2
-  exit 1
-}
-
-mapfile -d '' shell_scripts < <(
-  git ls-files --cached --others --exclude-standard -z -- \
-    ':(glob)scripts/**/*.sh' \
-    ':(glob)tests/**/*.sh' |
-    sort -z
-)
+if [[ -e .git || -L .git ]]; then
+  command -v git >/dev/null 2>&1 || {
+    printf 'required command is unavailable: git\n' >&2
+    exit 1
+  }
+  mapfile -d '' shell_scripts < <(
+    git ls-files --cached --others --exclude-standard -z -- \
+      ':(glob)scripts/**/*.sh' \
+      ':(glob)tests/**/*.sh' |
+      sort -z
+  )
+else
+  # A verified release archive intentionally has no Git metadata. Every file
+  # in that tree was tracked at the selected commit, so discover its sources
+  # directly instead of silently skipping the isolated release gate.
+  mapfile -d '' shell_scripts < <(
+    find scripts tests -type f -name '*.sh' -print0 |
+      sort -z
+  )
+fi
 ((${#shell_scripts[@]} > 0)) || {
   printf 'no shell sources were found\n' >&2
   exit 1
