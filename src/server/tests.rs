@@ -22,6 +22,9 @@ fn authenticated_args(serve_path: PathBuf, state_dir: &Path) -> Args {
         serve_path,
         state_dir: Some(state_dir.to_path_buf()),
         auth: crate::auth::AuthConfig::new(&[TEST_ACCOUNT]).unwrap(),
+        // General server tests do not exercise the production free-space
+        // threshold; keeping it would make readiness depend on host /tmp use.
+        min_free_space: 0,
         ..Args::default()
     }
 }

@@ -37,6 +37,19 @@ run cargo --version
 run node --version
 run npm --version
 run ./scripts/check-shell.sh
+run cargo fmt --all --check
+
+# Install the locked packages without lifecycle scripts before executing the
+# repository's JavaScript checks, then reject vulnerable dependencies first.
+run npm ci --ignore-scripts --no-audit --no-fund
+run npm audit --audit-level=high
+run node scripts/check-release-workflow.mjs
+run npm run check:js
+run npm run check:docs
+run npm run check:independence
+run npm run build:platform
+run npm run check:types
+run npm run test:frontend:unit
 
 cargo_audit_version="$(cargo audit --version 2>/dev/null)" || {
   printf 'required Cargo subcommand is unavailable: cargo audit\n' >&2
@@ -72,8 +85,6 @@ fi
 run ./scripts/package-release.sh --self-test
 # Deployment smoke compiles the real binary and therefore needs embedded Web
 # assets even in a freshly extracted, isolated quality-gate source tree.
-run npm ci --ignore-scripts --no-audit --no-fund
-run npm run build:platform
 if [[ "${DUFS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then
   # 发布输出路径可以包含 shell 元字符，但 Nginx/sed 部署夹具的临时路径
   # 只接受安全字符。部署脚本仍会在 /tmp 下创建并清理私有随机目录。
@@ -82,7 +93,6 @@ else
   run ./scripts/check-deployment.sh
 fi
 
-run cargo fmt --all --check
 run cargo clippy --locked --target x86_64-unknown-linux-gnu --all-targets --all-features -- -D warnings
 run cargo test --locked --target x86_64-unknown-linux-gnu --all-targets --all-features
 run ./scripts/check-coverage.sh
@@ -91,12 +101,6 @@ release_binary="${CARGO_TARGET_DIR:-$project_dir/target}/x86_64-unknown-linux-gn
 run bash scripts/check-release-runtime.sh "$release_binary"
 
 run ./node_modules/.bin/tsc --version
-run node scripts/check-release-workflow.mjs
-run npm run check:js
-run npm run check:types
-run npm run check:docs
-run npm run check:independence
-run npm run test:frontend:unit
 run env DUFS_FRONTEND_BINARY="$release_binary" npm run test:frontend:run
 if [[ "${DUFS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then
   printf '\n==> SKIP: 隔离正式发布门不运行未固定的宿主 Microsoft Edge；Chromium 与 Firefox 已作为必需矩阵执行。\n'
@@ -105,7 +109,6 @@ elif command -v microsoft-edge >/dev/null 2>&1 || command -v microsoft-edge-stab
 else
   printf '\n==> SKIP: 未安装 Microsoft Edge；Chromium 与 Firefox 已作为必需矩阵执行。\n'
 fi
-run npm audit --audit-level=high
 
 if [[ "${DUFS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then
   [[ "${DUFS_BUILD_GIT_SHA:-}" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {

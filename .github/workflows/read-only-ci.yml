@@ -25,6 +25,50 @@ env:
   CI: "1"
 
 jobs:
+  classify:
+    name: Classify pull request paths
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      release_sensitive: ${{ steps.paths.outputs.release_sensitive }}
+    steps:
+      - name: Check out pull request history without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect deployment and release changes
+        id: paths
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ || \
+            ! "$HEAD_SHA" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]
+          then
+            printf 'Pull request source identities are invalid.\n' >&2
+            exit 1
+          fi
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          release_sensitive=false
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              .github/workflows/*|deploy/*|config/dufs.yaml.example|\
+              scripts/check-deployment.sh|scripts/check-formal-release-e2e.sh|\
+              scripts/check-release.sh|scripts/check-release-runtime.sh|\
+              scripts/package-release.sh|scripts/lib/package-release-self-test.sh|\
+              Cargo.toml|Cargo.lock|build.rs|package.json|package-lock.json)
+                release_sensitive=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only -z "$BASE_SHA" "$HEAD_SHA")
+          printf 'release_sensitive=%s\n' "$release_sensitive" >> "$GITHUB_OUTPUT"
+
   static:
     name: Static sources and docs
     runs-on: ubuntu-24.04
@@ -138,7 +182,8 @@ jobs:
 
   quality:
     name: Coverage, deployment, and release smoke
-    if: ${{ github.event_name != 'pull_request' }}
+    needs: classify
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.classify.outputs.release_sensitive == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:

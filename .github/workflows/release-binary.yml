@@ -19,24 +19,14 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  formal_release:
-    name: Verify the formal signed package
-    permissions:
-      contents: read
-    uses: ./.github/workflows/formal-release-e2e.yml
-
-  verify_build:
-    name: Verify and build without write permission
-    needs: formal_release
+  preflight:
+    name: Validate the release tag and source identity
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 5
     permissions:
-      actions: read
       contents: read
     outputs:
-      release_artifact_id: ${{ steps.upload_release_input.outputs.artifact-id }}
-      release_input_digest: ${{ steps.prepare_release_inputs.outputs.release_input_digest }}
-      verification_run_attempt: ${{ steps.record_verification_attempt.outputs.run_attempt }}
+      version: ${{ steps.release_identity.outputs.version }}
     steps:
       - name: Check out the exact tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,6 +35,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate the tag and source version
+        id: release_identity
         shell: bash
         run: |
           set -euo pipefail
@@ -84,9 +75,38 @@ jobs:
             exit 1
           fi
 
-          printf 'VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           printf 'Validated %s at %s.\n' "$expected_tag" "$tag_commit"
 
+  formal_release:
+    name: Verify the formal signed package
+    needs: preflight
+    permissions:
+      contents: read
+    uses: ./.github/workflows/formal-release-e2e.yml
+
+  verify_build:
+    name: Verify and build without write permission
+    needs:
+      - preflight
+      - formal_release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    permissions:
+      actions: read
+      contents: read
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    outputs:
+      release_artifact_id: ${{ steps.upload_release_input.outputs.artifact-id }}
+      release_input_digest: ${{ steps.prepare_release_inputs.outputs.release_input_digest }}
+      verification_run_attempt: ${{ steps.record_verification_attempt.outputs.run_attempt }}
+    steps:
+      - name: Check out the exact tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install the fixed Rust toolchain and cargo-audit
         shell: bash

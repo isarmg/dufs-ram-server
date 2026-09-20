@@ -476,13 +476,13 @@ Network 重点看：
 [scripts/check.sh](../../scripts/check.sh) 会依次执行：
 
 - 必需工具检查，并在任何耗时步骤前把 [.node-version](../../.node-version) 的精确单行内容及实际 `node --version` 同时锁定到 26.7.0；
-- Bash 语法检查；
-- 可用时的 ShellCheck；
-- Rustfmt、Clippy、全 targets/features 测试；
-- JavaScript 安全、strict 类型、文档、依赖边界和 Node 单测；
+- 自动发现 `scripts/` 与 `tests/` 中未忽略的 Shell 源，逐文件执行 Bash 语法检查，并在可用时运行 ShellCheck；
+- 工作流权限策略、Rustfmt、JavaScript 安全、文档和依赖边界等轻量检查；
+- Web 构建、strict 类型与 Node 单测；
+- Clippy 和全 targets/features Rust 测试；
 - Git 空白检查。工作树可以包含正在开发的修改。
 
-真实部署和浏览器验收使用 `./scripts/check-integration.sh`。它复用已构建的候选二进制；`--deployment-self-test` 才额外运行检查器自身的清理故障注入。
+真实部署和浏览器验收使用 `./scripts/check-integration.sh`。它从 Cargo 的结构化构建结果取得本次实际生成的候选路径，支持 `CARGO_TARGET_DIR`，并把同一候选显式传给浏览器 runner；`--deployment-self-test` 才额外运行检查器自身的清理故障注入。非法参数会在任何自测或构建之前退出。
 
 干净提交上的正式发行入口是 `./scripts/check-release.sh`。它增加审计、覆盖率、部署、打包自测、release binary、完整浏览器矩阵和 clean-tree 校验。完整发行门可能访问依赖与审计网络；受限环境必须预先准备锁定缓存和浏览器制品。
 

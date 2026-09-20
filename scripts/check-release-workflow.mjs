@@ -1,83 +1,203 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseDocument } from "yaml";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workflowRoot = resolve(root, ".github", "workflows");
-const workflows = new Map(readdirSync(workflowRoot)
-  .filter(name => /\.ya?ml$/u.test(name))
-  .map(name => [name, readFileSync(resolve(workflowRoot, name), "utf8")]));
-const release = requiredWorkflow("release-binary.yml");
-const formal = requiredWorkflow("formal-release-e2e.yml");
-const audit = requiredWorkflow("dependency-audit.yml");
-const ci = requiredWorkflow("read-only-ci.yml");
-const performance = requiredWorkflow("performance.yml");
 
-for (const [name, source] of workflows) {
-  if (/^\s*contents:\s*write\s*$/mu.test(source) && name !== "release-binary.yml") {
-    fail(`${name}: only the release workflow may grant contents: write`);
-  }
-  for (const match of source.matchAll(/^\s*uses:\s*([^\s#]+)@([^\s#]+)(?:\s+#.*)?$/gmu)) {
-    if (!/^[0-9a-f]{40}$/u.test(match[2])) {
-      fail(`${name}: external action must use a full commit SHA: ${match[1]}`);
+export function validateReleaseWorkflows(workflowSources) {
+  const workflows = new Map(
+    [...workflowSources].map(([name, source]) => [name, parseWorkflow(name, source)]),
+  );
+  const release = requiredWorkflow(workflows, "release-binary.yml");
+  const formal = requiredWorkflow(workflows, "formal-release-e2e.yml");
+  const audit = requiredWorkflow(workflows, "dependency-audit.yml");
+  const ci = requiredWorkflow(workflows, "read-only-ci.yml");
+  const performance = requiredWorkflow(workflows, "performance.yml");
+
+  for (const [name, workflow] of workflows) {
+    rejectWritePermissions(name, "workflow", workflow.permissions);
+    visit(workflow, value => {
+      if (typeof value.uses === "string") requirePinnedAction(name, value.uses);
+    });
+    if (name !== "release-binary.yml") {
+      for (const [jobName, job] of Object.entries(workflow.jobs ?? {})) {
+        rejectWritePermissions(name, jobName, job.permissions);
+      }
     }
   }
+
+  const releaseJobs = release.jobs ?? {};
+  const preflight = requiredJob(releaseJobs, "preflight");
+  const formalRelease = requiredJob(releaseJobs, "formal_release");
+  const verifyBuild = requiredJob(releaseJobs, "verify_build");
+  const publish = requiredJob(releaseJobs, "publish");
+
+  for (const [jobName, job] of Object.entries(releaseJobs)) {
+    if (jobName !== "publish") {
+      rejectWritePermissions("release-binary.yml", jobName, job.permissions);
+    }
+  }
+  requireExactPublishPermissions(publish.permissions);
+
+  requireValue(
+    formalRelease.uses === "./.github/workflows/formal-release-e2e.yml",
+    "release-binary.yml: formal verification must call the local formal workflow",
+  );
+  requireValue(
+    needs(formalRelease).includes("preflight"),
+    "release-binary.yml: formal verification must depend on preflight",
+  );
+  requireValue(
+    needs(verifyBuild).includes("preflight") && needs(verifyBuild).includes("formal_release"),
+    "release-binary.yml: candidate verification must depend on preflight and formal verification",
+  );
+  requireValue(
+    needs(publish).length === 1 && needs(publish)[0] === "verify_build",
+    "release-binary.yml: publish must depend only on candidate verification",
+  );
+
+  const publishSteps = Array.isArray(publish.steps) ? publish.steps : [];
+  const downloads = publishSteps.filter(step =>
+    typeof step?.uses === "string" && step.uses.startsWith("actions/download-artifact@"));
+  requireValue(
+    downloads.length === 1,
+    "release-binary.yml: publish must download exactly one verified artifact",
+  );
+  requireValue(
+    downloads[0].with?.["artifact-ids"] ===
+      "${{ needs.verify_build.outputs.release_artifact_id }}",
+    "release-binary.yml: publish must bind the artifact ID from verify_build",
+  );
+  for (const step of publishSteps) {
+    if (typeof step?.uses === "string" && step.uses.startsWith("actions/checkout@")) {
+      fail("release-binary.yml: the write-permission job must not check out source");
+    }
+    if (typeof step?.run === "string" &&
+      /\bcargo\b|\bnpm\b|\brustc\b|DUFS_FRONTEND_BINARY/u.test(step.run)) {
+      fail("release-binary.yml: the write-permission job must not build or run a candidate");
+    }
+  }
+
+  visit(release, value => {
+    if (typeof value.run === "string" && /gh run (?:list|watch|view|download)/u.test(value.run)) {
+      fail("release-binary.yml: cross-workflow polling and downloads are forbidden");
+    }
+  });
+  requireValue(
+    formal.on?.workflow_call !== undefined,
+    "formal-release-e2e.yml: formal verification must remain reusable",
+  );
+  requireValue(
+    hasAction(formal, "actions/upload-artifact@"),
+    "formal-release-e2e.yml: formal verification must transfer its exact candidate",
+  );
+  requireValue(
+    audit.on?.schedule !== undefined,
+    "dependency-audit.yml: weekly advisory checks must remain scheduled",
+  );
+  requireValue(
+    Array.isArray(ci.on?.push?.branches) &&
+      ci.on.push.branches.length === 1 &&
+      ci.on.push.branches[0] === "main",
+    "read-only-ci.yml: push validation must be limited to main",
+  );
+  requireValue(
+    performance.on?.schedule === undefined,
+    "performance.yml: performance benchmarks are manual only",
+  );
 }
 
-const formalJob = job(release, "formal_release");
-const verifyJob = job(release, "verify_build");
-const publishJob = job(release, "publish");
-requirePattern(formalJob, /^\s*uses:\s*\.\/\.github\/workflows\/formal-release-e2e\.yml\s*$/mu,
-  "release-binary.yml: formal verification must be an explicit reusable-workflow dependency");
-requirePattern(verifyJob, /^\s*needs:\s*formal_release\s*$/mu,
-  "release-binary.yml: candidate build must depend on formal verification");
-requirePattern(publishJob, /^\s*needs:\s*verify_build\s*$/mu,
-  "release-binary.yml: publish must depend on the candidate build");
-requirePattern(publishJob, /^\s*contents:\s*write\s*$/mu,
-  "release-binary.yml: only publish receives contents: write");
-requirePattern(publishJob, /actions\/download-artifact@[0-9a-f]{40}/u,
-  "release-binary.yml: publish must download the verified artifact");
-requirePattern(publishJob, /artifact-ids:\s*\$\{\{ needs\.verify_build\.outputs\.release_artifact_id \}\}/u,
-  "release-binary.yml: publish must bind the artifact ID from verify_build");
-if (/actions\/checkout|\bcargo\b|\bnpm\b|\brustc\b|DUFS_FRONTEND_BINARY/u.test(publishJob)) {
-  fail("release-binary.yml: the write-permission job must not check out or rebuild source");
-}
-if (/gh run (?:list|watch|view|download)/u.test(release)) {
-  fail("release-binary.yml: cross-workflow polling and downloads are forbidden");
-}
-requirePattern(formal, /^\s*workflow_call:\s*$/mu,
-  "formal-release-e2e.yml: formal verification must be reusable by release");
-requirePattern(formal, /actions\/upload-artifact@[0-9a-f]{40}/u,
-  "formal-release-e2e.yml: formal verification must transfer its exact candidate");
-requirePattern(audit, /^\s*schedule:\s*$/mu,
-  "dependency-audit.yml: weekly advisory checks must remain scheduled");
-requirePattern(ci, /^\s{4}branches:\s*\n\s{6}- main\s*$/mu,
-  "read-only-ci.yml: push validation must be limited to main");
-if (/^\s*schedule:\s*$/mu.test(performance)) {
-  fail("performance.yml: performance benchmarks are manual only");
+function parseWorkflow(name, source) {
+  const document = parseDocument(source, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    fail(`${name}: invalid YAML: ${document.errors[0].message}`);
+  }
+  const workflow = document.toJS();
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    fail(`${name}: workflow root must be a mapping`);
+  }
+  return workflow;
 }
 
-process.stdout.write("Workflow permission and artifact dependency policy passed\n");
-
-function requiredWorkflow(name) {
-  const source = workflows.get(name);
-  if (!source) fail(`missing workflow: ${name}`);
-  return source;
+function requiredWorkflow(workflows, name) {
+  const workflow = workflows.get(name);
+  if (!workflow) fail(`missing workflow: ${name}`);
+  return workflow;
 }
 
-function job(source, name) {
-  const marker = `  ${name}:\n`;
-  const start = source.indexOf(marker);
-  if (start < 0) fail(`release-binary.yml: missing ${name} job`);
-  const rest = source.slice(start + marker.length);
-  const next = /^  [A-Za-z0-9_]+:\s*$/mu.exec(rest);
-  return source.slice(start, next ? start + marker.length + next.index : undefined);
+function requiredJob(jobs, name) {
+  const job = jobs[name];
+  if (!job || typeof job !== "object" || Array.isArray(job)) {
+    fail(`release-binary.yml: missing ${name} job`);
+  }
+  return job;
 }
 
-function requirePattern(source, pattern, message) {
-  if (!pattern.test(source)) fail(message);
+function needs(job) {
+  if (typeof job.needs === "string") return [job.needs];
+  return Array.isArray(job.needs) ? job.needs : [];
+}
+
+function rejectWritePermissions(workflow, owner, permissions) {
+  if (permissions === "write-all") {
+    fail(`${workflow}: ${owner} must not receive write-all permission`);
+  }
+  if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) return;
+  const writable = Object.entries(permissions).find(([, access]) => access === "write");
+  if (writable) fail(`${workflow}: ${owner} must not receive ${writable[0]}: write`);
+}
+
+function requireExactPublishPermissions(permissions) {
+  const entries = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? Object.entries(permissions)
+    : [];
+  requireValue(
+    entries.length === 1 && entries[0][0] === "contents" && entries[0][1] === "write",
+    "release-binary.yml: publish may receive only contents: write",
+  );
+}
+
+function requirePinnedAction(workflow, uses) {
+  if (uses.startsWith("./") || uses.startsWith("docker://")) return;
+  const separator = uses.lastIndexOf("@");
+  const revision = separator < 0 ? "" : uses.slice(separator + 1);
+  if (!/^[0-9a-f]{40}$/u.test(revision)) {
+    fail(`${workflow}: external action must use a full commit SHA: ${uses}`);
+  }
+}
+
+function hasAction(workflow, prefix) {
+  let found = false;
+  visit(workflow, value => {
+    if (typeof value.uses === "string" && value.uses.startsWith(prefix)) found = true;
+  });
+  return found;
+}
+
+function visit(value, callback) {
+  if (!value || typeof value !== "object") return;
+  callback(value);
+  for (const child of Array.isArray(value) ? value : Object.values(value)) {
+    visit(child, callback);
+  }
+}
+
+function requireValue(condition, message) {
+  if (!condition) fail(message);
 }
 
 function fail(message) {
   throw new Error(message);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const workflowSources = new Map(
+    readdirSync(workflowRoot)
+      .filter(name => /\.ya?ml$/u.test(name))
+      .map(name => [name, readFileSync(resolve(workflowRoot, name), "utf8")]),
+  );
+  validateReleaseWorkflows(workflowSources);
+  process.stdout.write("Workflow permission and artifact dependency policy passed\n");
 }
