@@ -9,18 +9,18 @@ import { fileURLToPath } from "node:url";
 // release output and its held-directory publication protocol stay unchanged.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = mkdtempSync("/tmp/dufs-platform-build-");
-const output = join(root, "clients/web/dist");
+const output = join(root, "web/dist");
 
 try {
-  for (const directory of ["clients", "clients/web", "node_modules"]) {
+  for (const directory of ["web", "node_modules"]) {
     const metadata = lstatSync(join(root, directory));
     if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
       throw new Error(`Build input is not a real directory: ${directory}`);
     }
   }
-  cpSync(join(root, "clients/web"), join(scratch, "clients/web"), {
+  cpSync(join(root, "web"), join(scratch, "web"), {
     recursive: true,
-    filter: source => !["dist", "types"].includes(relative(join(root, "clients/web"), source).split("/")[0]),
+    filter: source => !["dist", "types"].includes(relative(join(root, "web"), source).split("/")[0]),
   });
   cpSync(join(root, "node_modules"), join(scratch, "node_modules"), { recursive: true });
   for (const file of ["package.json", "vite.platform.config.mjs"]) {
@@ -39,15 +39,15 @@ try {
   }
   // dist is generated output only; never remove source or dependency inputs.
   rmSync(output, { recursive: true, force: true });
-  cpSync(join(scratch, "clients/web/dist"), output, { recursive: true, errorOnExist: true });
+  cpSync(join(scratch, "web/dist"), output, { recursive: true, errorOnExist: true });
   const declarations = spawnSync(process.execPath, [
-    join(scratch, "node_modules/typescript/bin/tsc"), "-p", "clients/web/tsconfig.platform.json",
+    join(scratch, "node_modules/typescript/bin/tsc"), "-p", "web/tsconfig.platform.json",
   ], { cwd: scratch, env: process.env, stdio: "inherit" });
   if (declarations.error) throw declarations.error;
   if (declarations.status !== 0) throw new Error("React platform declaration check failed");
   // Runtime assets remain flat. The explicit public wrappers expose no
   // product-internal declaration imports to the unbundled file controllers.
-  cpSync(join(scratch, "clients/web/types/platform.d.ts"), join(output, "platform.d.ts"));
+  cpSync(join(scratch, "web/types/platform.d.ts"), join(output, "platform.d.ts"));
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

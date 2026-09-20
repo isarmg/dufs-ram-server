@@ -22,7 +22,7 @@ fn main() {
 
 fn embed_web_assets() {
     let manifest = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest.join("clients/web");
+    let root = manifest.join("web");
     let modules = root.join("modules");
     println!("cargo:rerun-if-changed={}", root.display());
 
@@ -92,8 +92,8 @@ fn collect_web_modules(directory: &Path, files: &mut Vec<std::path::PathBuf>) {
 }
 
 fn embed_platform_assets() {
-    let root = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
-        .join("clients/web/dist");
+    let root =
+        std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("web/dist");
     println!("cargo:rerun-if-changed={}", root.display());
     let mut files = std::fs::read_dir(&root)
         .expect("build the Web platform before compiling the Server")

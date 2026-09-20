@@ -30,7 +30,7 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
         .and_then(|value| value.strip_suffix('/'))
         .ok_or("Embedded asset prefix has an unexpected form")?;
 
-    let web_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("clients/web");
+    let web_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web");
     let mut web_files = [
         "login.js",
         "index.js",
@@ -64,7 +64,7 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
         };
         assets.push((name, served_path, content_type));
     }
-    let mut platform = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/clients/web/dist"))?
+    let mut platform = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/web/dist"))?
         .map(|entry| entry.map(|value| value.path()))
         .collect::<Result<Vec<_>, _>>()?;
     platform.sort();

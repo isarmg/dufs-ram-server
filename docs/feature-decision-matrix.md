@@ -11,12 +11,12 @@
 | DFM-001 | 单进程管理一个共享根；同根第二实例被 advisory `flock` 拒绝 | `src/main.rs`、`src/server/rooted_fs.rs` | 核心 | 高 | 产品失去清晰数据域；误启多实例会越过进程内协调 | 同根双启失败、不同根可独立启动；锁不能阻止 shell/宿主写入 |
 | DFM-002 | 服务端唯一 target 为 `x86_64-unknown-linux-gnu` | `build.rs`、`sarmg-server-target` | 保障 | 高 | 未证明的 CPU/OS/ABI 进入交付矩阵 | 精确 target 正例；aarch64、musl、Windows、macOS 负例；无 best-effort |
 | DFM-003 | Linux `openat2` 必需，不降级到路径拼接 | `src/server/rooted_fs.rs` | 保障 | 高 | 共享根逃逸和 TOCTOU 安全证明失效 | 缺系统调用启动失败；symlink、magic link 和路径竞态测试 |
-| DFM-004 | 使用 Foundation React Profile，复用文件业务控制器 | `clients/web/react/`、`src/server/assets.rs` | 已实施 | 高 | 必须同时验证 React、嵌入、CSP、缓存和供应链 | 生产无 Node 服务；无原生页面兼容入口 |
-| DFM-005 | 客户端统一在 `clients/web/`，源码配置在 `config/`，部署资产在 `deploy/` | 三个同名目录 | 开发运维 | 中 | 代码与资产散落，登记和审查易漏 | 新生产模块进入 asset registry；不复制当前配置/部署模板 |
+| DFM-004 | 使用 Foundation React Profile，复用文件业务控制器 | `web/react/`、`src/server/assets.rs` | 已实施 | 高 | 必须同时验证 React、嵌入、CSP、缓存和供应链 | 生产无 Node 服务；无原生页面兼容入口 |
+| DFM-005 | 客户端统一在 `web/`，源码配置在 `config/`，部署资产在 `deploy/` | 三个同名目录 | 开发运维 | 中 | 代码与资产散落，登记和审查易漏 | 新生产模块进入 asset registry；不复制当前配置/部署模板 |
 | DFM-006 | 生产配置故意使用 `/etc/dufs/dufs.yaml`，TLS 使用 `/etc/dufs/tls/` | `deploy/dufs.service`、`deploy/nginx-dufs.conf` | 开发运维 | 中 | 随意换路径会破坏 systemd/nginx 权限约定 | 这是 FHS/TLS 权限例外，不是旧路径兼容 |
 | DFM-007 | current-only：只接受当前配置、API、页面和 SQLite identity | `src/args.rs`、`src/server/router/`、`src/server/state_store/database.rs` | 保障 | 高 | alias/fallback 令分支、攻击面和测试矩阵增加 | 非当前字段、路径、schema 在修改状态前拒绝；未来稳定版本的精确迁移边只进入 `sarmg-upgrade` 的独立 adapter/fixture/CLI |
 | DFM-008 | 外部 HTTPS 网关终止 TLS，Dufs 只做明文 HTTP/1 回源 | `src/main.rs`、`deploy/nginx-dufs.conf` | 保障 | 高 | 直接公网暴露会泄露凭据；内置 TLS 则新增证书生命周期 | 默认回环；HTTP/1.0/1.1；无 h2c；浏览器入口必须 HTTPS |
-| DFM-009 | 现代桌面浏览器是唯一 UI 支持范围 | `clients/web/index.css`、`playwright.config.js` | 核心 | 中 | 扩到移动端会新增布局、输入、性能与测试合同 | Chromium/Firefox、320 CSS px 缩放回流；不承诺手机产品体验 |
+| DFM-009 | 现代桌面浏览器是唯一 UI 支持范围 | `web/index.css`、`playwright.config.js` | 核心 | 中 | 扩到移动端会新增布局、输入、性能与测试合同 | Chromium/Firefox、320 CSS px 缩放回流；不承诺手机产品体验 |
 
 ## 2. 启动、配置与资源
 
@@ -40,7 +40,7 @@
 | ID | 功能/当前实现 | 实现/代码锚点 | 分类 | 复杂度 | 删除后的确定后果 | 验证与边界 |
 | --- | --- | --- | --- | --- | --- | --- |
 | DFM-022 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
-| DFM-023 | 管理员 username 使用 Foundation 唯一 current canonical 规则 | `src/auth.rs`、`clients/web/login.js` | 保障 | 中 | 大小写、Unicode、`@` 或边界差异会破坏跨项目身份与 owner 摘要 | 配置为 3～64 lowercase ASCII bytes、首尾 alnum、字符 `[a-z0-9._-]`；登录 candidate 为 1～64 bytes 且每字节 `0x20`～`0x7e`，trim/lowercase 后再校验；相邻分隔符允许 |
+| DFM-023 | 管理员 username 使用 Foundation 唯一 current canonical 规则 | `src/auth.rs`、`web/login.js` | 保障 | 中 | 大小写、Unicode、`@` 或边界差异会破坏跨项目身份与 owner 摘要 | 配置为 3～64 lowercase ASCII bytes、首尾 alnum、字符 `[a-z0-9._-]`；登录 candidate 为 1～64 bytes 且每字节 `0x20`～`0x7e`，trim/lowercase 后再校验；相邻分隔符允许 |
 | DFM-024 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
 | DFM-025 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
 | DFM-026 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
@@ -53,13 +53,13 @@
 | DFM-033 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
 | DFM-034 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
 | DFM-035 | Foundation 管理员控制面 | Core/Static/Axum/Auth/contracts；产品仅配置与 HTML Adapter | 保障 | 高 | 产品副本会造成平台策略漂移 | 见功能清单 A-01～A-20；共享 wire 与真实产品 HTTP 回归 |
-| DFM-036 | session 查询/注销固定 Foundation 路径 | `src/server/router/files.rs`、`clients/web/modules/operations/file_operations.js` | 核心 | 中 | 无注销则只能等过期；私有路径令集成漂移 | GET `/api/v2/auth/session`；POST `/api/v2/auth/logout` 要 CSRF/同源 |
+| DFM-036 | session 查询/注销固定 Foundation 路径 | `src/server/router/files.rs`、`web/modules/operations/file_operations.js` | 核心 | 中 | 无注销则只能等过期；私有路径令集成漂移 | GET `/api/v2/auth/session`；POST `/api/v2/auth/logout` 要 CSRF/同源 |
 
 ## 4. 浏览、下载与普通写操作
 
 | ID | 功能/当前实现 | 实现/代码锚点 | 分类 | 复杂度 | 删除后的确定后果 | 验证与边界 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DFM-037 | 目录 HTML 骨架与分页 list API 分离 | `src/server/listing.rs`、`clients/web/modules/listing/controller.js` | 核心 | 高 | 无法有界浏览大目录 | 首屏/空/不存在/500项页/no-store/严格 JSON |
+| DFM-037 | 目录 HTML 骨架与分页 list API 分离 | `src/server/listing.rs`、`web/modules/listing/controller.js` | 核心 | 高 | 无法有界浏览大目录 | 首屏/空/不存在/500项页/no-store/严格 JSON |
 | DFM-038 | 列表/搜索快照有 TTL、全局/管理员容量和 cursor 绑定 | `src/server/listing/snapshot.rs` | 保障 | 高 | 每页重复扫描或 cursor 跨身份泄漏 | TTL120 秒；32/64MiB 全局、8/32MiB 每管理员；重启失效 |
 | DFM-039 | 有界递归搜索、显式 DFS 与目录变化复核 | `src/server/listing/walk.rs` | 建议保留 | 高 | 只能逐层浏览；弱预算会耗尽内存 | 条目/深度/32MiB、取消、前后 identity；不是原子快照 |
 | DFM-040 | 下载只以 attachment 返回单个普通文件 | `src/server/download.rs` | 核心 | 中 | 文件无法取回；inline 扩大主动内容风险 | GET/HEAD/MIME/Disposition；无预览、无目录 ZIP |
@@ -67,19 +67,19 @@
 | DFM-042 | 根 fd 相对路径类型与规范 URI 校验 | `src/server/path_policy.rs`、`src/server/rooted_fs.rs` | 保障 | 高 | 目录穿越、编码别名和 symlink 逃逸 | UTF-8/组件/PATH_MAX、重复斜杠、编码分隔符、根内链接 |
 | DFM-043 | 路径协调器按父子关系序列化冲突 mutation | `src/server/path_coordinator.rs` | 保障 | 高 | rename/delete/upload 可交错 | 父/子、同路径、公平、deadline；不控制外部 writer |
 | DFM-044 | mkdir 通过 browser API 与 Operation ID 创建 | `src/server/browser_api.rs` | 核心 | 中 | 网页无法建立目录 | JSON、basename/path、冲突、权限、operation replay |
-| DFM-045 | Move 只改变父目录且目标必须是已存在目录 | `src/server/browser_api.rs`、`clients/web/modules/operations/file_operations.js` | 核心 | 高 | 无法整理目录；隐式 mkdir 改变语义 | 同/跨父目录、跨 filesystem、目标类型、same inode |
-| DFM-046 | Rename 只改变 basename | `src/server/browser_api.rs`、`clients/web/modules/listing/controller.js` | 核心 | 高 | 无法改名；与 Move 合并会增加误移动 | basename、覆盖、source/target revision、焦点恢复 |
+| DFM-045 | Move 只改变父目录且目标必须是已存在目录 | `src/server/browser_api.rs`、`web/modules/operations/file_operations.js` | 核心 | 高 | 无法整理目录；隐式 mkdir 改变语义 | 同/跨父目录、跨 filesystem、目标类型、same inode |
+| DFM-046 | Rename 只改变 basename | `src/server/browser_api.rs`、`web/modules/listing/controller.js` | 核心 | 高 | 无法改名；与 Move 合并会增加误移动 | basename、覆盖、source/target revision、焦点恢复 |
 | DFM-047 | Delete 持久化 outbox、移入隐藏 trash，再递归 purge | `src/server/delete.rs`、`src/server/purge.rs` | 核心 | 高 | 直接递归删除丢失崩溃恢复证据 | file/dir/link、fsync、Prepared/Ready/Claimed、restart/quarantine |
 | DFM-048 | mutation 用规范 UUID Operation ID 与请求指纹幂等 | `src/server/operation_registry.rs`、`src/server/state_store/operation.rs` | 保障 | 高 | 超时重试可能重复执行或无法判断 | same ID/same bytes replay；different fingerprint 409；TTL/容量 |
-| DFM-049 | job API 查询 `running/succeeded/failed/unknown` | `src/server/router/files.rs`、`clients/web/modules/http/client.js` | 保障 | 中 | 504/断线后只能猜或盲重发 | jobs/<uuid> owner 绑定、过期 404、只查原 ID |
+| DFM-049 | job API 查询 `running/succeeded/failed/unknown` | `src/server/router/files.rs`、`web/modules/http/client.js` | 保障 | 中 | 504/断线后只能猜或盲重发 | jobs/<uuid> owner 绑定、过期 404、只查原 ID |
 | DFM-050 | detached commit 与明确 mutation boundary | `src/server/router.rs`、`src/server/operation_registry.rs` | 保障 | 高 | Future 取消被误当成磁盘回滚 | boundary 前撤预留；之后超时/错误为 unknown；后台收尾 |
-| DFM-051 | Dufs browser API 错误统一 RFC 9457 Problem Details | `src/server/problem.rs`、`clients/web/modules/http/client.js` | 保障 | 中 | 前端按 message 猜分支或与 Foundation 错误混用 | canonical media type/status/code；平铺 operation/upload 扩展 |
+| DFM-051 | Dufs browser API 错误统一 RFC 9457 Problem Details | `src/server/problem.rs`、`web/modules/http/client.js` | 保障 | 中 | 前端按 message 猜分支或与 Foundation 错误混用 | canonical media type/status/code；平铺 operation/upload 扩展 |
 
 ## 5. 上传、覆盖与磁盘保障
 
 | ID | 功能/当前实现 | 实现/代码锚点 | 分类 | 复杂度 | 删除后的确定后果 | 验证与边界 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DFM-052 | 批量 preflight 返回存在性、可替换性和 target revision | `src/server/browser_api.rs`、`clients/web/modules/upload/preflight.js` | 建议保留 | 高 | 冲突只能传输后发现；页面可能盲目覆盖 | 顺序绑定、路径预算、missing/existing/special；预检不是锁 |
+| DFM-052 | 批量 preflight 返回存在性、可替换性和 target revision | `src/server/browser_api.rs`、`web/modules/upload/preflight.js` | 建议保留 | 高 | 冲突只能传输后发现；页面可能盲目覆盖 | 顺序绑定、路径预算、missing/existing/special；预检不是锁 |
 | DFM-053 | PUT 新建、PATCH 续传、HEAD 查询绑定同一 Upload ID | `src/server/upload.rs`、`src/server/upload/protocol.rs` | 核心 | 高 | 删除 PATCH 后断线全量重传；删除 ID 后无法确认 | UUID/length/offset/owner/restart/method/status/header 矩阵 |
 | DFM-054 | Running/AwaitingConfirmation/Committed/Rejected/Unknown 持久状态 | `src/server/upload/record.rs`、`src/server/state_store/upload.rs` | 保障 | 高 | 重启或断网后无法分辨检查点与终态 | 合法转换、terminal replay、7天 TTL、管理员/全局容量 |
 | DFM-055 | stage 在目标父目录私有 `0700` 目录并同文件系统发布 | `src/server/upload/prepare.rs`、`src/server/internal_names.rs` | 保障 | 高 | 跨设备 rename 不原子；公开 stage 泄露半文件 | no-follow/owner/mode、隐藏、orphan maintenance；名称仅 current |
@@ -88,11 +88,11 @@
 | DFM-058 | 覆盖保留 numeric uid/gid、非特权 mode/xattr，拒绝特权 metadata | `src/server/upload/target.rs`、`src/server/upload/commit.rs` | 保障 | 高 | 静默改变 ACL/xattr，或复制 capability/SELinux 形成提权 | 单链接普通文件；setuid/setgid/security.*/trusted.* 拒绝；预算 |
 | DFM-059 | 正文按 offset 写、flush、长度确认与 `sync_all` | `src/server/upload/transfer.rs` | 保障 | 高 | 成功后可能未落盘，续传可产生洞或重复 | short write/EOF/offset/deadline/fault/zero-byte |
 | DFM-060 | idle/total deadline；首次 mutation 与 total deadline 原子竞争 | `src/server/upload.rs`、`src/server/upload/transfer.rs` | 保障 | 高 | 超时后后台仍可能开始写，或慢客户端永久占槽 | 默认 60秒/24h；not-started vs unknown；PATCH 重计时 |
-| DFM-061 | 服务端上传槽与前端有界队列 | `src/server/upload.rs`、`clients/web/modules/upload/queue.js` | 保障 | 中 | fd/内存/磁盘并发失控；过小则吞吐下降 | server 默认4；UI queue/cancel/order；429 不读正文 |
+| DFM-061 | 服务端上传槽与前端有界队列 | `src/server/upload.rs`、`web/modules/upload/queue.js` | 保障 | 中 | fd/内存/磁盘并发失控；过小则吞吐下降 | server 默认4；UI queue/cancel/order；429 不读正文 |
 | DFM-062 | 按实际 stage `st_dev` 的空间预留账本 | `src/server/disk_space.rs` | 保障 | 高 | 并发上传可共同写穿最低水位 | f_frsize 取整、metadata 余量、8MiB 重检、overflow、8次 revision 重试 |
 | DFM-063 | fresh PUT 建 stage 前检查路径 upload/purge 持久义务 | `src/server/upload/prepare.rs`、`src/server/state_store.rs` | 保障 | 高 | 新写入会切断待恢复/清理路径 | 409/503/408 not-started；keyset 分页；不建本次 stage/记录 |
-| DFM-064 | AwaitingConfirmation 保留满 stage，空 PATCH+新 revision 或 discard | `src/server/upload/commit.rs`、`clients/web/modules/upload/manager.js` | 建议保留 | 高 | 晚到冲突必须重传；自动覆盖破坏条件写 | target changed/missing with old metadata/discard idempotence/restart |
-| DFM-065 | 客户端异常响应只用原 ID HEAD，不盲重放 PUT/PATCH | `clients/web/modules/upload/transport.js`、`upload/protocol.js` | 保障 | 高 | 网络错误可能重复提交或覆盖 | ID/state/length/offset 严格矩阵；unknown 暂停并人工处理 |
+| DFM-064 | AwaitingConfirmation 保留满 stage，空 PATCH+新 revision 或 discard | `src/server/upload/commit.rs`、`web/modules/upload/manager.js` | 建议保留 | 高 | 晚到冲突必须重传；自动覆盖破坏条件写 | target changed/missing with old metadata/discard idempotence/restart |
+| DFM-065 | 客户端异常响应只用原 ID HEAD，不盲重放 PUT/PATCH | `web/modules/upload/transport.js`、`upload/protocol.js` | 保障 | 高 | 网络错误可能重复提交或覆盖 | ID/state/length/offset 严格矩阵；unknown 暂停并人工处理 |
 
 ## 6. SQLite、后台维护与生命周期
 
@@ -113,13 +113,13 @@
 
 | ID | 功能/当前实现 | 实现/代码锚点 | 分类 | 复杂度 | 删除后的确定后果 | 验证与边界 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DFM-076 | 名称/MIME/内容共同生成 SHA-256 URL并编译嵌入 | `src/server/assets.rs`、`clients/web/` | 建议保留 | 高 | 页面/代码版本漂移，长期缓存返回旧模块 | registry/目录双向一致；GET/HEAD；immutable 仅精确资源 |
+| DFM-076 | 名称/MIME/内容共同生成 SHA-256 URL并编译嵌入 | `src/server/assets.rs`、`web/` | 建议保留 | 高 | 页面/代码版本漂移，长期缓存返回旧模块 | registry/目录双向一致；GET/HEAD；immutable 仅精确资源 |
 | DFM-077 | 登录使用同源外部 ESM，平台字体与许可证嵌入 | `administrator_web.rs`、`login.js`、平台 Vite | 保障 | 中 | inline/eval 或外站字体扩大注入与网络依赖 | 精确资产摘要、CSP、preload、真实字体字节 |
 | DFM-078 | HTML 仅含两个业务字段，独立恢复共享 Session | `listing.rs`、`shared/index_data.js`、Foundation Admin Client | 保障 | 中 | 嵌入凭据或本地合同可造成泄露和漂移 | 严格 own data、Foundation session guard、frozen copies |
-| DFM-079 | DOM 通过 textContent/安全属性构造业务内容 | `clients/web/modules/shared/dom.js` | 保障 | 中 | 文件名/错误文本可成为可执行 HTML | 注入 payload、禁动态 HTML API、CSP；静态 SVG 例外 |
-| DFM-080 | DOM window、列表状态和 mutation invalidation 有界 | `clients/web/modules/listing/controller.js`、`shared/mutation_effect.js` | 建议保留 | 中 | 大列表无限 DOM；写后继续显示陈旧结果 | 200 window、cursor、四种 effect、focus/scroll |
-| DFM-081 | 原生 dialog、键盘、focus return、live region、forced colors | `clients/web/modules/operations/dialogs.js`、`clients/web/index.css` | 建议保留 | 中 | 键盘/低视力用户无法可靠操作 | Chromium/Firefox、axe标签、Escape、320px；非完整 WCAG 声明 |
-| DFM-082 | TypeScript strict `checkJs`+JSDoc，外部输入为 unknown | `clients/web/tsconfig.json`、`scripts/check-js.mjs` | 开发运维 | 中 | 前端协议漂移更晚发现 | 无 any；runtime guard 仍必需；不等于迁移 `.ts` |
+| DFM-079 | DOM 通过 textContent/安全属性构造业务内容 | `web/modules/shared/dom.js` | 保障 | 中 | 文件名/错误文本可成为可执行 HTML | 注入 payload、禁动态 HTML API、CSP；静态 SVG 例外 |
+| DFM-080 | DOM window、列表状态和 mutation invalidation 有界 | `web/modules/listing/controller.js`、`shared/mutation_effect.js` | 建议保留 | 中 | 大列表无限 DOM；写后继续显示陈旧结果 | 200 window、cursor、四种 effect、focus/scroll |
+| DFM-081 | 原生 dialog、键盘、focus return、live region、forced colors | `web/modules/operations/dialogs.js`、`web/index.css` | 建议保留 | 中 | 键盘/低视力用户无法可靠操作 | Chromium/Firefox、axe标签、Escape、320px；非完整 WCAG 声明 |
+| DFM-082 | TypeScript strict `checkJs`+JSDoc，外部输入为 unknown | `web/tsconfig.json`、`scripts/check-js.mjs` | 开发运维 | 中 | 前端协议漂移更晚发现 | 无 any；runtime guard 仍必需；不等于迁移 `.ts` |
 | DFM-083 | Acorn AST 安全门与内置正负对抗样例 | `scripts/check-js.mjs` | 开发运维 | 高 | 动态 HTML/prompt/反射别名绕过文本搜索 | computed/destructure/alias/reflect；非通用污点证明 |
 | DFM-084 | 日常、集成与发行三级质量门 | `scripts/check.sh`、`scripts/check-integration.sh`、`scripts/check-release.sh` | 开发运维 | 高 | 协议、路径、样例和依赖漂移进入发布 | 日常快速反馈；候选二进制集成；发行覆盖率/审计/Playwright/nginx/systemd |
 | DFM-085 | exact-source、vendor 构建、SBOM/notice/checksum/signature | `scripts/package-release.sh` | 开发运维 | 高 | 无法证明源码/依赖/制品一致或发现篡改 | clean tag=version=HEAD、SHA、no-clobber、强算法、独立固定公钥 |

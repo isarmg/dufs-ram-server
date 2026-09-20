@@ -34,7 +34,7 @@ for (const [name, digest] of Object.entries(provenance.assets)) {
 }
 assert.equal(provenance.latin.handwriting, false);
 for (const page of ["index.html", "login.html"]) {
-  assert.match(read(`clients/web/${page}`).toString(), /data-sarmg-appearance="content-blocks"/u);
+  assert.match(read(`web/${page}`).toString(), /data-sarmg-appearance="content-blocks"/u);
 }
 assert.match(read("sarmg-product.toml").toString(), /web_profile = "web-react-admin"/u);
 console.log("Foundation 0.8.2 immutable React Web and compact font bootstrap verified");

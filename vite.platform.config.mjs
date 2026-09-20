@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 
 const config = createSarmgReactViteConfig({ base: "./" });
 config.build = {
-  ...config.build, outDir: "clients/web/dist", assetsInlineLimit: 0, cssCodeSplit: false,
+  ...config.build, outDir: "web/dist", assetsInlineLimit: 0, cssCodeSplit: false,
   rollupOptions: {
-    input: "clients/web/platform.js", preserveEntrySignatures: "strict",
+    input: "web/platform.js", preserveEntrySignatures: "strict",
     output: { format: "es", entryFileNames: "platform.js", chunkFileNames: "[hash].js",
       assetFileNames: asset => asset.names.some(name => name.endsWith(".css")) ? "platform.css" : "[name][extname]" },
   },

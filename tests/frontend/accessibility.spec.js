@@ -463,10 +463,10 @@ test("文件页、行内编辑器和操作对话框通过 axe WCAG A/AA 自动�
 });
 
 test("生产前端源码不包含动态 HTML 注入接口或浏览器原生模态调用", async () => {
-  const modulesDir = resolve(__dirname, "../../clients/web/modules");
+  const modulesDir = resolve(__dirname, "../../web/modules");
   const files = [
-    resolve(__dirname, "../../clients/web/index.js"),
-    resolve(__dirname, "../../clients/web/login.js"),
+    resolve(__dirname, "../../web/index.js"),
+    resolve(__dirname, "../../web/login.js"),
     ...walkJavaScript(modulesDir),
   ];
   const forbidden = /\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write|DOMParser)\b/;

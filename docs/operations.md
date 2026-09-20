@@ -15,9 +15,9 @@
 
 如果实际路径不同，必须同步修改配置、systemd 的 `ReadWritePaths`、备份任务和恢复演练，不能只替换其中一处。
 
-源码目录遵循项目组统一约定：运行配置模板只在 `config/dufs.yaml.example`，systemd/nginx/proxy 部署资产只在 `deploy/`，浏览器代码只在 `clients/web/`。生产路径 `/etc/dufs/dufs.yaml` 以及 `/etc/dufs/tls/` 是刻意保留的 Dufs 例外：本服务使用需要严格文件权限的 YAML 和独立 HTTPS 网关证书，而不是其他 Server 的扁平 `/etc/isarmg/<product>.env`。不得因此在源码根或 `src/` 再复制第二份配置、unit 或证书模板。
+源码目录遵循项目组统一约定：运行配置模板只在 `config/dufs.yaml.example`，systemd/nginx/proxy 部署资产只在 `deploy/`，浏览器代码只在 `web/`。生产路径 `/etc/dufs/dufs.yaml` 以及 `/etc/dufs/tls/` 是刻意保留的 Dufs 例外：本服务使用需要严格文件权限的 YAML 和独立 HTTPS 网关证书，而不是其他 Server 的扁平 `/etc/isarmg/<product>.env`。不得因此在源码根或 `src/` 再复制第二份配置、unit 或证书模板。
 
-0.51.11 只允许全新、完整的当前实例状态。sarmg-upgrade 暂不支持该版本；不能将旧共享树和空状态库任意拼接，不能修改 metadata 或假设旧二进制能打开新状态。
+0.51.12 只允许全新、完整的当前实例状态。sarmg-upgrade 暂不支持该版本；不能将旧共享树和空状态库任意拼接，不能修改 metadata 或假设旧二进制能打开新状态。
 
 ## 1. 首次部署
 
@@ -163,7 +163,7 @@ systemctl start dufs
 
 本节只说明停服后如何验证并原子替换“唯一当前合同”的制品，不表示 Dufs 支持从任意旧版本就地升级。运行服务不解析旧配置、不读取旧 wire/schema、不执行迁移，也不提供双读、fallback 或兼容 alias。未来稳定版本若当前数据需要转换，必须先由 `sarmg-upgrade` 仓库以独立 adapter、fixture、CLI 和 release 原子加入明确且经验证的转换边；没有该转换边时，只能为新版本初始化当前格式并按经批准的数据恢复方案导入结果。
 
-Foundation 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 0.8.2 / `e349d8a3b63b6d9f2c41d1515a4909ce8e9821a5`，八个 Web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Dufs 0.51.11 已按当前 Foundation 供应链完成独立源码树构建、浏览器回归和发布前核验。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
+Foundation 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 0.8.2 / `e349d8a3b63b6d9f2c41d1515a4909ce8e9821a5`，八个 Web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Dufs 0.51.12 已按当前 Foundation 供应链完成独立源码树构建、浏览器回归和发布前核验。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
 
 仓库的 `.github/workflows/read-only-ci.yml` 只提供远程回归反馈：权限为 `contents: read`，checkout 不保留凭据，静态、Rust、质量和 Chromium/Firefox 层不会创建 tag/release 或签名，也不会上传制品。质量层分别运行覆盖率、部署行为、发布脚本自测和 release binary smoke；各步骤只在自己的前置条件成功时运行，一项实质检查失败不会跳过其余独立检查。唯一当前 Node 26.7.0 由 `.node-version`、manifest/lockfile 和工作流共同声明；`scripts/check.sh` 与正式打包入口还会在任何审计、构建或依赖代码前精确比对实际运行时，因此 npm 的 `EBADENGINE` warning 不能形成绿色结论。Rust 1.98.0、ShellCheck 0.11.0、锁定的 npm 工具和 Action commit SHA 也在工作流中固定；静态、Rust 与浏览器 job 使用 `ubuntu-24.04`，含 nginx 1.25.1+ 部署门的质量 job 使用 x64 `ubuntu-26.04`，两种托管镜像的实际版本及宿主工具均写入日志。GitHub 当前把 26.04 标为 preview；若该 runner 不可调度或镜像回归，质量门必须保持失败，不能退回 nginx 1.24 旧语法完成合并。合并前应查看全部矩阵结果，但它不包含正式签名边界，也不替代目标 exact tag 上的完整本地门和下述发布流程。
 
@@ -191,7 +191,7 @@ SBOM 递归把本地 Dufs `bom-ref`/`purl` 规范化为绑定完整源码 SHA �
 
 包内 `BUILD-ENVIRONMENT.txt`、SBOM、第三方 notice、Rust 标准库 notice 和项目 Apache-2.0 许可证均纳入 `SHA256SUMS`。
 
-二进制包同时按仓库层次保留完整 `docs/`，并携带教程本地链接引用的 `clients/web/`、`src/`、`tests/`、`scripts/`、部署样例和构建配置，使文档在离线解压后仍可导航到对应实现。发布脚本先用包内 `scripts/check-docs.mjs` 检查最终布局，再对除清单自身外的全部普通文件生成 `SHA256SUMS`，此后只读复核清单覆盖；`--self-test` 还放入深层 sentinel、验证篡改失败、两次归档一致并解包往返检查，避免源码树检查通过但最终制品或 checksum 失效。
+二进制包同时按仓库层次保留完整 `docs/`，并携带教程本地链接引用的 `web/`、`src/`、`tests/`、`scripts/`、部署样例和构建配置，使文档在离线解压后仍可导航到对应实现。发布脚本先用包内 `scripts/check-docs.mjs` 检查最终布局，再对除清单自身外的全部普通文件生成 `SHA256SUMS`，此后只读复核清单覆盖；`--self-test` 还放入深层 sentinel、验证篡改失败、两次归档一致并解包往返检查，避免源码树检查通过但最终制品或 checksum 失效。
 
 输出目录必须由当前发布账号拥有且不能让 group/other 写入；它会被解析为物理路径并通过已验证 fd 持有独占 `flock`。stage 创建、构建、清理、最终 rename 和目录同步均从锁定的目录 fd 路径派生，公开字符串路径在此后只用于身份复核和结果展示，祖先目录换绑不能重定向 mutation。发布后还会核对公开路径、锁定目录和最终 release 的 dev/inode；若公开路径被换绑则报告失败，但不会回滚已经完整提交到锁定目录的制品。
 
@@ -218,7 +218,7 @@ install -d -m 0700 ./dist
 ```sh
 set -eu
 
-bundle=/secure/releases/dufs-0.50.2-x86_64-unknown-linux-gnu-0123456789ab.release
+bundle=/secure/releases/dufs-0.51.12-x86_64-unknown-linux-gnu-0123456789ab.release
 pinned_public_key=/secure/trust/dufs-release-public.pem
 test -d "$bundle"
 test ! -L "$bundle"
@@ -243,7 +243,7 @@ test ! -L "$release_dir"
 (cd "$release_dir" && sha256sum --check SHA256SUMS)
 
 # 从独立可信的发布记录填写完整值，不从同一下载目录自行推断。
-expected_version=0.50.2
+expected_version=0.51.12
 expected_sha=0123456789abcdef0123456789abcdef01234567
 expected_target=x86_64-unknown-linux-gnu
 test "$("$release_dir/dufs" --version)" = \

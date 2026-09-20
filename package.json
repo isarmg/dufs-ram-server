@@ -12,7 +12,7 @@
     "check:docs": "node scripts/check-docs.mjs",
     "check:independence": "node scripts/check-independence.mjs",
     "check:js": "node scripts/check-js.mjs",
-    "check:types": "tsc -p clients/web/tsconfig.json",
+    "check:types": "tsc -p web/tsconfig.json",
     "test:frontend:unit": "node --test tests/frontend/unit/*.test.mjs",
     "test:frontend": "npm run build:platform && cargo build --locked --quiet --target x86_64-unknown-linux-gnu && DUFS_FRONTEND_BINARY=$PWD/target/x86_64-unknown-linux-gnu/debug/dufs npm run test:frontend:run",
     "test:frontend:run": "node scripts/run-frontend-prepared.mjs",

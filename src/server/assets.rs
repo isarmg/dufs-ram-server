@@ -16,7 +16,7 @@ struct EmbeddedAsset {
     content_type: &'static str,
 }
 
-// 浏览器客户端的源码统一位于 clients/web，并在编译期完整嵌入二进制；
+// 浏览器客户端的源码统一位于 web，并在编译期完整嵌入二进制；
 // 运行时 URL 仍由下面的资源名和内容摘要生成，与仓库目录名解耦。
 const PLATFORM_ASSETS: &[EmbeddedAsset] = include!(concat!(env!("OUT_DIR"), "/platform-assets.rs"));
 const EMBEDDED_ASSETS: &[EmbeddedAsset] = include!(concat!(env!("OUT_DIR"), "/web-assets.rs"));

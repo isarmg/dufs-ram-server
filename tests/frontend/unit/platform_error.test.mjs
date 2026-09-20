@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { platformErrorCode } from "../../../clients/web/modules/http/platform-error.js";
-import { classifyUploadResponse } from "../../../clients/web/modules/upload/protocol.js";
-import { responsePlatformErrorCode, ERROR_RESPONSE_BODY_LIMIT } from "../../../clients/web/modules/http/client.js";
+import { platformErrorCode } from "../../../web/modules/http/platform-error.js";
+import { classifyUploadResponse } from "../../../web/modules/upload/protocol.js";
+import { responsePlatformErrorCode, ERROR_RESPONSE_BODY_LIMIT } from "../../../web/modules/http/client.js";
 
 const envelope = JSON.stringify({ code: "auth.csrf_rejected", message: "Request rejected", retryable: false });
 test("all upload phases classify current CSRF rejection before business state", () => {

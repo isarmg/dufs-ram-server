@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { classifyOperationResponse } from "../../../clients/web/modules/operations/protocol.js";
+import { classifyOperationResponse } from "../../../web/modules/operations/protocol.js";
 
 test("operation response protocol distinguishes success, failure, and uncertainty", () => {
   assert.deepEqual(classifyOperationResponse(204, "succeeded"), {

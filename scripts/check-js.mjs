@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "acorn";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const webRoot = join(projectRoot, "clients", "web");
+const webRoot = join(projectRoot, "web");
 const sourceFiles = [
   ...walk(webRoot),
   ...walk(join(projectRoot, "tests", "frontend")),
@@ -36,96 +36,96 @@ const STATIC_VALUE_LIMIT = 32;
 const STATIC_STRING_LENGTH_LIMIT = 512;
 
 const detectionFixtures = [
-  ["clients/web/react/application.js", "h('div', { dangerouslySetInnerHTML: { __html: value } });\n", "dangerouslySetInnerHTML"],
-  ["clients/web/react/application.js", "const key = 'dangerously' + 'SetInnerHTML'; h('div', { [key]: value });\n", "dangerouslySetInnerHTML"],
-  ["clients/web/react/application.js", "fetch('/');\n", "fetch"],
+  ["web/react/application.js", "h('div', { dangerouslySetInnerHTML: { __html: value } });\n", "dangerouslySetInnerHTML"],
+  ["web/react/application.js", "const key = 'dangerously' + 'SetInnerHTML'; h('div', { [key]: value });\n", "dangerouslySetInnerHTML"],
+  ["web/react/application.js", "fetch('/');\n", "fetch"],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const request = fetch; request('/');\n",
     "fetch",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const Transport = XMLHttpRequest; new Transport();\n",
     "XMLHttpRequest",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "document.createRange().createContextualFragment('<p>unsafe</p>');\n",
     "createContextualFragment",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "element['inner' /* split */ + 'HTML'] = userControlled;\n",
     "innerHTML",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "element[`inner${'HTML'}`] = userControlled;\n",
     "innerHTML",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = ['inner', 'HTML'].join(''); element[key] = value;\n",
     "innerHTML",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const prefix = 'inner'; const key = `${prefix}HTML`; element[key] = value;\n",
     "innerHTML",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "globalThis['ev\\u0061l'](userControlled);\n",
     "eval",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const show = globalThis.alert; show(userControlled);\n",
     "alert",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "window['con' + 'firm'](userControlled);\n",
     "confirm",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "Reflect.get(window, 'prompt')(userControlled);\n",
     "prompt",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const root = globalThis; const key = ['fe', 'tch'].join(''); root[key]('/');\n",
     "fetch",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = getName(); globalThis[key]('/');\n",
     "dynamic global property access",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = getName(); element[key] = userControlled;\n",
     "dynamic computed property write",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = getName(); const {[key]: fn} = globalThis; fn(input);\n",
     "dynamic global destructuring property",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = getName(); function f({[key]: fn} = globalThis) { fn(input); } f();\n",
     "dynamic global destructuring property",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = getName(); const root = globalThis; function f({nested: {[key]: fn}} = root) { fn(input); } f();\n",
     "dynamic global destructuring property",
   ],
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     "const key = getName(); function f({[key]: fn}) { fn(input); } f(globalThis);\n",
     "dynamic computed destructuring property",
   ],
@@ -142,7 +142,7 @@ for (const [name, source, expected] of detectionFixtures) {
 
 const safeFixtures = [
   [
-    "clients/web/modules/listing/controller.js",
+    "web/modules/listing/controller.js",
     [
       "// innerHTML, eval, fetch and XMLHttpRequest are inert comments.",
       "const label = 'innerHTML and eval and fetch';",
@@ -153,11 +153,11 @@ const safeFixtures = [
     ].join("\n"),
   ],
   [
-    "clients/web/modules/http/client.js",
+    "web/modules/http/client.js",
     "const request = fetch; request('/');\n",
   ],
   [
-    "clients/web/modules/upload/transport.js",
+    "web/modules/upload/transport.js",
     "const Transport = XMLHttpRequest; new Transport();\n",
   ],
 ];
@@ -180,7 +180,7 @@ for (const path of sourceFiles) {
   // (including every React component) rather than misclassifying vendor code.
   // Generated files still receive syntax/format checks and immutable asset,
   // package-integrity, CSP, budget and browser checks.
-  if (!name.startsWith("clients/web/dist/")) checkProductionSafety(name, source);
+  if (!name.startsWith("web/dist/")) checkProductionSafety(name, source);
 
   const syntax = spawnSync(process.execPath, ["--check", path], {
     cwd: projectRoot,
@@ -249,7 +249,7 @@ function checkProductionSafety(name, source) {
 }
 
 function productionSafetyIssues(name, source) {
-  if (!name.startsWith("clients/web/") || !name.endsWith(".js")) return [];
+  if (!name.startsWith("web/") || !name.endsWith(".js")) return [];
 
   let ast;
   try {
@@ -296,15 +296,15 @@ function productionSafetyIssues(name, source) {
     }
     if (
       propertyName === "fetch" &&
-      name.startsWith("clients/web/") &&
-      name !== "clients/web/modules/http/client.js"
+      name.startsWith("web/") &&
+      name !== "web/modules/http/client.js"
     ) {
       addIssue(node, "fetch must go through modules/http/client.js");
     }
     if (
       propertyName === "XMLHttpRequest" &&
-      name.startsWith("clients/web/") &&
-      name !== "clients/web/modules/upload/transport.js"
+      name.startsWith("web/") &&
+      name !== "web/modules/upload/transport.js"
     ) {
       addIssue(
         node,

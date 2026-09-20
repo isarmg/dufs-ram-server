@@ -8,7 +8,7 @@ use http::{
     header::{self, HeaderValue},
 };
 
-const LOGIN_HTML: &str = include_str!("../../clients/web/login.html");
+const LOGIN_HTML: &str = include_str!("../../web/login.html");
 
 impl Server {
     pub(super) fn send_login_page_for_get(&self, res: &mut Response) -> Result<()> {

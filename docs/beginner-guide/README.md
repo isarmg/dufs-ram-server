@@ -7,7 +7,7 @@
 3. 为什么项目需要 SQLite、路径租约、对象身份和“结果未知”状态？
 4. 修改代码后，怎样证明功能、安全边界和故障语义没有被破坏？
 
-文档只描述**当前工作区源码（Cargo 版本 0.50.2）**。产品运行时、页面、配置和教程不提供其他版本合同；未来稳定版本若需要处理非当前数据，只能使用 `sarmg-upgrade` 中精确绑定 source/target 并独立审核的迁移 adapter、fixture 与 CLI，不能据历史标签推断当前行为。
+文档只描述**当前工作区源码（Cargo 版本 0.51.12）**。产品运行时、页面、配置和教程不提供其他版本合同；未来稳定版本若需要处理非当前数据，只能使用 `sarmg-upgrade` 中精确绑定 source/target 并独立审核的迁移 adapter、fixture 与 CLI，不能据历史标签推断当前行为。
 
 ## 适合谁阅读
 
@@ -80,7 +80,7 @@ flowchart LR
 
 - [程序入口](../../src/main.rs)
 - [服务组装](../../src/server.rs)
-- [前端入口](../../clients/web/index.js)
+- [前端入口](../../web/index.js)
 - [Rust 集成测试](../../tests/browser_api.rs)
 - [浏览器端到端测试](../../tests/frontend/operations.spec.js)
 
@@ -95,7 +95,7 @@ flowchart LR
 仓库中搜索符号推荐使用：
 
 ```sh
-rg "符号名|协议字段|错误代码" src clients tests
+rg "符号名|协议字段|错误代码" src web tests
 ```
 
 ## 不要先入为主的几个事实

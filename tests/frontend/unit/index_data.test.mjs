@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseIndexData } from "../../../clients/web/modules/shared/index_data.js";
+import { parseIndexData } from "../../../web/modules/shared/index_data.js";
 
 const session = { authenticated: true, user_id: "admin", username: "admin", role: "admin", csrf_token: "A".repeat(43) };
 const metadata = { href: "/folder/文件 & name", dir_exists: true };

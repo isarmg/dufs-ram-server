@@ -1,6 +1,6 @@
 # 项目完整功能与取舍清单
 
-本文以当前工作树（Cargo 版本 `0.50.2`）的实际代码为准，盘点 Dufs 当前所有对外可见、可配置，以及会显著影响安全性、正确性、性能和可维护性的功能。普通辅助函数和测试夹具不单独作为“功能”列出；最终发布身份必须以制品内 `dufs --version` 的完整 Git SHA 为准。
+本文以当前工作树（Cargo 版本 `0.51.12`）的实际代码为准，盘点 Dufs 当前所有对外可见、可配置，以及会显著影响安全性、正确性、性能和可维护性的功能。普通辅助函数和测试夹具不单独作为“功能”列出；最终发布身份必须以制品内 `dufs --version` 的完整 Git SHA 为准。
 
 本文的用途是帮助判断后续应该保留、简化还是删除哪些能力。它不是删除计划；没有得到明确选择前，本文不会改变任何现有功能。
 
@@ -66,7 +66,7 @@
 
 | ID | 功能闭包 | 实现/主要依赖 | 分类 | 复杂度 | 删除后的确定后果 | 最低验证 |
 |---|---|---|---|---|---|---|
-| IDX-01 | 单共享根浏览与面包屑导航 | listing route、`clients/web/modules/listing` | 核心 | 高 | 无法查看目录和进入子目录 | 根/空目录/特殊字符/权限 |
+| IDX-01 | 单共享根浏览与面包屑导航 | listing route、`web/modules/listing` | 核心 | 高 | 无法查看目录和进入子目录 | 根/空目录/特殊字符/权限 |
 | IDX-02 | 单文件、Range、条件下载 | file response、ETag/metadata | 核心 | 高 | 文件无法可靠下载或续传 | GET/HEAD/Range/If-* 矩阵 |
 | IDX-03 | 新建目录 | MKCOL/operation、路径租约、Web | 核心 | 中 | 只能上传到既有目录 | 冲突、权限、深层路径 |
 | IDX-04 | 重命名与移动 | operation protocol、renameat、revision | 核心 | 高 | 无法整理文件；只剩上传/下载 | 同/跨目录、覆盖、竞态 |
@@ -85,7 +85,7 @@
 | IDX-17 | 连接/请求/正文/并发预算 | server admission、timeouts | 保障 | 高 | 慢连接和大请求可耗尽进程资源 | 各上限、恢复、公平性 |
 | IDX-18 | 显式生产 HTTPS / loopback 开发模式 | Foundation Origin Mode、真实 TCP peer | 保障 | 高 | 错误来源推断会破坏同源和限流边界 | 生产 HTTPS、开发仅 loopback、伪造代理头无效 |
 | IDX-19 | 访问日志与 operation 可观测性 | logging、operation ID/state | 开发运维 | 中 | 无法关联用户请求和后台终态 | 格式、敏感字段、file safety |
-| IDX-20 | 编译期 Web 嵌入与摘要 URL | `clients/web`、assets registry、CSP | 建议保留 | 高 | 改成外部静态树后需协调版本和缓存 | 双向注册、hash、GET/HEAD/CSP |
+| IDX-20 | 编译期 Web 嵌入与摘要 URL | `web`、assets registry、CSP | 建议保留 | 高 | 改成外部静态树后需协调版本和缓存 | 双向注册、hash、GET/HEAD/CSP |
 | IDX-21 | 键盘/焦点/错误恢复 UI | Web modules、Playwright/a11y | 建议保留 | 中 | 基本 API 仍在，但桌面可用性和无障碍下降 | keyboard、dialog、live region |
 | IDX-22 | doctor/self-test 与当前合同检查 | CLI、state/config/root verifier | 开发运维 | 高 | 部署问题只能运行后发现 | 健康、坏权限、错 schema、锁 |
 | IDX-23 | systemd/nginx 部署基线 | deploy、proxy headers、limits | 开发运维 | 高 | 操作者需自行重建 TLS/隔离/启动语义 | verify/nginx-t/isolated smoke |
@@ -177,7 +177,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 
 生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
 
-当前 Foundation Rust/Web 已固定正式 0.8.2 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.11 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
+当前 Foundation Rust/Web 已固定正式 0.8.2 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.12 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
 
 ## 5. 浏览器目录界面
 
@@ -370,8 +370,8 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 
 | ID | 当前特性 | 详细行为 | 取舍建议 | 级别 |
 | --- | --- | --- | --- | --- |
-| E-01 | 编译时嵌入资源 | 生产运行不读取 `clients/web/` 外部目录，不支持运行时覆盖 | 保留可保证代码和页面版本一致 | 建议保留 |
-| E-02 | 内容摘要资源 URL | 目录页的 `index.js`、18 个 ES module、`index.css`、登录页的 `login.css` 和 favicon 由 `server/assets.rs` 的单一注册表按名称、MIME 类型和内容共同生成完整 256 位 SHA-256，即 64 个十六进制字符的资源前缀；HTML 和内联登录脚本不参与该前缀，后者由独立 CSP SHA-256 授权。静态门双向核对 `clients/web/modules/` 与 `EMBEDDED_ASSETS` | 删除后要改用短缓存或手工版本号；混淆两套摘要或漏嵌模块会造成缓存、404 或 CSP 文档漂移 | 建议保留 |
+| E-01 | 编译时嵌入资源 | 生产运行不读取 `web/` 外部目录，不支持运行时覆盖 | 保留可保证代码和页面版本一致 | 建议保留 |
+| E-02 | 内容摘要资源 URL | 目录页的 `index.js`、18 个 ES module、`index.css`、登录页的 `login.css` 和 favicon 由 `server/assets.rs` 的单一注册表按名称、MIME 类型和内容共同生成完整 256 位 SHA-256，即 64 个十六进制字符的资源前缀；HTML 和内联登录脚本不参与该前缀，后者由独立 CSP SHA-256 授权。静态门双向核对 `web/modules/` 与 `EMBEDDED_ASSETS` | 删除后要改用短缓存或手工版本号；混淆两套摘要或漏嵌模块会造成缓存、404 或 CSP 文档漂移 | 建议保留 |
 | E-03 | 静态资源长期缓存 | 只有精确命中的成功摘要资源使用一年 `immutable`；其他响应 no-store | 删除会增加重复资源传输，但不影响功能 | 可选 |
 | E-04 | Foundation React 前端 | React 负责登录、导航和页面结构，文件操作与上传控制器拥有独占 DOM 区域；构建后统一嵌入 Rust | React 更新不能重建进行中的上传或编辑器；要求固定依赖、同源 CSP、资源预算与浏览器验收 | 已实施 |
 | E-05 | 分层 React 前端 | Foundation React Vite 生成 UI/Client/合同/设计令牌/字体/许可证；产品文件模块按 shared/http/listing/operations/upload 分层。HTML 只有业务数据，Session 单独恢复；全部资源同源摘要化，禁止内联脚本和 eval | 修改资源需重建平台和 Rust，并验证 React 不重建业务独占区域 | 已实施 |

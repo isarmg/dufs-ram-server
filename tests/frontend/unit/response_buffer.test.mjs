@@ -5,7 +5,7 @@ import {
   ERROR_RESPONSE_BODY_LIMIT,
   SUCCESS_RESPONSE_BODY_LIMIT,
   bufferResponse,
-} from "../../../clients/web/modules/http/client.js";
+} from "../../../web/modules/http/client.js";
 
 test("response buffering is byte bounded, cancels overflow, and remains replayable", async () => {
   const rejectedCode = async response => {

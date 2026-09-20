@@ -7,7 +7,7 @@ import {
   assertResponse,
   queryUnknownUpload,
   requestNoContent,
-} from "../../../clients/web/modules/http/client.js";
+} from "../../../web/modules/http/client.js";
 
 const uploadId = "00000000-0000-4000-8000-000000000001";
 
@@ -150,7 +150,7 @@ test("operation errors retain only canonical conditional revisions", async () =>
     },
   });
   const { assertResponse } = await import(
-    "../../../clients/web/modules/http/client.js"
+    "../../../web/modules/http/client.js"
   );
   let caught;
   try {
@@ -187,7 +187,7 @@ test("JSON requests validate media type and consume the bounded body once", asyn
   globalThis.window = globalThis;
   try {
     const { requestJson, RequestError } = await import(
-      "../../../clients/web/modules/http/client.js"
+      "../../../web/modules/http/client.js"
     );
     globalThis.fetch = async () => new Response('{"ok":true}', {
       headers: { "content-type": "application/problem+json; charset=utf-8" },
@@ -225,7 +225,7 @@ test("request cancellation distinguishes pre- and post-dispatch outcomes", async
   };
   try {
     const { requestNoContent, RequestError } = await import(
-      "../../../clients/web/modules/http/client.js"
+      "../../../web/modules/http/client.js"
     );
     const controller = new AbortController();
     controller.abort();
@@ -383,7 +383,7 @@ test("operation authentication is classified before its result envelope", async 
       assertResponse,
       isAuthenticationError,
       requestNoContent,
-    } = await import("../../../clients/web/modules/http/client.js");
+    } = await import("../../../web/modules/http/client.js");
     const operationId = "00000000-0000-4000-8000-000000000040";
     const cases = [
       { status: 401, headers: {}, code: "auth.session_required", body: null },
@@ -432,7 +432,7 @@ test("401 status bypasses oversized and stalled Fetch bodies", async () => {
       isAuthenticationError,
       requestJson,
       requestNoContent,
-    } = await import("../../../clients/web/modules/http/client.js");
+    } = await import("../../../web/modules/http/client.js");
     const requesters = [
       {
         name: "JSON 401",
@@ -529,7 +529,7 @@ test("401 status bypasses oversized and stalled Fetch bodies", async () => {
 test("mutation reconciliation returns a discriminated result", async () => {
   const {
     runMutationWithReconciliation,
-  } = await import("../../../clients/web/modules/http/client.js");
+  } = await import("../../../web/modules/http/client.js");
   const operationId = "00000000-0000-4000-8000-000000000041";
   const successHeaders = {
     "x-dufs-operation-id": operationId,
@@ -560,7 +560,7 @@ test("job queries use the unified route and return discriminated results", async
   const previousFetch = globalThis.fetch;
   globalThis.window = globalThis;
   try {
-    const api = await import("../../../clients/web/modules/http/client.js");
+    const api = await import("../../../web/modules/http/client.js");
     assert.equal("queryUnknownOperation" in api, false);
     const {
       queryJob,
@@ -644,7 +644,7 @@ test("job queries use the unified route and return discriminated results", async
 
 test("error payload parsing accepts only canonical Problem Details", async () => {
   const { parseErrorPayload } = await import(
-    "../../../clients/web/modules/http/client.js"
+    "../../../web/modules/http/client.js"
   );
   const operationId = "00000000-0000-4000-8000-000000000010";
   const uploadId = "00000000-0000-4000-8000-000000000011";
@@ -738,7 +738,7 @@ test("error payload parsing accepts only canonical Problem Details", async () =>
 
 test("problem status mismatch is a protocol error with HTTP authority", async () => {
   const { assertResponse, RequestError } = await import(
-    "../../../clients/web/modules/http/client.js"
+    "../../../web/modules/http/client.js"
   );
   const headerOperationId = "00000000-0000-4000-8000-000000000020";
   const bodyOperationId = "00000000-0000-4000-8000-000000000021";
@@ -785,7 +785,7 @@ test("unknown outcomes and recovery hints never trigger an automatic retry", asy
   let requestCount = 0;
   try {
     const { assertResponse, requestNoContent, RequestError } = await import(
-      "../../../clients/web/modules/http/client.js"
+      "../../../web/modules/http/client.js"
     );
     const operationId = "00000000-0000-4000-8000-000000000030";
     globalThis.fetch = async () => {
@@ -828,7 +828,7 @@ test("unknown outcomes and recovery hints never trigger an automatic retry", asy
 
 test("Retry-After header is authoritative over problem metadata", async () => {
   const { assertResponse, RequestError } = await import(
-    "../../../clients/web/modules/http/client.js"
+    "../../../web/modules/http/client.js"
   );
   const response = new Response(JSON.stringify({
     status: 429,
@@ -852,7 +852,7 @@ test("Retry-After header is authoritative over problem metadata", async () => {
 
 test("invalid Retry-After header cannot be replaced by body metadata", async () => {
   const { assertResponse, RequestError } = await import(
-    "../../../clients/web/modules/http/client.js"
+    "../../../web/modules/http/client.js"
   );
   const response = new Response(JSON.stringify({
     status: 429,
@@ -875,7 +875,7 @@ test("invalid Retry-After header cannot be replaced by body metadata", async () 
 
 test("upload protocol headers override conflicting problem extensions", async () => {
   const { assertFreshUploadResponse, RequestError } = await import(
-    "../../../clients/web/modules/http/client.js"
+    "../../../web/modules/http/client.js"
   );
   const bodyUploadId = "00000000-0000-4000-8000-000000000099";
   const response = new Response(JSON.stringify({

@@ -4,7 +4,7 @@
 
 ## 10.1 不推荐从最大的文件开始硬读
 
-直接打开 [upload.rs](../../src/server/upload.rs) 或 [upload/manager.js](../../clients/web/modules/upload/manager.js) 从第一行读到最后，通常会同时遇到路径、状态、协议、DOM、取消和恢复，难以建立主线。
+直接打开 [upload.rs](../../src/server/upload.rs) 或 [upload/manager.js](../../web/modules/upload/manager.js) 从第一行读到最后，通常会同时遇到路径、状态、协议、DOM、取消和恢复，难以建立主线。
 
 更有效的方法是：
 
@@ -58,9 +58,9 @@
 
 - [src/auth.rs](../../src/auth.rs)；
 - [src/server/administrator_web.rs](../../src/server/administrator_web.rs)：Foundation HTTP 响应与产品页面的适配；
-- [clients/web/modules/platform-session.js](../../clients/web/modules/platform-session.js)：每文档唯一的 Foundation 浏览器客户端；
-- [clients/web/login.html](../../clients/web/login.html)；
-- [clients/web/login.js](../../clients/web/login.js)；
+- [web/modules/platform-session.js](../../web/modules/platform-session.js)：每文档唯一的 Foundation 浏览器客户端；
+- [web/login.html](../../web/login.html)；
+- [web/login.js](../../web/login.js)；
 - [tests/auth.rs](../../tests/auth.rs) 与 [tests/frontend/auth.spec.js](../../tests/frontend/auth.spec.js)。
 
 回答：
@@ -77,9 +77,9 @@
 - [src/server/listing.rs](../../src/server/listing.rs)；
 - [src/server/listing/snapshot.rs](../../src/server/listing/snapshot.rs)；
 - [src/server/listing/walk.rs](../../src/server/listing/walk.rs)；
-- [clients/web/index.html](../../clients/web/index.html)；
-- [clients/web/modules/app.js](../../clients/web/modules/app.js)；
-- [clients/web/modules/listing/controller.js](../../clients/web/modules/listing/controller.js)。
+- [web/index.html](../../web/index.html)；
+- [web/modules/app.js](../../web/modules/app.js)；
+- [web/modules/listing/controller.js](../../web/modules/listing/controller.js)。
 
 回答：
 
@@ -129,8 +129,8 @@ URI → RoutePath → RootedPath → 根 FD 相对打开 → fstat identity
 
 推荐先读重命名：
 
-- [clients/web/modules/operations/file_operations.js](../../clients/web/modules/operations/file_operations.js)；
-- [clients/web/modules/http/client.js](../../clients/web/modules/http/client.js)；
+- [web/modules/operations/file_operations.js](../../web/modules/operations/file_operations.js)；
+- [web/modules/http/client.js](../../web/modules/http/client.js)；
 - [src/server/browser_api.rs](../../src/server/browser_api.rs)；
 - [src/server/operation_registry.rs](../../src/server/operation_registry.rs)；
 - [src/server/problem.rs](../../src/server/problem.rs)；
@@ -563,7 +563,7 @@ Extended Attribute，Linux 文件扩展属性。覆盖重放时必须限制特�
 
 源码按前后端模块分开，但部署不是两个服务。前端资源编译进 Rust 二进制，由同一后端返回。
 
-### 修改 `clients/web/` 后为什么刷新没变化？
+### 修改 `web/` 后为什么刷新没变化？
 
 修改平台或业务资源后，重新执行 npm run build:platform、Cargo 构建、重启并取得新页面。全部注册 JS（包括 login.js）、CSS、图标、字体和许可证参与资源摘要；HTML 模板本身不参与该资源摘要，修改模板时直接核对 document 与同源 CSP。
 
