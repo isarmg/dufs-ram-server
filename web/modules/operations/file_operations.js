@@ -3,7 +3,6 @@ import {
   CSRF_HEADER,
   OPERATION_ID_HEADER,
   RequestError,
-  SOURCE_REVISION_HEADER,
   assertDiscardUploadResponse,
   assertFreshUploadResponse,
   assertResponse,

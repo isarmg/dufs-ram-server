@@ -250,6 +250,7 @@ function validateLicenseExpression(package_) {
     throw new Error(
       `dependency has an invalid or unapproved SPDX expression: ` +
         `${package_.name} ${package_.version}: ${error.message}`,
+      { cause: error },
     );
   }
   if (!hasPermissiveLicenseChoice(parsed)) {
@@ -472,7 +473,11 @@ function writeAtomically(path, value) {
     try {
       unlinkSync(temporary);
     } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
+      if (error?.code !== "ENOENT") {
+        // Cleanup failure must replace success instead of being hidden.
+        // eslint-disable-next-line no-unsafe-finally
+        throw error;
+      }
     }
   }
 }

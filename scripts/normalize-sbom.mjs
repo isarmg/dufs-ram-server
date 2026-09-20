@@ -254,7 +254,11 @@ function writeJsonAtomically(path, value) {
     try {
       unlinkSync(temporaryPath);
     } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
+      if (error?.code !== "ENOENT") {
+        // Cleanup failure must replace success instead of being hidden.
+        // eslint-disable-next-line no-unsafe-finally
+        throw error;
+      }
     }
   }
 }

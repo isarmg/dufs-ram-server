@@ -58,7 +58,7 @@ Foundation 正式版本为 0.7.1，完整 revision 为 `466ef3b7e19a5eea07292d5e
 `release-tree.json` 的 SHA-256 为 `05e02a2d9219d688ae1019041f0a0df07961fc6b020abf0d8e12ca900b867cca`。
 Dufs 使用正式 tarball URL 与 npm integrity，不使用本地平台源码副本。
 
-用户后续明确要求 Dufs 采用 Foundation Web 外观并引入 React，覆盖手册原先保留原生页面的范围约定。React 19.2.8 实际渲染登录、顶部导航及文件页结构，使用正式 React Profile 和共享 UI/工作区配置；已移除原生工作区初始化和 DOM 翻译入口。文件/上传控制器保留独占 DOM 区域及既有协议，主题局部更新不能重建运行中的队列。构建输出同源摘要 SVG，CSP 不开放 data:、内联脚本或外部来源。全部产品 React 源码仍执行严格类型/AST 安全检查；供应链固定的 React DOM bundle 使用依赖完整性、CSP、资源预算和浏览器验收，不能把渲染器内部 DOM API 当作产品源码的动态 HTML 注入。
+用户后续明确要求 Dufs 采用 Foundation Web 外观并引入 React，覆盖手册原先保留原生页面的范围约定。React 19.2.8 实际渲染登录、顶部导航及文件页结构，使用正式 React Profile 和共享 UI/工作区配置；已移除原生工作区初始化和 DOM 翻译入口。文件/上传控制器保留独占 DOM 区域及既有协议，主题局部更新不能重建运行中的队列。构建输出同源摘要 SVG，CSP 不开放 data:、内联脚本或外部来源。全部产品 React 源码仍执行 TypeScript strict 检查和 ESLint 浏览器安全规则；供应链固定的 React DOM bundle 使用依赖完整性、CSP、资源预算和浏览器验收，不能把渲染器内部 DOM API 当作产品源码的动态 HTML 注入。
 
 | 手册用例 | 当前可执行证据 |
 | --- | --- |

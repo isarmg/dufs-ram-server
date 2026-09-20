@@ -29,7 +29,7 @@ export function validateReleaseWorkflows(workflowSources) {
   }
 
   const releaseJobs = release.jobs ?? {};
-  const preflight = requiredJob(releaseJobs, "preflight");
+  requiredJob(releaseJobs, "preflight");
   const formalRelease = requiredJob(releaseJobs, "formal_release");
   const verifyBuild = requiredJob(releaseJobs, "verify_build");
   const publish = requiredJob(releaseJobs, "publish");

@@ -30,7 +30,7 @@
 - XMLHttpRequest 处理需要上传进度事件的文件正文；
 - JSDoc 加 TypeScript `checkJs` 在开发阶段检查类型。
 
-它不是一个独立部署的 Node.js 服务，也没有运行时 npm 依赖。浏览器执行构建后的 React 平台 bundle，以及独立嵌入的文件业务模块。根目录的 [package.json](../../package.json) 中，TypeScript、Playwright、axe 和 Acorn 都是检查或测试工具。
+它不是一个独立部署的 Node.js 服务，也没有运行时 npm 依赖。浏览器执行构建后的 React 平台 bundle，以及独立嵌入的文件业务模块。根目录的 [package.json](../../package.json) 中，TypeScript、ESLint、Playwright 和 axe 都是检查或测试工具。
 
 最短的前端入口只有三行，见 [web/index.js](../../web/index.js)：
 

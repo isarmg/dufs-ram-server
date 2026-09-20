@@ -16,10 +16,7 @@ import {
   bufferResponse as bufferBoundedResponse,
 } from "./response_buffer.js";
 
-export {
-  ERROR_RESPONSE_BODY_LIMIT,
-  SUCCESS_RESPONSE_BODY_LIMIT,
-} from "./response_buffer.js";
+export { ERROR_RESPONSE_BODY_LIMIT, SUCCESS_RESPONSE_BODY_LIMIT };
 
 export const CSRF_HEADER = "X-CSRF-Token";
 export const AUTH_REQUIRED_MESSAGE =
@@ -500,7 +497,9 @@ export function parseErrorPayload(rawBody, contentType = "") {
         upload = parseUploadExtension(payload);
         message = detail || title;
       }
-    } catch {}
+    } catch {
+      // A malformed optional problem body is ignored in favor of HTTP status.
+    }
   }
   return Object.freeze({
     type,

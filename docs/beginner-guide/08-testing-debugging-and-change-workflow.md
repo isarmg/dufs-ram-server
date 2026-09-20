@@ -248,9 +248,9 @@ node --test \
 npm run check:js
 ```
 
-[scripts/check-js.mjs](../../scripts/check-js.mjs) 使用 Acorn 解析 AST，并检查项目禁止的危险模式，例如生产模块中的动态 HTML 注入、`eval`、浏览器原生模态弹窗以及未经批准的网络入口。它不是简单的文本搜索，也包含正例和负例 fixture，确保检查器本身没有轻易失效。
+[scripts/check-js.mjs](../../scripts/check-js.mjs) 运行固定版本的 ESLint 核心规则和 Mozilla `no-unsanitized` 规则，检查语法、基础格式以及项目禁止的常见危险模式，例如动态 HTML 注入、`eval`、浏览器原生模态弹窗和越过所属模块直接使用 `fetch`/XHR。少量策略单测验证这些常见误用会失败，并验证两个网络传输模块仍可使用各自原语；静态规则不承担识别故意构造的跨过程别名或完整污点分析。
 
-这个门禁是项目专用的安全约束，不等价于 ESLint，也不能替代代码审查。
+这个门禁是项目专用的 ESLint 策略，不是完整的污点分析，也不能替代代码审查。
 
 ### `check:types`
 
