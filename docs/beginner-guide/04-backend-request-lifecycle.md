@@ -1,6 +1,6 @@
 # 第 4 章：后端请求生命周期
 
-本章对应 Axum 与 Foundation 0.8.2 的唯一服务链路。协议变化与实际验收记录见[迁移合同](../migrations/dufs-axum-contract-changes.md)。
+本章对应 Axum 与 Foundation 0.8.9 的唯一服务链路。协议变化与实际验收记录见[迁移合同](../migrations/dufs-axum-contract-changes.md)。
 
 ## 4.1 总体关系
 
