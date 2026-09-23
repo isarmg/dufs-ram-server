@@ -1,6 +1,6 @@
 # 第 4 章：后端请求生命周期
 
-本章对应 Axum 与 Foundation 0.8.9 的唯一服务链路。协议变化与实际验收记录见[迁移合同](../migrations/dufs-axum-contract-changes.md)。
+本章对应 Axum 与 Foundation 0.8.9 的唯一服务链路。HTTP 行为和验证入口见[HTTP 与运行时合同](../http-runtime-contract.md)。
 
 ## 4.1 总体关系
 
@@ -70,7 +70,7 @@ Hyper 只在 Foundation 内实现 HTTP/1 传输，不承担 Dufs 的路由分派
 
 ## 4.10 CSRF
 
-Foundation 校验写方法的唯一 Origin、Host、Fetch Metadata、Cookie 和 CSRF token。重复、拼接、缺失或非规范安全头不因换用 Axum 而放宽。认证失败发生在任何文件修改之前。
+Foundation 校验写方法的唯一 Origin、Host、Fetch Metadata、Cookie 和 CSRF token。重复、拼接、缺失或非规范安全头均被拒绝。认证失败发生在任何文件修改之前。
 
 ## 4.11 内部业务 API
 

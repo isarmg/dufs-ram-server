@@ -52,11 +52,11 @@
 - `src/args.rs` 中的全部子命令、CLI 参数、YAML 字段、默认值和组合校验；
 - `Server::http_service`、私有登录/资源路由和通用文件方法分派中的全部 HTTP 入口，以及代码实际使用的状态码；
 - 目录页和登录页 HTML/CSS/JavaScript 中的全部用户入口、传输方式和界面边界；
-- 全部生产 Rust 模块，以及 `Cargo.toml` 的 30 个生产直接依赖；
+- 全部生产 Rust 模块，以及 `Cargo.toml` 声明的生产直接依赖；
 - systemd/nginx/YAML 部署样例、质量门禁、本地发布、许可证、安全策略和运维材料；
-- 已删除的高价值相邻能力、已知不足和可选精简项。
+- 不提供的相邻能力、已知不足和可选精简项。
 
-测试夹具和普通内部辅助函数只有在形成用户可见行为、资源上限、安全保证或交付保证时才单列。ID 是用于文档间引用的稳定标签；缺号表示对应能力已经退役并由第 7 节或第 16 节记录，不代表存在未盘点行，也不会为了连续编号而重排后续 ID。C-11、C-19 至 C-21、C-23、Z-01 至 Z-08、X-01 和 X-14 属于已经删除的目录归档能力；C-06/X-08、C-07/X-10 和 X-17 分别对应已经移除的 URL path-prefix、用户隐藏规则和 HTTP/2 回源能力。
+测试夹具和内部辅助函数仅在形成用户可见行为、资源上限、安全保证或交付保证时单列。ID 是文档间引用的稳定标签，允许缺号；第 7 节和第 16 节列明当前不提供的能力。
 
 ## 2. 总体定位与运行边界
 
@@ -198,7 +198,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | B-13 | 键盘、缩放与辅助功能 | 原生按钮、可见焦点、英文 `aria-label`、`aria-live` 状态和焦点转移；新建后的命名与 Rename 使用名称列中的单一行内编辑器，输入具有可访问名称、`aria-invalid` 和 alert 错误，Enter 提交、Escape 取消且不会删除已创建的默认项。Move、覆盖、删除及操作错误使用有可访问名称的原生 `<dialog>`。页面在不超过 537 CSS 像素时把每个文件列表行回流成两行网格，名称和操作位于首行，修改时间和大小移到第二行且仍可见；工具栏和长文本同时回流。Playwright 在 320 CSS 像素（相当于 1280 px 桌面 400% 缩放）验证无页面级横向滚动，在 `forced-colors: active` 下检查控件、焦点、行内编辑器和对话框边界，并以固定 `@axe-core/playwright` 扫描登录页、文件页、编辑器和打开的操作对话框 | 删除不影响鼠标基本操作，但降低可访问性、桌面高倍缩放及高对比模式可用性和自动化稳定性 | 建议保留 | 低 |
 | B-14 | 深色外观适配 | 登录页和目录页响应系统浅色/深色偏好 | 只影响外观，可删除 | 可选 | 低 |
 | B-15 | 拖放导航保护 | 拖入文件时阻止浏览器直接打开本地文件，但不会开始上传 | 删除后误拖文件可能离开当前页面；它不是拖放上传 | 建议保留 | 低 |
-| B-16 | 页面内操作反馈 | 新建不显示命名对话框，Rename 也不再弹窗；两者共用列表行内编辑状态。单个原生 `<dialog>` 继续复用于 Move、覆盖和删除确认及操作错误，内容只经 `textContent` 更新。模态打开后按场景聚焦输入或主操作，原生 Tab 范围留在对话框内；Enter 提交表单，Cancel 或 Escape 关闭，关闭后显式恢复对应触发控件焦点。并发到达的错误提示会排队，不覆盖当前对话框 | 改回 `prompt/confirm/alert` 可删除少量 HTML/CSS/状态代码，但会失去一致外观、可测试语义和显式焦点恢复 | 建议保留 | 中 |
+| B-16 | 页面内操作反馈 | 新建不显示命名对话框，Rename 使用行内输入；两者共用列表行内编辑状态。单个原生 `<dialog>` 继续复用于 Move、覆盖和删除确认及操作错误，内容只经 `textContent` 更新。模态打开后按场景聚焦输入或主操作，原生 Tab 范围留在对话框内；Enter 提交表单，Cancel 或 Escape 关闭，关闭后显式恢复对应触发控件焦点。并发到达的错误提示会排队，不覆盖当前对话框 | 改回 `prompt/confirm/alert` 可删除少量 HTML/CSS/状态代码，但会失去一致外观、可测试语义和显式焦点恢复 | 建议保留 | 中 |
 
 ### 5.1 列表和文件名边界
 
@@ -224,13 +224,11 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 | D-10 | 同一文件句柄、类型与长度一致性 | 数据句柄经根 fd 以 `O_NONBLOCK` 打开，并在同一 fd 上确认普通文件；metadata 和正文都来自该句柄。完整 GET 与 Range 只发送打开时的 metadata 长度，随后原地追加同一 inode 也不会越过已声明正文 | 防止路由分类后被外部写者换成 FIFO 而阻塞，或使头与正文来自不同对象，也防止响应体超过 `Content-Length` | 保障 | 中 |
 | D-11 | 无正文总时限、有读写空闲时限 | 响应头发出后的普通文件和 Range 传输不受 `request-timeout` 或最低速率限制，但每个源文件分块等待/读取和套接字写入分别有 30 秒 idle deadline；公网总时长/速率策略仍由网关补充 | 避免永久卡死的源文件或写端，同时不对持续有进展的慢速大文件设硬总时限 | 建议保留 | 中 |
 
-## 7. 已移除的目录归档下载
+## 7. 目录归档下载边界
 
-目录 ZIP 已从当前产品中删除。浏览器不再显示目录下载入口，服务端不再规划、压缩或临时保存目录归档；目录仍可浏览和搜索，文件仍可逐个下载，多文件选择与文件夹上传也不受影响。需要整目录导出的部署应使用共享根之外的受控备份或归档工具。
+目录支持浏览、搜索与文件夹上传；下载以单个文件为单位。浏览器没有目录归档入口，服务端不规划、压缩或暂存 ZIP。整目录导出由共享根之外的受控备份或归档工具承担。
 
-目录请求始终使用普通 HTML 列表或搜索语义；未识别的查询参数不选择其他输出格式，也没有退役能力的专用兼容路由。
-
-本次删除同时移除了原 Z-01 至 Z-08 的递归归档规划、跨平台条目命名空间校验、文件身份复核、私有临时归档、压缩级别、源/输出/条目预算、生成期并发槽、任务所有权以及 ZIP 专属测试。`async-deflate-zip` 与 `unicode-normalization` 不再是直接依赖；`tempfile` 仍由状态、存储及测试代码使用。明确损失是一键下载整个目录以及通过归档保留空目录，单文件下载协议不变。
+目录请求使用普通 HTML 列表或搜索语义；未识别的查询参数不选择其他输出格式。`tempfile` 用于状态、存储和测试中的临时文件，不承担归档功能。
 
 ## 8. 文件与文件夹上传
 
@@ -491,16 +489,16 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 5. `$remote_addr` 与应用限流来源均为 TCP peer；代理头不能覆盖。网关必须独立按真实客户端 IP 限速，并阻止绕过网关。
 6. CLI/YAML 的最终 bind 列表必须非空；`bind: []` 在创建 listener 或其他运行时资源前就以明确配置错误失败。多个 listener 各自先等待可读，再取得共享连接许可后 `try_accept`，因此空闲地址不会预占许可，用户态已接受 socket 不会越过上限；达到上限时内核 backlog 仍可能暂存已经完成握手的连接。
 7. 成功上传任务会保留在上传队列表格中，但不会立即插入已经加载的普通目录列表，刷新页面后才会出现在常规列表。
-8. 应用自定义文案为英文；浏览器原生 `Error.message` 仍可能按浏览器语言显示英文或其他语言。
+8. 应用自定义文案支持中文和英文；浏览器原生 `Error.message` 由浏览器语言决定。
 9. 产品仍只承诺现代桌面浏览器，不把手机 Web 纳入支持范围；但主页面已覆盖 320 CSS 像素回流测试，确保 1280 px 桌面在 400% 缩放时不出现页面级横向滚动。窄视口把每个文件列表行回流为两行：名称和操作位于首行，修改时间和大小移到第二行并保持可见，核心浏览与文件操作仍可达。
-10. 浏览器 `webkitdirectory` 不会提供空目录项，因此文件夹上传无法创建完全为空的目录；删除目录归档不改变这一上传边界。
+10. 浏览器 `webkitdirectory` 不会提供空目录项，因此文件夹上传无法创建完全为空的目录。
 11. move 只使用原子 rename；跨文件系统不会自动复制后删除。不同名称若是同一 dev/inode 的硬链接，覆盖预检和 commit 内复核返回 `409 source_equals_destination`，避免把 rename no-op 误报为成功。
 12. 上传覆盖发布新 inode，并在单链接普通目标上保留 numeric uid/gid、除 setuid/setgid 外的权限位和允许的非特权 xattr；`security.*`、`trusted.*` 或 setuid/setgid 目标拒绝覆盖。xattr 名称列表/条目数/单值分别限制为 64 KiB/1024/64 KiB，索引、名称和按精确长度分配的全部值合计限制为 1 MiB。预检只给出存在性、可替换提示和 owner/path/完整 identity 绑定的 revision；Missing 发布用 no-replace 与发布后 identity 核对，Existing 覆盖用 revision 复核后普通 rename，后者仍受外部 writer 微窗约束。多硬链接、目录等不可替换目标以及 metadata 读取/重放失败都会失败关闭。确定的 pre-publication 失败会清理并尽力持久化 `rejected`；最终 revision 冲突则保留满 stage 为 `awaiting-confirmation`，可空 PATCH+最新 revision 发布或显式 discard。若目标消失但 stage 带旧 metadata，必须 discard 并以新 ID 完整 create-only PUT。发布后 identity、持久性或终态持久化无法确认时报告 `unknown`，不允许盲目重试。原 inode、硬链接关系和原文件时间戳不会保留。
 13. 目录/搜索结果只存在当前进程内，绝对 TTL 为 120 秒并受总计 32 个/64 MiB、每账号 8 个/32 MiB 容量约束；cursor 绑定账号摘要。进程重启、跨账号复用、过期或容量淘汰都不会泄漏旧结果：跨账号复用属于无效绑定并返回 `400`，其他旧 cursor 返回 `409`，客户端必须从第一页重新开始。
 14. 遍历会在访问前及结束后复核所有访问目录并在可观察变化时返回 `409`，但这不是原子文件系统快照，也不覆盖检查间发生又恢复的变化、子文件原地内容变化或最终检查后的变化。进程内路径协调同样不覆盖 shell、virtiofs 宿主或其他进程的外部写入；需要强一致读取时应使用存储快照。
 15. 日志没有内置轮转、SIGHUP 重新打开或逐条 `fsync`；异常崩溃可能丢失最后一小批缓冲日志，轮转应交给 systemd/journald 或外部工具。
 16. 首次停机信号提供 30 秒宽限，随后取消普通工作并仅再等待 10 秒；约 40 秒硬截止仍未完成会跳过日志 flush 并立即以状态 1 退出，即使 systemd 配置了更长超时也不会延长应用内截止。正常完成受跟踪清理后只做一次、最多 5 秒的日志 flush，再显式 `exit(0)`，不让 runtime drop 等待卡住 blocking 工作；第二信号也跳过 flush 并立即强制退出，SIGKILL 则更早终止。
-17. Dufs 后端使用明文 Hyper HTTP/1 handler，接受 HTTP/1.0 和 HTTP/1.1；标准 HTTP/2 prior-knowledge connection preface 会被拒绝，也不实现 HTTP/1.1 `Upgrade: h2c`。浏览器到网关仍可使用 HTTP/2 或 HTTP/3，但生产网关固定用 HTTP/1.1 回源。
+17. Dufs 后端使用 Axum 路由和 Foundation HTTP/1 传输层，接受 HTTP/1.0 和 HTTP/1.1；标准 HTTP/2 prior-knowledge connection preface 会被拒绝，也不实现 HTTP/1.1 `Upgrade: h2c`。浏览器到网关仍可使用 HTTP/2 或 HTTP/3，但生产网关固定用 HTTP/1.1 回源。
 18. `upload/manager.js` 返回对象中的 `isBusy()` 当前没有生产或测试调用，可作为不改变功能的微型代码清理。
 19. 固定 localhost Playwright 私钥和证书只供自动化测试，不能用于生产网关。
 20. 本地发布脚本提供强制完整门禁、反复 exact-source 检查、来源隔离、源码 SHA、实际构建环境清单、固定工具生成的规范化 SBOM、第三方许可证 notice、校验和和签名制品，并拒绝 symlink、submodule 与特殊源/归档条目；环境清单记录本次工具事实但不钉扎宿主链，SBOM 规范化也不代表完整 schema 验证。项目已经提供由版本 tag 触发的远程 GitHub 便捷二进制发布，但该制品没有独立发布者签名，项目仍没有自动升级、包管理器或密钥托管；晚打开私钥不能隔离同 UID 恶意进程，管理员仍须使用独立账号、主机或 HSM。
@@ -509,7 +507,7 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 23. 同一共享根上的第二个 Dufs 实例会因根 fd 的非阻塞独占 `flock` 启动失败；该 advisory lock 没有 PID 文件，也不能阻止 shell、宿主机、网络文件系统另一节点或忽略 flock 的程序修改目录。多个根目录仍由多个进程分别管理。
 24. 上传总 deadline 从每次 PUT/PATCH 等待路径租约前开始，覆盖准备、正文、写入、flush、metadata 重放和等待提交结果；每次 PATCH 重试重新计时。合法头解析后依次等待路径租约、尝试上传槽、受跟踪地读取 route metadata；fresh PUT 随后在同一 deadline 内分页检查目标及后代的 durable upload/purge obligations，才进入 owner checkpoint/上传准备，PATCH 不重复扫描自身会话。路径、route 或状态检查超时返回绑定的 `408 not-started`，持久状态冲突/不可用分别返回 `409/503 not-started`，槽满直接返回 `429 not-started` 且不读旧 state；这些分支都不创建 stage/SQLite 行。后续 tracked upload task 的只读准备也不等于 unknown：首次 filesystem/upload-state mutation 与总 deadline 原子竞争，deadline 先赢会关闭边界、abort 并返回 `408 not-started + retry`，边界前未处理只读 I/O 为 `408/503 not-started + retry`；task 先越界后的外层 deadline/未处理错误才保守返回 `unknown + query_upload`，后台继续持有租约和槽安全收尾。两类可重试响应都必须先 HEAD；最终 rename/fsync 进入提交后不可取消，前端不提供盲目重试。
 25. mkdir、move、rename 或 DELETE 的 operation ID 在路径等待/校验前预留。已知 pre-commit 失败会记录为 `failed`，pre-commit guard 异常丢弃会移除预留并允许重试；只有越过明确 commit 边界后的异常退出才记录 `unknown`。提交可能在外层 `request-timeout` 返回 `504` 后继续；客户端用原 ID 查询一次，严格核对同一 ID 和 `running/succeeded/failed/unknown`，不自动重发。`/__dufs__/api/jobs/<uuid>` 是唯一查询路径且当前只公开 mutation operation。当前 revision 1 文件型 store 同时存储 operation/upload/purge；必填 `state-dir` 固定使用 `state.sqlite3`，只初始化空库并严格拒绝非当前格式。operation 终态 TTL 15 分钟，容量全局 4096/每账号 1024；upload TTL 7 天，容量 16384/4096；purge 容量 4096/1024，普通 I/O 故障不用 TTL 丢弃。SQLite 与文件系统没有共同事务：operation/upload 依靠 `unknown/AwaitingConfirmation` 保守恢复；purge 只有 live Ready 提交的完整 revision 才授权清理，Prepared 恢复 quarantine/release 而不猜测 rename。
-26. 递归清理不再依赖 `/proc/self/fd`：工作状态只保存根内相对路径和 cursor，每片从父目录 fd 逐级执行 `openat/statat/unlinkat` 且不跟随符号链接。purge 每片最多 256 项/25 ms；普通 I/O 错误持久化回 `Ready` 并从 100 ms 指数退避到 30 秒，状态命令瞬时失败时有界保留本地 claim，重启把 `Claimed`→`Ready`。完整 trash revision 与持续 fd 锚点授权清理；每个最终候选先移入随机 disposal 名并以 fd 复核。缺失 revision、身份异常或最终 `ENOTEMPTY/EXIST` 使整棵根 quarantine/release，不从 cursor 0 重扫。未记账 orphan 只有在通道满、取消或普通 I/O 失败时保留到后续 maintenance；`InvalidData` 会把整根永久 quarantine。`.dufs-quarantine-<uuid>.hold` 排除在自动扫描之外，必须停服人工调查；恶意同 UID inotify 竞争随机名仍在威胁边界外。
+26. 递归清理使用目录文件描述符：工作状态只保存根内相对路径和 cursor，每片从父目录 fd 逐级执行 `openat/statat/unlinkat` 且不跟随符号链接。purge 每片最多 256 项/25 ms；普通 I/O 错误持久化回 `Ready` 并从 100 ms 指数退避到 30 秒，状态命令瞬时失败时有界保留本地 claim，重启把 `Claimed`→`Ready`。完整 trash revision 与持续 fd 锚点授权清理；每个最终候选先移入随机 disposal 名并以 fd 复核。缺失 revision、身份异常或最终 `ENOTEMPTY/EXIST` 使整棵根 quarantine/release，不从 cursor 0 重扫。未记账 orphan 只有在通道满、取消或普通 I/O 失败时保留到后续 maintenance；`InvalidData` 会把整根永久 quarantine。`.dufs-quarantine-<uuid>.hold` 排除在自动扫描之外，必须停服人工调查；恶意同 UID inotify 竞争随机名仍在威胁边界外。
 27. `http/client.js` 调用 `http/response_buffer.js` 实施的 16 KiB/16 MiB 上限，是目录页 Fetch 的硬流式读取边界，不适用于浏览器原生导航或文件流式下载。分块先保留在有界 replay stream；类型化 `requestJson`/`requestNoContent` 随后直接消费该 stream，不用 `Response.clone()` 产生第二个未读 tee 分支。上传 XHR 会在响应头、下载 progress 和最终文本三个阶段拒绝超过 16 KiB 的响应，但浏览器可能在事件回调前已经内部缓冲一个网络块；因此这是客户端接受/中止边界，不是对浏览器瞬时内存分配的严格证明。
 28. move 只接受已经存在的目标目录，目标不存在返回 `404 destination_directory_not_found`，目标不是目录返回 `409 destination_not_directory`；需要新的目标目录时先使用 New folder，Move 本身不会隐式创建目录。
 29. 当前可访问性自动化覆盖原生控件、行内名称编辑器、页面内 `<dialog>` 的名称/标签/键盘关闭与焦点恢复、ARIA、至少 24 px 操作目标、320 CSS 像素回流及 `forced-colors: active` 下的关键边界；固定 `@axe-core/playwright 4.12.1` 还按 WCAG 2.0/2.1/2.2 A/AA 标签扫描登录页、文件页、打开的行内编辑器和操作对话框。但自动扫描仍不构成 WCAG 合规声明，项目尚未完成真实读屏和系统化人工对比度验收。
@@ -527,7 +525,7 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 | X-02 | 当前页面断点续传 | 可删除 PATCH、上传状态 HEAD、SQLite 上传会话、7 天 TTL 和大量故障分支 | 网络失败后大文件必须从头上传 | 只传小文件或网络极稳定时评估 |
 | X-03 | 递归搜索 | 可删除搜索 UI、递归匹配和搜索条目上限；直接分页列表仍保留 | 只能逐级寻找文件 | 目录结构固定且不大时评估 |
 | X-04 | 多管理员 username | 可把配置收敛为单个管理员 username，但唯一 `admin` 角色、会话和 CSRF 仍必须保留 | 多位操作者不能使用独立身份，日志无法区分人，也无法只撤销某一管理员的会话 | 确认永远只有一位操作者时评估 |
-| X-05 | 条件请求 | 可减少 ETag、日期和四类前置条件分支 | 标准客户端不能再做版本前置条件；附件 MIME 内容抽样已经移除 | 当前先保留 |
+| X-05 | 条件请求 | 可减少 ETag、日期和四类前置条件分支 | 标准客户端不能再做版本前置条件；附件 MIME 由扩展名决定 | 当前先保留 |
 | X-06 | 自定义日志格式和日志文件 | 可删除格式解析、动态请求头变量和文件 sink；保留固定安全访问日志 | 不能定制字段或直接写文件 | 全部使用 journald 固定格式时评估 |
 | X-07 | YAML 配置 | 可删除 YAML 解析和一个直接依赖 | systemd 命令行变长，密码哈希更容易出现在进程启动配置中 | 通常建议保留 |
 | X-09 | 多监听地址和 IPv6 | 可把 bind 收敛为单个 IPv4 地址 | 失去 IPv6 和多网卡同时监听 | 仅固定单一回环或内网 IPv4 地址时可评估 |
@@ -565,22 +563,22 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 | CLI 与参数 | `src/args.rs`、`src/main.rs` | `clap` | 所有运行模式都需要；只可减少具体参数 |
 | YAML | `src/args.rs` | `serde_yaml_ng`、`serde` | 删除 X-07 后可移除 YAML 运行依赖 |
 | 登录与密码 | `src/auth.rs`、`src/server/administrator_web.rs` | Foundation Admin Core/Static/Axum/Auth、`rpassword` | 产品只解析配置、适配 HTML 与交互式 hash-password；无本地认证机制 |
-| 会话、摘要和编码 | `src/auth.rs`、`src/server/assets.rs`、`src/server/listing.rs`、`src/server/listing/snapshot.rs`、`src/server/operation_registry.rs`、`src/server/upload.rs`、`src/server/upload/record.rs` | `sha2`、`base64` | 摘要与 Base64 同时用于会话/账号、资源、页面上下文、抗篡改 cursor、operation 指纹或上传内部名称；固定小写十六进制编解码由 `utils.rs` 的有测试小函数完成，不再引入 `hex` |
+| 会话、摘要和编码 | `src/auth.rs`、`src/server/assets.rs`、`src/server/listing.rs`、`src/server/listing/snapshot.rs`、`src/server/operation_registry.rs`、`src/server/upload.rs`、`src/server/upload/record.rs` | `sha2`、`base64` | 摘要与 Base64 同时用于会话/账号、资源、页面上下文、抗篡改 cursor、operation 指纹或上传内部名称；固定小写十六进制编解码由 `utils.rs` 的有测试小函数完成，不依赖 `hex` |
 | 统一控制状态 | `src/server/operation_registry.rs`、`src/server/state_store.rs`、`src/server/upload/record.rs`、`src/server/purge.rs` | `rusqlite`（bundled SQLite） | 当前 revision 1 文件数据库同时持久化管理 operations/upload_sessions/purge_jobs；SQLite 是唯一状态权威，`state-dir` 必填，不存在内存模式，服务不迁移旧格式 |
 | HTTP 服务 | `src/main.rs`、`src/server/router.rs`、Foundation `sarmg-server-runtime` | `axum`、`http`、`http-body`、`tower`、`headers`、`bytes`、`futures-util` | Axum 为唯一产品路由；Foundation 拥有 HTTP/1 连接、限额、信号与关闭；下载使用 Axum 流式 Body 和受门控的 fd-relative 分块读取，保留 30 秒源 idle deadline。Hyper 仅为 Foundation/Axum 的底层依赖，生产图不含 h2 |
 | TCP 监听 | `src/main.rs` | `socket2` | 用于 Linux listener 配置和 backlog |
 | Linux 系统边界 | `src/args.rs`、`src/server/rooted_fs.rs`、`src/server/rooted_fs/purge.rs`、`storage.rs`、`disk_space.rs` | `rustix` | fd-relative xattr、openat2、fsync、目录操作和空间检查；认证时间由 Foundation 提供 |
 | 路由和表单编码 | `src/server.rs`、`src/server/router.rs`、`administrator_web.rs`、前端 URL | `percent-encoding`、`form_urlencoded` | 登录、查询和路径编码共同使用 |
 | 浏览器 JSON 协议 | `browser_api.rs`、`listing.rs`、`listing/snapshot.rs`、`operation_registry.rs`、`upload.rs`、`upload/record.rs` | `serde`、`serde_json` | mkdir/move/rename、分页结果、operation 状态和上传状态都使用 |
-| 文件类型判断 | `src/server/download.rs` | `mime_guess` | 附件只按扩展名给出 MIME，未知名称使用 octet-stream；不再抽样或猜测 charset |
+| 文件类型判断 | `src/server/download.rs` | `mime_guess` | 附件只按扩展名给出 MIME，未知名称使用 octet-stream；不抽样或猜测 charset |
 | 目录排序 | `src/server/listing.rs` | `alphanumeric-sort` | 删除排序或改用普通字符串比较后可移除 |
 | 上传、operation 和内部名称 | `src/server/upload.rs`、`src/server/upload/{prepare,target,transfer,commit,failure,protocol,record}.rs`、`src/server/{internal_names,maintenance,operation_registry,rooted_fs}.rs` | `uuid` | 上传/operation ID 来自浏览器，服务端 UUID 还用于暂存状态和删除 trash |
 | 日志 | `src/logger.rs`、`src/http_logger.rs` | `log`、`chrono` | 删除自定义格式不等于能删除基本日志依赖 |
 | 错误传递 | 全部 Rust 模块 | `anyhow` | 公开错误由 `AppError` 隔离，内部诊断广泛使用 |
 
-## 21. 可直接回复的决策模板
+## 21. 变更决策记录
 
-可以按下面的 ID 回复，例如：“删除 X-15；保留其余；X-02 先不动。”之后再针对选中的组合检查依赖关系并实施。目录 ZIP 已经删除，不再列为待决选项。
+评审可使用下表 ID 引用对应能力，并核对组合变更的依赖和验证范围。目录 ZIP 不属于当前产品能力。
 
 - [ ] X-02 删除当前页面断点续传，只保留完整 PUT
 - [ ] X-03 删除递归搜索

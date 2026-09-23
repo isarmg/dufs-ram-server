@@ -224,7 +224,7 @@ if (error.message.includes("exists")) { /* 覆盖 */ }
 
 ## 5.11 StateStore 的模块分工
 
-外部入口是 [state_store.rs](../../src/server/state_store.rs)，具体职责已经拆到：
+外部入口是 [state_store.rs](../../src/server/state_store.rs)，具体职责由以下模块承担：
 
 | 文件 | 职责 |
 | --- | --- |
@@ -235,7 +235,7 @@ if (error.message.includes("exists")) { /* 覆盖 */ }
 | [upload.rs](../../src/server/state_store/upload.rs) | 上传会话 SQL 与转换 |
 | [purge.rs](../../src/server/state_store/purge.rs) | 删除 outbox SQL 与领取/恢复 |
 
-`StateStore` façade 负责把调用转换成命令，不再同时堆放所有 schema、SQL、恢复和线程循环。这种拆分按“变化原因”组织：改上传表逻辑时通常不需要碰 purge actor 循环。
+`StateStore` façade 负责把调用转换成命令；schema、SQL、恢复和线程循环由对应模块负责。上传和 purge 的持久化逻辑分别位于各自模块。
 
 ## 5.12 SQLite actor 如何工作
 
@@ -355,7 +355,7 @@ stateDiagram-v2
 
 因此 `204` 证明目标已经从用户可见命名空间可靠移除，不表示所有数据块已经物理清除。内部 trash 是实现细节，不是可恢复的用户回收站。
 
-### Prepared 恢复为什么不再猜测两边
+### Prepared 的保守恢复规则
 
 若进程在第 7～9 步附近崩溃，重启时可能看到 `Prepared`。它只有 rename 前捕获的弱源身份，没有 live DELETE 在 rename 和父目录同步后提交的 trash revision；当前 target 名或 trash occupant 都不能证明哪个对象经历了原 checked rename。
 

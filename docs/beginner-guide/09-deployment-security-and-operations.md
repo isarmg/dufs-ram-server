@@ -138,7 +138,7 @@ nginx 的登录限流是额外一层，不能取代应用认证；应用限制�
 - [nginx-dufs.conf](../../deploy/nginx-dufs.conf)：server、TLS、规范域名、登录限流和 location；
 - [dufs-proxy.conf](../../deploy/dufs-proxy.conf)：统一的回源头、HTTP/1.1、缓存/重试和 timeout 策略。
 
-当前样例要求 nginx 1.25.1 或更高版本，编译时包含 HTTP SSL 与 HTTP/2 模块，并链接仍在上游或发行版安全维护期内的 OpenSSL；新部署优先选择 OpenSSL 3.5 LTS。每个 HTTPS `server` 块都只使用独立的 `http2 on;` 当前语法；项目不再为 nginx 1.24 或已弃用的 `listen ... http2` 写法保留兼容分支。切换流量前仍必须用目标主机上的 `nginx -t` 验证实际模块、证书路径和完整配置。
+当前样例要求 nginx 1.25.1 或更高版本，编译时包含 HTTP SSL 与 HTTP/2 模块，并链接仍在上游或发行版安全维护期内的 OpenSSL；新部署优先选择 OpenSSL 3.5 LTS。每个 HTTPS `server` 块都只使用独立的 `http2 on;` 当前语法；项目只接受该版本范围和配置语法。切换流量前仍必须用目标主机上的 `nginx -t` 验证实际模块、证书路径和完整配置。
 
 关键行为：
 

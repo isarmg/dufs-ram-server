@@ -72,7 +72,7 @@ flowchart LR
     A --> L[访问日志]
 ```
 
-开发测试会使用一个 Node.js HTTPS 代理模拟网关；生产运行不需要 Node.js。React 页面、Foundation CSS 和文件业务 ES modules 在构建时嵌入 Rust 二进制，由同一个服务返回。Dufs 使用 Foundation React Vite 配置和管理员认证合同，不再保留非 React 例外。
+开发测试会使用一个 Node.js HTTPS 代理模拟网关；生产运行不需要 Node.js。React 页面、Foundation CSS 和文件业务 ES modules 在构建时嵌入 Rust 二进制，由同一个服务返回。Dufs 使用 Foundation React Vite 配置和管理员认证合同。
 
 ## 阅读源码的约定
 

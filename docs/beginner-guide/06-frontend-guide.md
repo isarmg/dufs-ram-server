@@ -627,7 +627,7 @@ input.setSelectionRange(position, position);
 | Move | 目标目录 | basename | 导航到目标目录 |
 | Delete | 删除确认 | 无 | 删除本地行并刷新 |
 
-Rename 和 Move 不再共用一个“完整目标路径”输入框。这样能防止用户本来只想改名，却意外把项目移动到另一个目录。
+Rename 接受单段名称并保留原父目录；Move 接受目标路径。两个独立入口分别执行改名和移动操作。
 
 ### 6.11.2 Rename 请求
 

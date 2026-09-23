@@ -118,9 +118,9 @@ sequenceDiagram
 
 服务端 HTML 的 IndexData 只含 `href` 与 `dir_exists` 两个字段，不嵌入身份或 CSRF。页面经共享 Admin Client 调用 `GET /api/v2/auth/session` 恢复会话，再把结果交给 `parseIndexData(raw, session)`；它严格验证两个业务字段，并使用 Foundation `isAdministratorSession` 验证独立的五字段会话合同，复制并冻结结果后才启动文件业务界面。
 
-目录项不再嵌入 HTML。分页 API 接受 `path`、`limit`、`sort`、`order`、`q` 和不透明 `cursor`。第一页在受跟踪的阻塞任务中完整物化并排序一次；递归搜索边遍历边转换 `PathItem`，逐项累计结构、路径字符串和 lowercase 排序键的真实容量，达到 32 MiB 结果预算前即停止；递归 DFS 本身另受 1024 层和 32 MiB 工作集限制，不会先在 Tokio runtime worker 上构造超预算向量。稳定索引归并排序在索引构造、每次合并选择和每个最终置换步骤都检查停机标志与总 deadline。如果超过一页，结果存入进程内不可变结果集，后续页只按 offset 切片，不再重复扫描或排序。
+目录项由分页 API 返回 JSON，浏览器负责渲染。分页 API 接受 `path`、`limit`、`sort`、`order`、`q` 和不透明 `cursor`。第一页在受跟踪的阻塞任务中完整物化并排序一次；递归搜索边遍历边转换 `PathItem`，逐项累计结构、路径字符串和 lowercase 排序键的真实容量，达到 32 MiB 结果预算前即停止；递归 DFS 本身另受 1024 层和 32 MiB 工作集限制，不会先在 Tokio runtime worker 上构造超预算向量。稳定索引归并排序在索引构造、每次合并选择和每个最终置换步骤都检查停机标志与总 deadline。如果超过一页，结果存入进程内不可变结果集，后续页只按 offset 切片，共用已排序的结果。
 
-直接目录与递归搜索的运行时硬上限都是 100,000 项；只有递归搜索的较小上限可由 `--max-search-entries` 配置，且配置不能超过该硬上限。游标和结果绑定认证账号摘要，跨账号复用失败；结果以共享不可变切片保存，分页只复制 `Arc` 并借用当前范围，不再逐页克隆路径字符串。CLI 和默认 library builder 保持进程级共享缓存：最多 32 份/64 MiB，每账号最多 8 份/32 MiB，且每份从创建起固定 120 秒过期；多租户 embedder 可用 `ServerBuilder::with_isolated_list_snapshot_cache()` 显式选择相同上限的实例缓存。过期或被容量淘汰后返回 `409` 并要求重载第一页。一个账号不能再确定性填满全部缓存并淘汰其他账号的所有游标。
+直接目录与递归搜索的运行时硬上限都是 100,000 项；只有递归搜索的较小上限可由 `--max-search-entries` 配置，且配置不能超过该硬上限。游标和结果绑定认证账号摘要，跨账号复用失败；结果以共享不可变切片保存，分页只复制 `Arc` 并借用当前范围。CLI 和默认 library builder 保持进程级共享缓存：最多 32 份/64 MiB，每账号最多 8 份/32 MiB，且每份从创建起固定 120 秒过期；多租户 embedder 可用 `ServerBuilder::with_isolated_list_snapshot_cache()` 显式选择相同上限的实例缓存。过期或被容量淘汰后返回 `409` 并要求重载第一页。每账号容量限制使单个账号最多占用总缓存的一半。
 
 cursor 带服务端随机秘密生成的校验标签，并绑定结果 ID、offset、账号摘要、逻辑路径、目录设备号/inode/纳秒级 mtime/ctime、排序、查询和页大小；编码/版本无效、跨账号/跨查询或其他请求绑定不匹配返回 `400 Invalid list cursor`，认证标签不匹配、结果未知/过期/淘汰/不可用或目录身份变化返回 `409`。直接列表在扫描前后复核当前目录；递归搜索在访问每个目录前复核捕获快照，并在完成后再次复核所有访问目录。可观察变化返回可重试 `409`。浏览器只在不带 cursor 的首屏请求收到 HTTP/problem 双重 `409`、`directory_changed` 与 `refresh_target` 的完整组合时自动重放同一 GET 一次；第二次冲突、后续分页及其他 `409` 均停止并显示 `Retry`。
 
@@ -369,7 +369,7 @@ flowchart TD
 
 两种 relocation 都要求列表提供的 `source_revision`；token 绑定 owner、源路径和完整源 identity。`overwrite: false` 通过 rustix 调用 Linux `renameat2(RENAME_NOREPLACE)`，即使目标随后出现，最终原子调用也会保留目标并返回 `409`；Linux 文件系统不支持该原语时失败关闭，不降级为普通 rename。成功后服务还比较目的名称与提交前打开的 source anchor；若外部 writer 在微窗中换掉源名称，不能证明移动了原对象时返回 unknown，而不误报成功。`overwrite: true` 还要求绑定最终目标路径和完整目标 identity 的 `destination_revision`，RootedFs 在紧邻系统调用时复核 source/destination 后使用父目录 fd 上的普通 Linux `renameat` 原子替换；这不是对外部 writer 的目录项 compare-and-replace。若不同名称其实是同一 dev/inode 的硬链接，返回稳定的 `409 source_equals_destination`，不会误报 `204`。因此共享根必须排除外部 writer。
 
-源和目标先作为一个租约集合交给路径协调器，规范化、排序并一次取得；反向移动不会因加锁顺序不同死锁。最终父目录从长期持有的共享根 fd 通过 `openat2` 打开，rename 只接收父目录 fd 和最后一个文件名，不再按绝对字符串路径重新解析，也不会在提交时重建已经消失的目标目录。成功 rename 后同步源和目标父目录 fd，全部成功才返回 `204`；同一父目录只同步一次。
+源和目标先作为一个租约集合交给路径协调器，规范化、排序并一次取得；反向移动不会因加锁顺序不同死锁。最终父目录从长期持有的共享根 fd 通过 `openat2` 打开，rename 只接收父目录 fd 和最后一个文件名，不按绝对字符串路径重新解析，也不会在提交时重建已经消失的目标目录。成功 rename 后同步源和目标父目录 fd，全部成功才返回 `204`；同一父目录只同步一次。
 
 ### 8.4 统一路径协调与 fd-relative 最终变更
 
@@ -479,7 +479,7 @@ flowchart TD
     RELOAD --> SELECT
 ```
 
-浏览器不再把上传 ID 或续传身份写入 `localStorage`。文件名、相对路径、大小和 `lastModified` 不能证明两个文件内容相同；跨刷新按这些属性复用旧 ID 可能把不同内容拼接成一个最终文件。当前实现只允许同一页面、同一个仍在内存中的 `File` 对象在结果可确认失败后重试。HEAD 只信任服务端已经持久化的 owner、终态、offset 和首次绑定的总长度；记录绑定认证账号摘要，另一个账号查询同一 ID 与不存在一样得到 `404 not-seen`。PUT/PATCH 的 `not-started` 仅证明当前尝试没有进入上传 mutation，不证明旧 ID 没有检查点；它可显示 Retry，但点击后仍先 HEAD 原 ID，HEAD 本身不会返回 `not-started`。
+浏览器仅在当前页面内存中保存上传 ID 与续传身份。文件名、相对路径、大小和 `lastModified` 不能证明两个文件内容相同；跨刷新按这些属性复用旧 ID 可能把不同内容拼接成一个最终文件。当前实现只允许同一页面、同一个仍在内存中的 `File` 对象在结果可确认失败后重试。HEAD 只信任服务端已经持久化的 owner、终态、offset 和首次绑定的总长度；记录绑定认证账号摘要，另一个账号查询同一 ID 与不存在一样得到 `404 not-seen`。PUT/PATCH 的 `not-started` 仅证明当前尝试没有进入上传 mutation，不证明旧 ID 没有检查点；它可显示 Retry，但点击后仍先 HEAD 原 ID，HEAD 本身不会返回 `not-started`。
 
 文件选择在创建 uploader、UUID 或 DOM 行之前整体校验：单批最多 512 个文件，全部规范逻辑路径的 UTF-8 字节合计最多 256 KiB；任一无效项或超限会拒绝整批。合法非空选择会在串入异步队列前，按原始 `File` 数同步预留全局容量；预检/覆盖确认中的预准入文件与排队或执行中的 pending 行始终合计不超过 512，失败、取消或全量跳过会释放预留，实际准入则在无异步间隙的片段内把预留原子转为 pending 行。超限的新选择不会加入 Promise 链，也不会保留其 `File` 引用。前端再把最终绝对逻辑路径以相同 512/256 KiB 边界发送到预检 API；服务端还有 2 MiB wire-body 上限，严格拒绝空集、重复路径、非规范或越界路径。响应的数量、顺序和每个 path 必须与请求精确绑定，否则整批不入队。只有预检为已存在、可替换且携带合法 revision 的项才弹覆盖确认；无冲突批次零弹窗。终态历史只保留最近 200 行并通过状态区报告已隐藏数量。DELETE、MOVE、RENAME、MKDIR、空 PUT 和普通上传共用 `committed/outcome-unknown/refresh-required/not-committed` 四值失效契约：前两者分别表示已确认写入和仍可能写入；`refresh-required` 表示服务器已经证明当前 snapshot 陈旧，但不声称本次写入成功；只有 `not-committed` 才确认列表未变。前三者会递增列表 revision、使已有分页视图失效并通过 live status 显示刷新提示。上传每一次可信 target-change/reset-stage 和 tracked DELETE/MOVE/RENAME 的确定 revision 冲突都使用 `refresh-required`；uploader 不缓存“已经失效过”，所以两次冲突之间完成 Refresh 后，第二次响应仍会使新 snapshot 失效。非法名称等能证明目录未变的拒绝及分发前取消才保持 snapshot。用户下一次加载会清空旧页并从第一页请求，迟到的旧 revision 响应也不会提交到 DOM。
 
@@ -576,11 +576,11 @@ fresh PUT 先从最近存在的祖先目录 fd 读取 `st_dev`/`fstatvfs`，把�
 
 活跃上传以“父目录设备号/inode + 内部文件名”语义键登记，因此经根内符号链接别名发起的上传与维护从真实目录发现的文件仍是同一个键。对每个过期 `Running` 会话，维护会在短暂持锁时复核活跃项并登记 maintenance marker，重读完全相同的 DB 行，再在锁外通过 fd-relative purge capability 仅删除与记录 inode 一致的 stage，最后删除 DB 行。marker 的 RAII 生命周期排斥同一项的新上传和重复清理；上传等待 marker 时同时遵守 deadline 与 force-shutdown。路径无效或 inode 已变时不会删除该文件系统对象。
 
-新 DELETE 不再把内存 channel 当作可靠性边界。服务在 rename 前先向 `purge_jobs` 写入 `Prepared`，记录账号、根内相对目标/trash 路径与源 dev/inode/类型；通过身份复核的 rename 和父目录 `fsync` 成功后，才把覆盖 dev/inode、类型、nlink、size、uid/gid、完整 mode 和纳秒时间戳的 32 字节 trash revision 与 `Ready` 原子写入。outbox 容量为全局 4096、每账号 1024，满载会在移除可见名称前返回 `503 purge_backlog_full`。内存 channel 只传递可合并的 wake 信号，worker 也会定时轮询 SQLite，丢失 wake 不会丢 job。
+DELETE 使用 SQLite outbox 持久记录待回收状态。服务在 rename 前先向 `purge_jobs` 写入 `Prepared`，记录账号、根内相对目标/trash 路径与源 dev/inode/类型；通过身份复核的 rename 和父目录 `fsync` 成功后，才把覆盖 dev/inode、类型、nlink、size、uid/gid、完整 mode 和纳秒时间戳的 32 字节 trash revision 与 `Ready` 原子写入。outbox 容量为全局 4096、每账号 1024，满载会在移除可见名称前返回 `503 purge_backlog_full`。内存 channel 只传递可合并的 wake 信号，worker 也会定时轮询 SQLite，丢失 wake 不会丢 job。
 
 worker 原子把到期 `Ready` 改为 `Claimed`，重新打开 trash 后同时复核已提交 revision 与持续 `O_PATH` 根锚点，每片最多处理 256 个条目或 25 ms。未完成项在进程内 round-robin；普通 I/O 失败把 job 持久化返回 `Ready`，attempt 计数递增并从 100 ms 指数退避到最长 30 秒，不因固定次数丢弃 job。若 defer/complete 的 state-store 命令失败，当前 worker 有界保留该 job；再次执行前先回读数据库，只有仍为 `Claimed` 才继续，若前次命令实际已提交则直接丢弃本地副本。重启时 `Claimed` 全部恢复为可立即重试的 `Ready`。独立 reconciler 每秒重试 `Prepared`，但 `Prepared` 没有 committed trash revision，不能证明 rename 结果：它始终保留 target，把 trash 路径上的任何 occupant 原子改名为 `.dufs-quarantine-<uuid>.hold`，随后释放 intent。停机只在 job 边界取消 reconciler；一旦某项取得语义路径租约，就继续持有租约和 tracker 身份直到不可取消的 fd-relative rename/fsync 及 SQLite 收尾完成，硬截止仍可最终终止故障内核调用。`Ready/Claimed` 缺失 revision、revision/锚点不一致或递归清理返回 `InvalidData` 时也 quarantine 整棵当前 trash 根并释放 job；quarantine 永不自动清理，必须停服核对日志和对象后人工移除。
 
-根内低频扫描只把跨 SQLite/文件系统提交缝隙中未记账的 orphan trash 交给有界内存兜底通道；通道满、取消或普通 I/O 失败时保留隐藏对象，下一轮重新发现。新 DELETE 的正常恢复由 outbox 驱动，不等待小时级扫描。分片递归删除仍只保存根内相对路径和 `readdir` cursor；每个最终 unlink/rmdir 候选先原子移入随机 quarantine/disposal 名，再用已打开 fd 复核同一 identity。候选消失则视为已无原对象；身份或最终删除异常返回 `InvalidData`，使整棵 trash 根立即进入永久 quarantine。已记账目录最终返回 `ENOTEMPTY/EXIST` 时不再从 cursor 0 重扫，而是 quarantine/release；未记账 orphan 遇到同类 `InvalidData` 也不会再次自动捕获。分片 cursor 本身不写 SQLite，进程重启可从仍有效且有 revision 的 trash 根重新遍历。恶意同 UID writer 若通过 inotify 观察随机工作名并竞争最终微窗，仍超出支持边界。
+根内低频扫描只把跨 SQLite/文件系统提交缝隙中未记账的 orphan trash 交给有界内存兜底通道；通道满、取消或普通 I/O 失败时保留隐藏对象，下一轮重新发现。DELETE 的正常恢复由 outbox 驱动，不等待小时级扫描。分片递归删除仍只保存根内相对路径和 `readdir` cursor；每个最终 unlink/rmdir 候选先原子移入随机 quarantine/disposal 名，再用已打开 fd 复核同一 identity。候选消失则视为已无原对象；身份或最终删除异常返回 `InvalidData`，使整棵 trash 根立即进入永久 quarantine。已记账目录最终返回 `ENOTEMPTY/EXIST` 时不再从 cursor 0 重扫，而是 quarantine/release；未记账 orphan 遇到同类 `InvalidData` 也不会再次自动捕获。分片 cursor 本身不写 SQLite，进程重启可从仍有效且有 revision 的 trash 根重新遍历。恶意同 UID writer 若通过 inotify 观察随机工作名并竞争最终微窗，仍超出支持边界。
 
 随机隔离本身也有崩溃标记语义：如果进程在嵌套候选完成 isolation、尚未 unlink 时中断，后续扫描重新捕获外层 orphan trash 后会看到树内严格 quarantine 名。purge 将其判为 `InvalidData`，把整棵外层 trash 根 quarantine，绝不把这个遗留名当普通子项自动递归删除。
 
@@ -686,7 +686,7 @@ flowchart TD
 
 普通子对象删除要求 `If-Match` 携带当前列表 revision；服务在创建 purge intent 前验证 token 的 owner、规范路径和完整 identity，并在紧邻 rename 时再次复核。随后先在 state store 中写入 `Prepared` purge job，再在同一父目录内把同一对象原子移动到 `.dufs-upload-delete-<UUID>.trash`。父目录同步成功后，包含完整 trash identity 的 32 字节 revision 与 `Ready` 才原子持久化并返回 `204`。因此文件或整个目录树会一次从原业务名称下消失；目标路径租约覆盖其后代，子树上传、move、mkdir 或另一个 delete 必须等待可见删除提交完成。outbox 全局最多 4096 项、每账号最多 1024 项，满载在 rename 前返回 `503`，不先消费可见目标。
 
-返回 `204` 后的递归清理只负责释放隐藏暂存项占用的空间，不改变已经提交的可见删除结果。worker 原子 claim 到期 `Ready` job，按 committed revision 和 fd 锚点重开 trash；普通 I/O 失败持久化回 `Ready` 并退避，不因固定次数丢弃。状态转换瞬时失败时会有界保留并回读确认本地 claim，重启则把遗留 `Claimed` 恢复为 `Ready`。`Prepared` 恢复不再推断 rename：保留 target、quarantine 任意 trash occupant、释放 intent。Ready/Claimed 缺失 revision 或出现身份歧义时也 quarantine/release。小时级维护扫描只回收未记账 orphan trash。
+返回 `204` 后的递归清理只负责释放隐藏暂存项占用的空间，不改变已经提交的可见删除结果。worker 原子 claim 到期 `Ready` job，按 committed revision 和 fd 锚点重开 trash；普通 I/O 失败持久化回 `Ready` 并退避，不因固定次数丢弃。状态转换瞬时失败时会有界保留并回读确认本地 claim，重启则把遗留 `Claimed` 恢复为 `Ready`。`Prepared` 恢复将 rename 结果视为无法确认：保留 target、quarantine 任意 trash occupant、释放 intent。Ready/Claimed 缺失 revision 或出现身份歧义时也 quarantine/release。小时级维护扫描只回收未记账 orphan trash。
 
 目录回收不调用同步 `remove_dir_all`，也不通过 `/proc/self/fd` 还原绝对路径。worker 的深度优先栈只保留根内相对目录路径和各层 `readdir` cursor；每片最多处理 256 项或 25 ms，从 trash 父目录 fd 逐级以 `openat2(..., RESOLVE_NO_XDEV)` 打开当前工作目录。每个最终删除候选先以 `RENAME_NOREPLACE` 移入随机 quarantine/disposal 名，再比较该名称与持续 fd 锚点的完整 identity，匹配后才 `unlinkat`；异常时整棵根保留为 quarantine。嵌套文件系统或 bind mount 是管理边界，worker 不进入其中；普通边界 I/O 故障使 job 回到 `Ready` 并退避，管理员卸载后可继续。未完成的健康 job 在进程内轮转；attempt 持久化递增并从 100 ms 开始指数退避至最长 30 秒，其他 ready job 可越过它。进程内 cursor 不写 SQLite，重启从带 committed revision 的 trash 根重新遍历；最终 `ENOTEMPTY/EXIST` 是身份安全异常，不从 cursor 0 重扫。该机制不提供列出、恢复或撤销接口；大目录 DELETE 的 `204` 也不表示全部块已经释放。同 UID 的恶意 inotify 竞争仍须靠更强身份/目录隔离排除。
 
@@ -779,7 +779,7 @@ Linux 上首次收到 SIGINT 或 SIGTERM 时，Foundation 进入 Quiescing、立
 
 ## 13. 代码阅读与测试顺序
 
-`src/server.rs` 是服务端共享状态和模块协调入口，但不再把所有依赖放在一个扁平结构中：`ContentServices`、`DurableStateServices`、`AdmissionControl` 与 `ServerLifecycle` 分别拥有内容/路径访问、SQLite 控制面、容量与公平准入、停机及任务收束。请求分类/分发、路径身份/策略、公开 wire protocol、SQLite actor/database/model 与 operation/upload/purge 仓储、内置资源、删除回收、列表快照与遍历、上传协议/记录/维护均在对应子模块中实现；各大模块的内联单元测试也已移入同一隐私边界下的 `tests.rs`。此次结构拆分不改变本章前述 HTTP 路径、方法、状态码、响应头或持久化协议，也没有引入新的第三方依赖。
+`src/server.rs` 是服务端共享状态和模块协调入口：`ContentServices`、`DurableStateServices`、`AdmissionControl` 与 `ServerLifecycle` 分别拥有内容/路径访问、SQLite 控制面、容量与公平准入、停机及任务收束。请求分类/分发、路径身份/策略、公开 wire protocol、SQLite actor/database/model 与 operation/upload/purge 仓储、内置资源、删除回收、列表快照与遍历、上传协议/记录/维护均在对应子模块中实现；各大模块的内联单元测试也已移入同一隐私边界下的 `tests.rs`。此次结构拆分不改变本章前述 HTTP 路径、方法、状态码、响应头或持久化协议，也没有引入新的第三方依赖。
 
 ```mermaid
 flowchart TD

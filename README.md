@@ -55,6 +55,7 @@ Web 与 API 使用一致的结构化错误和操作 ID；遇到写入结果未�
 ## 开发验证
 
 ```sh
+npm run build:platform
 cargo fmt --all -- --check
 cargo clippy --locked --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 cargo test --locked --target x86_64-unknown-linux-gnu

@@ -80,7 +80,7 @@ SQLite 提交与共享根中的 mkdir、rename、文件同步和目录 `fsync` �
 
 不要在活跃 upload 或未完成 purge 的路径祖先上依赖 rename/unlink 来“顺手迁移”控制状态：SQLite 与文件系统无法在一个事务内原子 rebase。服务会在语义路径租约内，对 move/rename 的源与派生目标、DELETE 目标和 fresh PUT 目标执行有界 keyset 状态检查；根内符号链接别名也按目录身份识别。命中时分别返回 `409 move_state_conflict`、`409 rename_state_conflict`、`409 delete_state_conflict` 或 `409 upload_state_conflict`，待原任务完成后用新的 operation/upload ID 重试。检查本身暂不可用时不会开始 mutation，并返回带恢复建议的 `503`；fresh PUT 的该检查受 upload deadline 约束，超时返回绑定的 `408 not-started`。它发生在 tracked route metadata 之后、注册上传 mutation 和创建 stage/SQLite 行之前。
 
-进入受跟踪的上传任务不再等同于“结果已经可能未知”。任务可以在持有路径租约和上传槽时只读查询 owner 会话、目标 identity/metadata 与空间状态；创建祖先或 stage、截断既有 stage、更新 SQLite 会话或接收正文等首次 mutation 必须先通过一个与总 deadline 原子竞争的边界。deadline 先赢会关闭边界并 abort 任务，返回绑定的 `408 request_timeout + not-started + retry`；只读准备中逸出的超时类错误同样返回 `408`，其他未处理 I/O 返回 `503 upload_precommit_failed + not-started + retry`。边界关闭后任务不能稍后恢复并写入。若 mutation 先赢，随后外层 deadline 或未处理错误才是 `unknown + query_upload`。运维自动化不要只按 HTTP `408/503` 重放；仍应遵守响应中的 upload state/recovery，并以原 ID 做 owner-scoped HEAD，因为 `not-started` 不排除更早请求留下的检查点或终态。
+上传任务是否可能产生未知结果，取决于是否通过首次 mutation 边界。任务可以在持有路径租约和上传槽时只读查询 owner 会话、目标 identity/metadata 与空间状态；创建祖先或 stage、截断既有 stage、更新 SQLite 会话或接收正文等首次 mutation 必须先通过一个与总 deadline 原子竞争的边界。deadline 先赢会关闭边界并 abort 任务，返回绑定的 `408 request_timeout + not-started + retry`；只读准备中逸出的超时类错误同样返回 `408`，其他未处理 I/O 返回 `503 upload_precommit_failed + not-started + retry`。边界关闭后任务不能稍后恢复并写入。若 mutation 先赢，随后外层 deadline 或未处理错误才是 `unknown + query_upload`。运维自动化不要只按 HTTP `408/503` 重放；仍应遵守响应中的 upload state/recovery，并以原 ID 做 owner-scoped HEAD，因为 `not-started` 不排除更早请求留下的检查点或终态。
 
 ### 1.2 上传预检与条件覆盖
 
