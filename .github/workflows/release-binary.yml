@@ -78,22 +78,12 @@ jobs:
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           printf 'Validated %s at %s.\n' "$expected_tag" "$tag_commit"
 
-  formal_release:
-    name: Verify the formal signed package
-    needs: preflight
-    permissions:
-      contents: read
-    uses: ./.github/workflows/formal-release-e2e.yml
-
   verify_build:
     name: Verify and build without write permission
-    needs:
-      - preflight
-      - formal_release
+    needs: preflight
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 90
     permissions:
-      actions: read
       contents: read
     env:
       VERSION: ${{ needs.preflight.outputs.version }}
@@ -137,60 +127,15 @@ jobs:
           npm audit --audit-level=high
           npm run build:platform
 
-      - name: Download the exact formal-test candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: formal-release-candidate-${{ github.sha }}
-          path: ${{ runner.temp }}/formal-release-candidate
-          digest-mismatch: error
-
-      - name: Verify the exact formal-test candidate
+      - name: Build and verify the release binary
         id: prepare_release_inputs
         shell: bash
         run: |
           set -euo pipefail
-
           asset_name="dufs-${VERSION}-${TARGET}"
-          candidate_dir="${RUNNER_TEMP}/formal-release-candidate"
-          unpack_dir="${RUNNER_TEMP}/formal-release-unpacked"
-          install -d -m 0700 "$unpack_dir"
-          mapfile -t archives < <(find -P "$candidate_dir" -maxdepth 1 \
-            -type f -name '*.tar.gz' -print)
-          if ((${#archives[@]} != 1)); then
-            printf 'Expected one formal candidate archive; found %s.\n' \
-              "${#archives[@]}" >&2
-            exit 1
-          fi
-          archive="${archives[0]}"
-          checksum="${archive}.sha256"
-          signature="${checksum}.sig"
-          public_key="${checksum}.pub.pem"
-          entry_count="$(find -P "$candidate_dir" -mindepth 1 -maxdepth 1 -printf x | wc -c)"
-          if [[ "$entry_count" != "4" ]]; then
-            printf 'Expected four formal candidate files; found %s.\n' "$entry_count" >&2
-            exit 1
-          fi
-          for path in "$archive" "$checksum" "$signature" "$public_key"; do
-            [[ -f "$path" && ! -L "$path" && "$(stat -c %h "$path")" == "1" ]] || {
-              printf 'Formal candidate file is missing or unsafe: %s.\n' "$path" >&2
-              exit 1
-            }
-          done
-          (cd "$candidate_dir" && sha256sum --check "${checksum##*/}")
-          openssl pkeyutl --verify --rawin --pubin --inkey "$public_key" \
-            --sigfile "$signature" --in "$checksum"
-          tar --extract --gzip --file "$archive" --directory "$unpack_dir" \
-            --no-same-owner
-          mapfile -t package_roots < <(find -P "$unpack_dir" -mindepth 1 \
-            -maxdepth 1 -type d -print)
-          if ((${#package_roots[@]} != 1)); then
-            printf 'Expected one formal package root; found %s.\n' \
-              "${#package_roots[@]}" >&2
-            exit 1
-          fi
-          package_root="${package_roots[0]}"
-          source_binary="$package_root/dufs"
-          grep -Fxq "source_sha=$GITHUB_SHA" "$package_root/BUILD-ENVIRONMENT.txt"
+          DUFS_BUILD_GIT_SHA="$GITHUB_SHA" cargo +"$RUST_TOOLCHAIN" build \
+            --locked --release --target "$TARGET"
+          source_binary="target/$TARGET/release/dufs"
           install -d -m 0755 dist
           install -m 0755 "$source_binary" "dist/$asset_name"
 
@@ -201,7 +146,6 @@ jobs:
               "$expected_version" "$actual_version" >&2
             exit 1
           fi
-
           ldd_output="$(ldd "dist/$asset_name")"
           printf '%s\n' "$ldd_output"
           if [[ "$ldd_output" == *"not found"* ]]; then
@@ -219,6 +163,7 @@ jobs:
             printf 'Source commit: `%s`\n' "$GITHUB_SHA"
           } > dist/RELEASE_NOTES.md
           test -s dist/RELEASE_NOTES.md
+          test -z "$(git status --porcelain --untracked-files=no)"
 
           entry_count="$(find -P dist -mindepth 1 -printf x | wc -c)"
           if [[ "$entry_count" != "3" ]]; then

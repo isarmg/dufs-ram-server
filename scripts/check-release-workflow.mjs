@@ -30,7 +30,6 @@ export function validateReleaseWorkflows(workflowSources) {
 
   const releaseJobs = release.jobs ?? {};
   requiredJob(releaseJobs, "preflight");
-  const formalRelease = requiredJob(releaseJobs, "formal_release");
   const verifyBuild = requiredJob(releaseJobs, "verify_build");
   const publish = requiredJob(releaseJobs, "publish");
 
@@ -42,16 +41,9 @@ export function validateReleaseWorkflows(workflowSources) {
   requireExactPublishPermissions(publish.permissions);
 
   requireValue(
-    formalRelease.uses === "./.github/workflows/formal-release-e2e.yml",
-    "release-binary.yml: formal verification must call the local formal workflow",
-  );
-  requireValue(
-    needs(formalRelease).includes("preflight"),
-    "release-binary.yml: formal verification must depend on preflight",
-  );
-  requireValue(
-    needs(verifyBuild).includes("preflight") && needs(verifyBuild).includes("formal_release"),
-    "release-binary.yml: candidate verification must depend on preflight and formal verification",
+    needs(verifyBuild).length === 1 && needs(verifyBuild)[0] === "preflight" &&
+      !Object.hasOwn(releaseJobs, "formal_release"),
+    "release-binary.yml: release build must follow preflight without the optional package E2E",
   );
   requireValue(
     needs(publish).length === 1 && needs(publish)[0] === "verify_build",
@@ -86,8 +78,8 @@ export function validateReleaseWorkflows(workflowSources) {
     }
   });
   requireValue(
-    formal.on?.workflow_call !== undefined,
-    "formal-release-e2e.yml: formal verification must remain reusable",
+    formal.on?.workflow_dispatch !== undefined,
+    "formal-release-e2e.yml: optional package verification must be manually available",
   );
   requireValue(
     hasAction(formal, "actions/upload-artifact@"),

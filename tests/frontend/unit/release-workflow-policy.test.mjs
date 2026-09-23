@@ -74,3 +74,13 @@ test("workflow policy rejects an artifact ID from another job", () => {
     /bind the artifact ID from verify_build/u,
   );
 });
+
+test("tag publishing does not wait for optional signed-package E2E", () => {
+  const sources = workflowSources(release => {
+    release.jobs.verify_build.needs = ["preflight", "formal_release"];
+  });
+  assert.throws(
+    () => validateReleaseWorkflows(sources),
+    /without the optional package E2E/u,
+  );
+});
