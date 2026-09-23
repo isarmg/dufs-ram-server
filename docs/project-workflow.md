@@ -276,7 +276,7 @@ flowchart TD
 
 普通文件和单段 Range 都直接使用会话 Cookie。文件 GET 始终返回附件下载响应，查询参数不会切换为其他文件模式；浏览器端不提供预览、编辑或保存入口。
 
-文件从共享根目录文件描述符经 `openat2(O_RDONLY|O_NONBLOCK)` 打开一次，并从同一 fd 的 `fstat` 确认仍为普通文件；路由 metadata 与最终打开之间被外部写者换成 FIFO 时不会在等待 peer 的 open 上挂住，特殊类型也不会进入正文读取。metadata 和正文来自这个已经分类的句柄，且 metadata 与每个 fd-relative `read_at` 分块都经过全局阻塞 I/O 门控。每次分块的门控等待与文件系统读取共用一个 30 秒 idle deadline；超时后正文返回带 `TimedOut` 来源的诊断错误，若 blocking worker 已经开始，门控许可仍由它持有到实际系统调用结束。附件 MIME 只按请求路径扩展名映射，未知名称固定为 `application/octet-stream`，不再读取样本、seek 回起点或猜测字符集。完整 GET 和 Range 都以这次打开取得的 metadata size 为正文硬上限，因此并发原子替换只影响后续新请求，当前响应的正文、`Content-Length` 和验证器保持同一 inode 版本；外部进程随后向同一 inode 原地追加也不会让本次响应越界。
+文件从共享根目录文件描述符经 `openat2(O_RDONLY|O_NONBLOCK)` 打开一次，并从同一 fd 的 `fstat` 确认仍为普通文件；路由 metadata 与最终打开之间被外部写者换成 FIFO 时不会在等待 peer 的 open 上挂住，特殊类型也不会进入正文读取。metadata 和正文来自这个已经分类的句柄，且 metadata 与每个 fd-relative `read_at` 分块都经过全局阻塞 I/O 门控。每次分块的门控等待与文件系统读取共用一个 30 秒 idle deadline；超时后正文返回带 `TimedOut` 来源的诊断错误，若 blocking worker 已经开始，门控许可仍由它持有到实际系统调用结束。附件 MIME 只按请求路径扩展名映射，未知名称固定为 `application/octet-stream`。完整 GET 和 Range 都以这次打开取得的 metadata size 为正文硬上限，因此并发原子替换只影响后续新请求，当前响应的正文、`Content-Length` 和验证器保持同一 inode 版本；外部进程随后向同一 inode 原地追加也不会让本次响应越界。
 
 ETag 使用设备号、inode、长度及纳秒级 mtime/ctime 生成，并明确带 `W/`，它用于区分通常的文件版本但不是内容摘要。条件请求按 HTTP 优先级执行：`If-Match` 优先于 `If-Unmodified-Since`，`If-None-Match` 优先于 `If-Modified-Since`。相同 `If-None-Match` 可按弱比较得到 `304`；`If-Match` 要求强比较，回放服务端发出的弱 ETag 会得到 `412`，而存在文件上的 `If-Match: *` 仍可通过。
 
@@ -405,7 +405,7 @@ SQLite transaction 和文件系统 transaction 不是同一个原子提交域。
 
 外层响应超时或连接断开不会取消已开始的提交。前端遇到传输层结果未知时只进行一次状态 GET：`succeeded` 才按成功更新页面，`failed` 显示服务端确定结果，`running` 要求稍后刷新，`unknown`、查询失败或记录不存在都要求刷新检查目标；任何一种情况都不会自动重放写请求。正常响应、重放响应和默认访问日志携带 operation ID 与 operation state，便于关联诊断。
 
-浏览器普通 `fetch` 统一经过 `modules/http/client.js` 编排，默认 30 秒 deadline 同时覆盖取得响应头和读取正文；实际的有界读取由 `modules/http/response_buffer.js` 实现，并复用 `modules/http/headers.js` 的严格无符号头解析。调用时若调用方 signal 已经取消，`client.js` 会在分发前明确返回 `client_cancelled`，不会调用 `fetch`；进入 `fetch` 后的取消、deadline 或网络中断无法证明服务端未收到写请求，带 `outcomeUnknown` 的 mutation 仍保守归为 unknown。客户端先拒绝超过上限的严格 `Content-Length`，再逐块累计；错误/成功响应上限分别为 16 KiB/16 MiB，越界立即 cancel。允许范围内以已校验分块构造重放流，不再额外合并整份缓冲区。Problem Details 的 `detail`/`title` 最多接受 1024 个 JavaScript UTF-16 code units。
+浏览器普通 `fetch` 统一经过 `modules/http/client.js` 编排，默认 30 秒 deadline 同时覆盖取得响应头和读取正文；实际的有界读取由 `modules/http/response_buffer.js` 实现，并复用 `modules/http/headers.js` 的严格无符号头解析。调用时若调用方 signal 已经取消，`client.js` 会在分发前明确返回 `client_cancelled`，不会调用 `fetch`；进入 `fetch` 后的取消、deadline 或网络中断无法证明服务端未收到写请求，带 `outcomeUnknown` 的 mutation 仍保守归为 unknown。客户端先拒绝超过上限的严格 `Content-Length`，再逐块累计；错误/成功响应上限分别为 16 KiB/16 MiB，越界立即 cancel。允许范围内以已校验分块构造重放流，正文在解析期间保持为一组有界分块。Problem Details 的 `detail`/`title` 最多接受 1024 个 JavaScript UTF-16 code units。
 
 上传正文专用 XHR 会在响应头、下载 progress 和最终 UTF-8 长度三层拒绝超过 16 KiB 的响应。携带 operation ID 的成功响应必须回显同一 ID 和 `succeeded`；普通 operation 响应接受 `running/succeeded/failed/rejected/unknown`，job 状态端点记录本身仍为 `running/succeeded/failed/unknown`。状态缺失、矛盾、越界或状态查询发生认证/协议/网络错误都保守归为 unknown，不自动重放。
 
@@ -444,7 +444,7 @@ flowchart TD
     BODY_BUDGET -- 超时/取消 --> UNKNOWN["标记结果未知并通知列表失效<br/>要求刷新核对且不显示 Retry"]
     TRANSFER -- 否 --> SUBMIT["清除传输计时器<br/>显示 Submitting 并最多等待 5 分钟"]
     SUBMIT --> RESULT{"响应状态"}
-    RESULT -- "fresh PUT 200/201 或 PATCH 200/204<br/>+ committed + 精确长度/满 offset" --> DONE["标记完成并通知列表失效<br/>旧游标不再继续加载"]
+    RESULT -- "fresh PUT 200/201 或 PATCH 200/204<br/>+ committed + 精确长度/满 offset" --> DONE["标记完成并通知列表失效<br/>停止使用旧游标"]
     RESULT -- "409 + not-started<br/>destination_exists/current revision" --> LATE["文件数据尚未发送<br/>覆盖 / 跳过 / 取消后续"]
     RESULT -- "409 + awaiting-confirmation<br/>满 offset/current revision" --> STAGED["完整 stage 已保留<br/>覆盖 / 跳过 / 取消后续"]
     LATE -- 覆盖 --> PUT
@@ -580,7 +580,7 @@ DELETE 使用 SQLite outbox 持久记录待回收状态。服务在 rename 前�
 
 worker 原子把到期 `Ready` 改为 `Claimed`，重新打开 trash 后同时复核已提交 revision 与持续 `O_PATH` 根锚点，每片最多处理 256 个条目或 25 ms。未完成项在进程内 round-robin；普通 I/O 失败把 job 持久化返回 `Ready`，attempt 计数递增并从 100 ms 指数退避到最长 30 秒，不因固定次数丢弃 job。若 defer/complete 的 state-store 命令失败，当前 worker 有界保留该 job；再次执行前先回读数据库，只有仍为 `Claimed` 才继续，若前次命令实际已提交则直接丢弃本地副本。重启时 `Claimed` 全部恢复为可立即重试的 `Ready`。独立 reconciler 每秒重试 `Prepared`，但 `Prepared` 没有 committed trash revision，不能证明 rename 结果：它始终保留 target，把 trash 路径上的任何 occupant 原子改名为 `.dufs-quarantine-<uuid>.hold`，随后释放 intent。停机只在 job 边界取消 reconciler；一旦某项取得语义路径租约，就继续持有租约和 tracker 身份直到不可取消的 fd-relative rename/fsync 及 SQLite 收尾完成，硬截止仍可最终终止故障内核调用。`Ready/Claimed` 缺失 revision、revision/锚点不一致或递归清理返回 `InvalidData` 时也 quarantine 整棵当前 trash 根并释放 job；quarantine 永不自动清理，必须停服核对日志和对象后人工移除。
 
-根内低频扫描只把跨 SQLite/文件系统提交缝隙中未记账的 orphan trash 交给有界内存兜底通道；通道满、取消或普通 I/O 失败时保留隐藏对象，下一轮重新发现。DELETE 的正常恢复由 outbox 驱动，不等待小时级扫描。分片递归删除仍只保存根内相对路径和 `readdir` cursor；每个最终 unlink/rmdir 候选先原子移入随机 quarantine/disposal 名，再用已打开 fd 复核同一 identity。候选消失则视为已无原对象；身份或最终删除异常返回 `InvalidData`，使整棵 trash 根立即进入永久 quarantine。已记账目录最终返回 `ENOTEMPTY/EXIST` 时不再从 cursor 0 重扫，而是 quarantine/release；未记账 orphan 遇到同类 `InvalidData` 也不会再次自动捕获。分片 cursor 本身不写 SQLite，进程重启可从仍有效且有 revision 的 trash 根重新遍历。恶意同 UID writer 若通过 inotify 观察随机工作名并竞争最终微窗，仍超出支持边界。
+根内低频扫描只把跨 SQLite/文件系统提交缝隙中未记账的 orphan trash 交给有界内存兜底通道；通道满、取消或普通 I/O 失败时保留隐藏对象，下一轮重新发现。DELETE 的正常恢复由 outbox 驱动，不等待小时级扫描。分片递归删除仍只保存根内相对路径和 `readdir` cursor；每个最终 unlink/rmdir 候选先原子移入随机 quarantine/disposal 名，再用已打开 fd 复核同一 identity。候选消失则视为已无原对象；身份或最终删除异常返回 `InvalidData`，使整棵 trash 根立即进入永久 quarantine。已记账目录最终返回 `ENOTEMPTY/EXIST` 时直接 quarantine/release；未记账 orphan 遇到同类 `InvalidData` 后保持隔离状态，后续扫描跳过。分片 cursor 本身不写 SQLite，进程重启可从仍有效且有 revision 的 trash 根重新遍历。恶意同 UID writer 若通过 inotify 观察随机工作名并竞争最终微窗，仍超出支持边界。
 
 随机隔离本身也有崩溃标记语义：如果进程在嵌套候选完成 isolation、尚未 unlink 时中断，后续扫描重新捕获外层 orphan trash 后会看到树内严格 quarantine 名。purge 将其判为 `InvalidData`，把整棵外层 trash 根 quarantine，绝不把这个遗留名当普通子项自动递归删除。
 
@@ -634,7 +634,7 @@ setuid 或 setgid 位会使覆盖被拒绝，而不是复制到由上传内容�
 
 成功响应表示元数据重放、暂存文件同步、最终 rename、目标父目录 `fsync` 和 `Committed` 终态持久化均已成功，而不是无条件的绝对物理保证。确定发生在发布前的文件同步失败，或条件复核过程自身的 I/O/系统错误等确定非条件失败，是 `NotPublished`，可以清理会话并记录 `Rejected`；复核发现 source/target identity 不匹配或 no-replace 竞争则不属于 `NotPublished`，而是保留完整 stage 并持久化为 `AwaitingConfirmation`。missing-target rename 成功后若目的名称无法再证明对应已打开 stage，则归为 published identity unknown，不能清理成“未发布”。rename 已成功而父目录同步失败是 `PublishedDurabilityUnknown`，服务尽力把已有 `CommitStarted` 改为 `Unknown`。父目录已经同步但 `Committed` 终态写入失败同样向客户端报告 unknown；即使显式 `Unknown` 写入也失败，原 `CommitStarted` 仍在下次文件型数据库启动时恢复为 `Unknown`，避免将同一 ID 误判为可从零重传。Linux 文件系统、网络存储、磁盘控制器和固件仍必须正确兑现同步命令；介质损坏、后续位腐败仍需可靠存储、校验和与备份处理。
 
-这一提交序列通过 `StorageDurability` 边界注入：生产实现执行文件 `sync_all`、根 fd 内 rename 和父目录同步；边界返回 `Published`、`Rejected`、`NotPublished` 或 `PublishedDurabilityUnknown`，终态记录由上传协议层在它前后持久化。单元测试分别注入文件同步失败、rename 前/rename 失败、发布后父目录同步失败及终态写入失败，验证各分支不会误报可重试性。下载端从根 fd 打开一次文件，并从同一句柄取得 metadata 和正文；覆盖期间已经打开的响应继续读取旧 inode，新请求读取新 inode，不再混合 `Content-Length`、ETag 和正文。
+这一提交序列通过 `StorageDurability` 边界注入：生产实现执行文件 `sync_all`、根 fd 内 rename 和父目录同步；边界返回 `Published`、`Rejected`、`NotPublished` 或 `PublishedDurabilityUnknown`，终态记录由上传协议层在它前后持久化。单元测试分别注入文件同步失败、rename 前/rename 失败、发布后父目录同步失败及终态写入失败，验证各分支不会误报可重试性。下载端从根 fd 打开一次文件，并从同一句柄取得 metadata 和正文；覆盖期间已经打开的响应继续读取旧 inode，新请求读取新 inode，各响应的 `Content-Length`、ETag 和正文都来自各自打开的句柄。
 
 上传 task 从开始处理起就持有请求体和上传路径锁，取得 active stage 租约或建立会话后也负责相应收尾；但在原子 mutation boundary 之前，它只允许执行不会改动共享根或上传状态的准备工作。服务端总 deadline 先关闭该边界时会 abort task，不能把这个分支写成“后台稍后仍可能开始上传”。浏览器断开或网关取消 HTTP waiter 本身没有同样的服务端 deadline 判定能力，已分发 task 仍可能继续；一旦 task 已跨 mutation boundary，外层 deadline/未处理错误也只报告 unknown，由 task 处理正文结束、I/O 错误、检查点或清理，底层阻塞文件操作不会脱离路径租约运行。停机的 30 秒宽限结束时，force token 会中断正文接收；服务最多再给受跟踪收尾 10 秒。最终 rename 与目录 `fsync` 不会被普通取消拆开，但约 40 秒的应用硬截止、第二次停止信号或 SIGKILL 都会强制终止，因此这些边界不能保证卡住提交已经落盘。
 
