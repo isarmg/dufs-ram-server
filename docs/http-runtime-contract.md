@@ -1,7 +1,7 @@
 # Dufs HTTP 与运行时合同
 
 本文描述当前 Dufs 的 HTTP 行为、Foundation 分工和验证入口。Rust 与 Web 依赖由
-`Cargo.toml`、`Cargo.lock`、`package.json` 和 `package-lock.json` 固定到 Foundation 0.9.1。
+`Cargo.toml`、`Cargo.lock`、`package.json` 和 `package-lock.json` 固定到 Foundation 0.9.2。
 
 ## 请求与认证
 

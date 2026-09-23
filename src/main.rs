@@ -71,7 +71,7 @@ async fn run_server(args: Args) -> Result<()> {
     let runtime = ServerRuntime::builder(ProductDescriptor {
         id: "dufs-ram".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        foundation_revision: "84966364c5b4662104e05741b3045482e4fd4fc8".into(),
+        foundation_revision: "0174fc1b6ffcdf876e6dc7c715f107266582410e".into(),
         profile: "server-filesystem".into(),
         capabilities: vec![
             "admin-static".into(),
