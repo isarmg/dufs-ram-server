@@ -46,6 +46,13 @@ test("upload selection enforces file-count and UTF-8 path budgets", () => {
     assert.equal(overBytes.ok, false);
     assert.equal(overBytes.entries.length, 0);
     assert.match(overBytes.error, /byte batch limit/);
+
+    for (const invalid of ["bad\0name.txt", "文".repeat(86), `${"a".repeat(255)}/${"b".repeat(255)}/`.repeat(8) + "file.txt"]) {
+      const rejected = prepareUploadSelection([new TestFile(invalid)]);
+      assert.equal(rejected.ok, false, `path should be rejected: ${JSON.stringify(invalid)}`);
+      assert.equal(rejected.entries.length, 0);
+      assert.match(rejected.error, /not supported/);
+    }
   } finally {
     if (OriginalFile === undefined) {
       delete globalThis.File;

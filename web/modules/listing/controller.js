@@ -1158,10 +1158,7 @@ function validateCreatedItem(file) {
 
 /** @param {string} name */
 function isValidInlineName(name) {
-  return isValidLogicalPath(name) &&
-    !name.includes("/") &&
-    !name.includes("\0") &&
-    new TextEncoder().encode(name).length <= 255;
+  return isValidLogicalPath(name) && !name.includes("/");
 }
 
 /** @param {string} path */

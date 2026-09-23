@@ -560,9 +560,8 @@ async fn cleanup_expired_upload_session(
     // expired snapshot before acting. A rejected row may retain its stage
     // identity when a discard was cancelled after the terminal transition, so
     // it must finish the same identity-safe cleanup before retiring the row.
-    // CommitStarted can still be advanced by an in-flight non-cancellable
-    // commit, so it remains an ambiguity barrier if an older database happens
-    // to return it here.
+    // CommitStarted can still advance in a non-cancellable commit; cleanup
+    // leaves that state in place until the commit outcome is known.
     if !state_store
         .expired_upload_session_matches(expired.clone())
         .await?

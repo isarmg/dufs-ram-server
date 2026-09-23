@@ -5,12 +5,12 @@ export function currentPageUrl() {
 
 /** @param {unknown} name @returns {name is string} */
 export function isValidLogicalPath(name) {
-  if (typeof name !== "string" || name.length === 0 || name.startsWith("/")) {
+  if (typeof name !== "string" || name.length === 0 || name.startsWith("/") || name.includes("\0")) {
     return false;
   }
-  return name
-    .split("/")
-    .every(part => part.length > 0 && part !== "." && part !== "..");
+  const encoder = new TextEncoder();
+  return encoder.encode(name).length <= 4095 && name.split("/").every(part =>
+    part.length > 0 && part !== "." && part !== ".." && encoder.encode(part).length <= 255);
 }
 
 /** @param {string} name @param {string} [pageUrl] */
