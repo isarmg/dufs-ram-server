@@ -1,6 +1,6 @@
 # 项目完整功能与取舍清单
 
-本文以当前工作树（Cargo 版本 `0.51.15`）的实际代码为准，盘点 Dufs 当前所有对外可见、可配置，以及会显著影响安全性、正确性、性能和可维护性的功能。普通辅助函数和测试夹具不单独作为“功能”列出；最终发布身份必须以制品内 `dufs --version` 的完整 Git SHA 为准。
+本文以当前工作树（Cargo 版本 `0.51.16`）的实际代码为准，盘点 Dufs 当前所有对外可见、可配置，以及会显著影响安全性、正确性、性能和可维护性的功能。普通辅助函数和测试夹具不单独作为“功能”列出；最终发布身份必须以制品内 `dufs --version` 的完整 Git SHA 为准。
 
 本文的用途是帮助判断后续应该保留、简化还是删除哪些能力。它不是删除计划；没有得到明确选择前，本文不会改变任何现有功能。
 
@@ -177,7 +177,7 @@ Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/
 
 生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
 
-当前 Foundation Rust/Web 已固定正式 0.9.1 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.15 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
+当前 Foundation Rust/Web 已固定正式 0.9.1 的完整 revision、Release tarball 与锁文件 integrity；Dufs 0.51.16 已完成独立构建和发布前验收。独立发布不代表支持旧状态原地升级，也不代表公开二进制带独立发布者签名。
 
 ## 5. 浏览器目录界面
 
