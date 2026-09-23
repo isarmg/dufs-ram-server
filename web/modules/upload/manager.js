@@ -20,6 +20,7 @@ import {
 } from "../http/client.js";
 import {
   childUrl,
+  isValidAbsoluteLogicalPath,
   logicalChildPath,
 } from "../shared/path.js";
 import {
@@ -1457,6 +1458,11 @@ export function createUploadManager(options) {
     const absolutePaths = accepted.map(
       entry => logicalChildPath(data.href, entry.name),
     );
+    if (!absolutePaths.every(isValidAbsoluteLogicalPath)) {
+      queueMessage.textContent = t("所选上传目标路径无效或过长。", "A selected upload destination is invalid or too long.");
+      queueMessage.classList.remove("hidden");
+      return;
+    }
     const pathEncoder = new TextEncoder();
     const absolutePathBytes = absolutePaths.reduce(
       (total, path) => total + pathEncoder.encode(path).byteLength,

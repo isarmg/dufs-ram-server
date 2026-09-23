@@ -1,5 +1,5 @@
 import { t } from "../../dist/platform.js";
-import { isValidLogicalPath } from "../shared/path.js";
+import { isValidAbsoluteLogicalPath } from "../shared/path.js";
 
 /**
  * @typedef {{
@@ -25,7 +25,7 @@ export function parseUploadPreflight(payload, requestedPaths) {
     !Array.isArray(payload.targets) ||
     payload.targets.length !== requestedPaths.length ||
     new Set(requestedPaths).size !== requestedPaths.length ||
-    !requestedPaths.every(isAbsoluteLogicalPath)
+    !requestedPaths.every(isValidAbsoluteLogicalPath)
   ) {
     throw new TypeError(t("上传预检查响应无效", "Invalid upload preflight response"));
   }
@@ -55,11 +55,6 @@ export function parseUploadPreflight(payload, requestedPaths) {
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-/** @param {string} value */
-function isAbsoluteLogicalPath(value) {
-  return value.startsWith("/") && isValidLogicalPath(value.slice(1));
 }
 
 /** @param {unknown} value @returns {value is string | null} */

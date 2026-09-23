@@ -13,6 +13,12 @@ export function isValidLogicalPath(name) {
     part.length > 0 && part !== "." && part !== ".." && encoder.encode(part).length <= 255);
 }
 
+/** @param {unknown} path @returns {path is string} */
+export function isValidAbsoluteLogicalPath(path) {
+  return typeof path === "string" && path.startsWith("/") &&
+    isValidLogicalPath(path.slice(1));
+}
+
 /** @param {string} name @param {string} [pageUrl] */
 export function childUrl(name, pageUrl = currentPageUrl()) {
   if (!isValidLogicalPath(name)) throw new Error(t("路径无效", "Invalid path"));

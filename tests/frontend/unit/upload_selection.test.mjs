@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   prepareUploadSelection,
 } from "../../../web/modules/upload/selection.js";
+import { isValidAbsoluteLogicalPath, logicalChildPath } from "../../../web/modules/shared/path.js";
 
 test("upload selection enforces file-count and UTF-8 path budgets", () => {
   const OriginalFile = globalThis.File;
@@ -65,4 +66,12 @@ test("upload selection enforces file-count and UTF-8 path budgets", () => {
       globalThis.File = OriginalFile;
     }
   }
+});
+
+test("upload destination checks include the current directory bytes", () => {
+  const fileName = "file.txt";
+  const basePath = `/${Array(15).fill("a".repeat(255)).join("/")}`;
+  assert.equal(isValidAbsoluteLogicalPath(logicalChildPath(basePath, fileName)), true);
+  const tooLongBase = `${basePath}/${"b".repeat(255)}`;
+  assert.equal(isValidAbsoluteLogicalPath(logicalChildPath(tooLongBase, fileName)), false);
 });
