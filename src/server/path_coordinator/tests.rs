@@ -1,0 +1,793 @@
+use super::*;
+
+fn state_path(path: &str, allows_exact_replacement: bool) -> StateBlockingPath {
+    StateBlockingPath {
+        path: PathBuf::from(path),
+        allows_exact_replacement,
+    }
+}
+use std::{os::unix::fs::symlink, sync::Arc, time::Duration};
+
+fn coordinator() -> (assert_fs::TempDir, PathCoordinator) {
+    let temp = assert_fs::TempDir::new().unwrap();
+    let rooted_fs = RootedFs::new(temp.path()).unwrap();
+    let coordinator = PathCoordinator::new(rooted_fs);
+    (temp, coordinator)
+}
+
+async fn wait_for_resolutions(receiver: &mut watch::Receiver<u64>, target: u64) {
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if *receiver.borrow_and_update() >= target {
+                return;
+            }
+            receiver.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("path resolution did not reach the expected attempt");
+}
+
+#[tokio::test]
+async fn sibling_subtrees_can_run_concurrently() {
+    let (temp, coordinator) = coordinator();
+    let first = coordinator.acquire([temp.path().join("a/file")]).await;
+    let second = tokio::time::timeout(
+        Duration::from_millis(100),
+        coordinator.acquire([temp.path().join("b/file")]),
+    )
+    .await;
+    assert!(second.is_ok());
+    drop(first);
+}
+
+#[tokio::test]
+async fn resolving_waiter_does_not_block_an_unrelated_lexical_path() {
+    let (temp, coordinator) = coordinator();
+    let slow = normalize_key(&temp.path().join("slow"));
+    let unrelated = normalize_key(&temp.path().join("unrelated"));
+    std::fs::create_dir(&slow).unwrap();
+    std::fs::create_dir(&unrelated).unwrap();
+
+    let _slow_registration =
+        WaiterRegistration::new(coordinator.inner.clone(), std::slice::from_ref(&slow));
+    let unrelated_resolved = coordinator
+        .inner
+        .rooted_fs
+        .resolved_path_key(&unrelated)
+        .await
+        .unwrap();
+    let unrelated_request = [LeaseKey {
+        lexical: unrelated.clone(),
+        resolved: unrelated_resolved,
+    }];
+    let expected_epoch = coordinator.inner.lease_epoch.load(Ordering::Acquire);
+    let mut unrelated_registration =
+        WaiterRegistration::new(coordinator.inner.clone(), std::slice::from_ref(&unrelated));
+    let unrelated_lease = match coordinator.try_acquire(
+        &unrelated_request,
+        expected_epoch,
+        unrelated_registration.id,
+        &mut None,
+    ) {
+        AcquireAttempt::Acquired(lease) => lease,
+        _ => panic!("a resolving waiter globally blocked an unrelated path"),
+    };
+    unrelated_registration.disarm();
+    drop(unrelated_lease);
+
+    let descendant = slow.join("child");
+    let descendant_resolved = coordinator
+        .inner
+        .rooted_fs
+        .resolved_path_key(&descendant)
+        .await
+        .unwrap();
+    let descendant_request = [LeaseKey {
+        lexical: descendant.clone(),
+        resolved: descendant_resolved,
+    }];
+    let expected_epoch = coordinator.inner.lease_epoch.load(Ordering::Acquire);
+    let descendant_registration =
+        WaiterRegistration::new(coordinator.inner.clone(), std::slice::from_ref(&descendant));
+    assert!(matches!(
+        coordinator.try_acquire(
+            &descendant_request,
+            expected_epoch,
+            descendant_registration.id,
+            &mut None,
+        ),
+        AcquireAttempt::Blocked
+    ));
+}
+
+#[tokio::test]
+async fn ancestor_waits_for_descendant() {
+    let (temp, coordinator) = coordinator();
+    let coordinator = Arc::new(coordinator);
+    let descendant = coordinator.acquire([temp.path().join("a/file")]).await;
+    let ancestor = temp.path().join("a");
+    let waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([ancestor]).await })
+    };
+
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!waiter.is_finished());
+    drop(descendant);
+    tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn earlier_conflicting_waiter_cannot_be_starved_by_later_siblings() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir(temp.path().join("a")).unwrap();
+    let coordinator = Arc::new(coordinator);
+    let held = coordinator.acquire([temp.path().join("a/x")]).await;
+    let mut resolutions = coordinator.inner.resolutions.subscribe();
+    let initial_resolutions = *resolutions.borrow_and_update();
+
+    let ancestor_waiter = {
+        let coordinator = coordinator.clone();
+        let ancestor = temp.path().join("a");
+        tokio::spawn(async move { coordinator.acquire([ancestor]).await })
+    };
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(!ancestor_waiter.is_finished());
+
+    let mut sibling_waiter = {
+        let coordinator = coordinator.clone();
+        let sibling = temp.path().join("a/y");
+        tokio::spawn(async move { coordinator.acquire([sibling]).await })
+    };
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(
+        !sibling_waiter.is_finished(),
+        "a later sibling bypassed the earlier ancestor waiter"
+    );
+
+    drop(held);
+    let ancestor = tokio::time::timeout(Duration::from_secs(1), ancestor_waiter)
+        .await
+        .expect("the earlier ancestor waiter did not acquire first")
+        .unwrap();
+    assert!(
+        !sibling_waiter.is_finished(),
+        "the later sibling overlapped the acquired ancestor lease"
+    );
+    drop(ancestor);
+    tokio::time::timeout(Duration::from_secs(1), &mut sibling_waiter)
+        .await
+        .expect("the later sibling did not acquire after the ancestor released")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn same_path_waiters_resolve_only_linearly_across_lease_epochs() {
+    const WAITER_COUNT: usize = 24;
+
+    let (temp, coordinator) = coordinator();
+    let coordinator = Arc::new(coordinator);
+    let path = temp.path().join("same/file.txt");
+    let held = coordinator.acquire([&path]).await;
+    let attempts_before = coordinator.inner.resolution_attempts.load(Ordering::SeqCst);
+
+    let mut waiters = Vec::with_capacity(WAITER_COUNT);
+    for _ in 0..WAITER_COUNT {
+        let coordinator = coordinator.clone();
+        let path = path.clone();
+        waiters.push(tokio::spawn(async move {
+            let lease = coordinator.acquire([path]).await;
+            // Give every blocked peer a scheduling opportunity at each epoch;
+            // without queue-gated resolution this deterministically exercises
+            // the quadratic wake-and-resolve pattern.
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            drop(lease);
+        }));
+    }
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if coordinator
+                .inner
+                .waiters
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .len()
+                == WAITER_COUNT
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("same-path waiters did not all register");
+
+    drop(held);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        for waiter in waiters {
+            waiter.await.unwrap();
+        }
+    })
+    .await
+    .expect("same-path waiter queue did not drain");
+
+    let resolution_attempts =
+        coordinator.inner.resolution_attempts.load(Ordering::SeqCst) - attempts_before;
+    assert!(
+        resolution_attempts <= WAITER_COUNT * 2,
+        "{WAITER_COUNT} same-path waiters made {resolution_attempts} semantic resolution attempts"
+    );
+}
+
+#[tokio::test]
+async fn multi_path_lease_is_acquired_without_deadlock() {
+    let (temp, coordinator) = coordinator();
+    let coordinator = Arc::new(coordinator);
+    let a = temp.path().join("a");
+    let b = temp.path().join("b");
+    let first = coordinator.acquire([&a, &b]).await;
+    let waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([b, a]).await })
+    };
+
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!waiter.is_finished());
+    drop(first);
+    tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn symlink_aliases_for_the_same_entry_are_serialized() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir_all(temp.path().join("real/a/b")).unwrap();
+    symlink("real/a", temp.path().join("alias")).unwrap();
+    let coordinator = Arc::new(coordinator);
+    let first = coordinator
+        .acquire([temp.path().join("real/a/b/file.txt")])
+        .await;
+    let mut resolutions = coordinator.inner.resolutions.subscribe();
+    let initial_resolutions = *resolutions.borrow_and_update();
+    let alias = temp.path().join("alias/b/file.txt");
+    let waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([alias]).await })
+    };
+
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(!waiter.is_finished());
+    drop(first);
+    tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn real_directory_mutation_conflicts_with_alias_descendant() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir_all(temp.path().join("real/a/b")).unwrap();
+    symlink("real/a", temp.path().join("alias")).unwrap();
+    let coordinator = Arc::new(coordinator);
+    let directory = coordinator.acquire([temp.path().join("real")]).await;
+    let mut resolutions = coordinator.inner.resolutions.subscribe();
+    let initial_resolutions = *resolutions.borrow_and_update();
+    let alias_child = temp.path().join("alias/b/file.txt");
+    let waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([alias_child]).await })
+    };
+
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(!waiter.is_finished());
+    drop(directory);
+    tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn missing_symlink_alias_tails_preserve_exact_and_ancestor_conflicts() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir_all(temp.path().join("real/a")).unwrap();
+    symlink("real/a", temp.path().join("alias")).unwrap();
+    let coordinator = Arc::new(coordinator);
+
+    let exact = coordinator
+        .acquire([temp.path().join("real/a/missing/leaf.txt")])
+        .await;
+    let mut resolutions = coordinator.inner.resolutions.subscribe();
+    let initial_resolutions = *resolutions.borrow_and_update();
+    let exact_alias = temp.path().join("alias/missing/leaf.txt");
+    let exact_waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([exact_alias]).await })
+    };
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(
+        !exact_waiter.is_finished(),
+        "two spellings of the same missing entry were leased concurrently"
+    );
+    drop(exact);
+    tokio::time::timeout(Duration::from_secs(1), exact_waiter)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let ancestor = coordinator
+        .acquire([temp.path().join("real/a/missing")])
+        .await;
+    let initial_resolutions = *resolutions.borrow_and_update();
+    let alias_descendant = temp.path().join("alias/missing/leaf.txt");
+    let descendant_waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([alias_descendant]).await })
+    };
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(
+        !descendant_waiter.is_finished(),
+        "a missing ancestor and its aliased missing descendant were leased concurrently"
+    );
+    drop(ancestor);
+    tokio::time::timeout(Duration::from_secs(1), descendant_waiter)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn parent_relative_symlink_alias_is_serialized_with_its_real_entry() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir_all(temp.path().join("real/a/b")).unwrap();
+    std::fs::create_dir(temp.path().join("links")).unwrap();
+    symlink("../real/a", temp.path().join("links/alias")).unwrap();
+    let coordinator = Arc::new(coordinator);
+
+    let real = coordinator
+        .acquire([temp.path().join("real/a/b/file.txt")])
+        .await;
+    let mut resolutions = coordinator.inner.resolutions.subscribe();
+    let initial_resolutions = *resolutions.borrow_and_update();
+    let alias = temp.path().join("links/alias/b/file.txt");
+    let waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([alias]).await })
+    };
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(
+        !waiter.is_finished(),
+        "a parent-relative symlink alias bypassed the real entry lease"
+    );
+    drop(real);
+    tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn final_symlink_and_its_target_are_distinct_namespace_entries() {
+    let (temp, coordinator) = coordinator();
+    std::fs::write(temp.path().join("target.txt"), "target").unwrap();
+    symlink("target.txt", temp.path().join("alias.txt")).unwrap();
+
+    let alias = coordinator.acquire([temp.path().join("alias.txt")]).await;
+    let target = tokio::time::timeout(
+        Duration::from_millis(100),
+        coordinator.acquire([temp.path().join("target.txt")]),
+    )
+    .await
+    .expect("a final symlink entry was conflated with its target");
+    drop(target);
+    drop(alias);
+}
+
+#[tokio::test]
+async fn hardlinks_remain_distinct_namespace_entries() {
+    let (temp, coordinator) = coordinator();
+    std::fs::write(temp.path().join("first.txt"), "shared").unwrap();
+    std::fs::hard_link(
+        temp.path().join("first.txt"),
+        temp.path().join("second.txt"),
+    )
+    .unwrap();
+
+    let first = coordinator.acquire([temp.path().join("first.txt")]).await;
+    let second = tokio::time::timeout(
+        Duration::from_millis(100),
+        coordinator.acquire([temp.path().join("second.txt")]),
+    )
+    .await
+    .expect("hardlinked names were incorrectly treated as one namespace entry");
+    drop(second);
+    drop(first);
+}
+
+#[tokio::test]
+async fn persisted_state_paths_detect_lexical_and_symlink_move_conflicts() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir_all(temp.path().join("real/a/b")).unwrap();
+    std::fs::create_dir(temp.path().join("unrelated")).unwrap();
+    symlink("real/a", temp.path().join("alias")).unwrap();
+
+    assert!(
+        coordinator
+            .conflicts_with_state_paths(
+                &temp.path().join("real"),
+                &[state_path("real/a/b/lexical.txt", false)],
+            )
+            .await
+    );
+    assert!(
+        coordinator
+            .conflicts_with_state_paths(
+                &temp.path().join("real/a/b/semantic.txt"),
+                &[state_path("alias/b/semantic.txt", false)],
+            )
+            .await
+    );
+    assert!(
+        !coordinator
+            .conflicts_with_state_paths(
+                &temp.path().join("target"),
+                &[state_path("unrelated/file.txt", false)],
+            )
+            .await
+    );
+
+    let exact = temp.path().join("real/a/b/exact.txt");
+    assert!(
+        !coordinator
+            .has_state_path_descendant(&exact, &[state_path("alias/b/exact.txt", true)])
+            .await,
+        "an aliased Running upload target equal to a fresh PUT target is replaceable"
+    );
+    assert!(
+        coordinator
+            .has_state_path_descendant(&exact, &[state_path("alias/b/exact.txt", false)])
+            .await,
+        "an aliased exact CommitStarted or purge obligation remains protected"
+    );
+    assert!(
+        coordinator
+            .has_state_path_descendant(
+                &temp.path().join("real"),
+                &[state_path("alias/b/semantic.txt", false)],
+            )
+            .await,
+        "a persisted path reached through a multi-component symlink remains a descendant"
+    );
+}
+
+#[tokio::test]
+async fn state_path_scan_batches_nonempty_pages_and_caches_move_sources() {
+    let (temp, coordinator) = coordinator();
+    let source_a = temp.path().join("source-a/file.txt");
+    let source_b = temp.path().join("source-b/file.txt");
+    let mut scanner = coordinator.state_path_conflict_scanner(
+        &[source_a.as_path(), source_b.as_path()],
+        StatePathScanLease::for_test(),
+    );
+
+    assert!(!scanner.page_conflicts(Vec::new()).await);
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (0, 0),
+        "an empty page resolved its sources"
+    );
+
+    assert!(
+        !scanner
+            .page_conflicts(vec![
+                state_path("candidate-a/file.txt", false),
+                state_path("candidate-b/file.txt", false),
+            ])
+            .await
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 4),
+        "the first page must resolve two MOVE sources and two candidates in one task"
+    );
+
+    assert!(
+        scanner
+            .page_conflicts(vec![state_path("source-b/file.txt/child", false)])
+            .await,
+        "a later-page candidate conflicting with the second cached MOVE source was missed"
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 1),
+        "a later page must resolve its candidate once without re-resolving either source"
+    );
+}
+
+#[tokio::test]
+async fn directional_state_scan_caches_its_source_but_resolves_retargeted_candidates_per_page() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir_all(temp.path().join("real/a/b")).unwrap();
+    std::fs::create_dir_all(temp.path().join("other/b")).unwrap();
+    let alias = temp.path().join("alias");
+    symlink("real/a", &alias).unwrap();
+    let exact = temp.path().join("real/a/b/exact.txt");
+    let mut scanner =
+        coordinator.state_path_descendant_scanner(&exact, StatePathScanLease::for_test());
+
+    assert!(!scanner.page_conflicts(Vec::new()).await);
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (0, 0)
+    );
+    assert!(
+        !scanner
+            .page_conflicts(vec![state_path("alias/b/exact.txt", true)])
+            .await,
+        "an aliased exact Running target remains replaceable"
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 2),
+        "the first directional page must batch one source and one candidate"
+    );
+
+    std::fs::remove_file(&alias).unwrap();
+    symlink("other", &alias).unwrap();
+    assert!(
+        !scanner
+            .page_conflicts(vec![state_path("alias/b/exact.txt", false)])
+            .await,
+        "a candidate retargeted away from the cached source must not conflict"
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 1),
+        "a later directional page re-resolved its source"
+    );
+
+    std::fs::remove_file(&alias).unwrap();
+    symlink("real/a", &alias).unwrap();
+    assert!(
+        scanner
+            .page_conflicts(vec![state_path("alias/b/exact.txt", false)])
+            .await,
+        "a protected exact candidate retargeted back to the source must conflict"
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 1)
+    );
+}
+
+#[tokio::test]
+async fn persisted_state_path_resolution_failure_blocks_move() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir(temp.path().join("source")).unwrap();
+    coordinator
+        .inner
+        .resolution_failures
+        .store(1, Ordering::SeqCst);
+
+    assert!(
+        coordinator
+            .conflicts_with_state_paths(
+                &temp.path().join("source"),
+                &[state_path("unrelated/file.txt", false)],
+            )
+            .await
+    );
+
+    symlink("/", temp.path().join("escape")).unwrap();
+    assert!(
+        coordinator
+            .has_state_path_descendant(
+                &temp.path().join("source"),
+                &[state_path("escape/etc/passwd", true)],
+            )
+            .await,
+        "directional PUT admission must fail closed when a state path cannot be resolved"
+    );
+}
+
+#[tokio::test]
+async fn persisted_state_path_resolution_failure_short_circuits_and_blocks() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir(temp.path().join("source")).unwrap();
+    symlink("/", temp.path().join("escape")).unwrap();
+
+    let escaping_source = temp.path().join("escape/etc/source.txt");
+    let ordinary_source = temp.path().join("source/file.txt");
+    let mut conflict_scanner = coordinator.state_path_conflict_scanner(
+        &[escaping_source.as_path(), ordinary_source.as_path()],
+        StatePathScanLease::for_test(),
+    );
+    assert!(
+        conflict_scanner
+            .page_conflicts(vec![state_path("unrelated/file.txt", false)])
+            .await
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 1),
+        "a failing first source did not stop the rest of its batch"
+    );
+
+    let mut descendant_scanner =
+        coordinator.state_path_descendant_scanner(&ordinary_source, StatePathScanLease::for_test());
+    assert!(
+        descendant_scanner
+            .page_conflicts(vec![
+                state_path("escape/etc/passwd", true),
+                state_path("later/file.txt", true),
+            ])
+            .await,
+        "directional PUT admission must fail closed when a state path cannot be resolved"
+    );
+    assert_eq!(
+        coordinator.inner.rooted_fs.take_state_scan_work_counts(),
+        (1, 2),
+        "a failing first candidate did not stop the rest of its batch"
+    );
+}
+
+#[tokio::test]
+async fn alias_retargeted_while_waiting_is_resolved_again_before_acquire() {
+    let (temp, coordinator) = coordinator();
+    let a = temp.path().join("a");
+    let b = temp.path().join("b");
+    let alias = temp.path().join("alias");
+    std::fs::create_dir(&a).unwrap();
+    std::fs::create_dir(&b).unwrap();
+    symlink("a", &alias).unwrap();
+
+    let coordinator = Arc::new(coordinator);
+    let b_lease = coordinator.acquire([b.join("file.txt")]).await;
+    let retarget_lease = coordinator
+        .acquire([a.join("file.txt"), alias.clone()])
+        .await;
+    let mut resolutions = coordinator.inner.resolutions.subscribe();
+    let initial_resolutions = *resolutions.borrow_and_update();
+    let alias_file = alias.join("file.txt");
+    let mut waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([alias_file]).await })
+    };
+
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 1).await;
+    assert!(!waiter.is_finished());
+
+    std::fs::remove_file(&alias).unwrap();
+    symlink("b", &alias).unwrap();
+    drop(retarget_lease);
+
+    wait_for_resolutions(&mut resolutions, initial_resolutions + 2).await;
+    assert!(
+        !waiter.is_finished(),
+        "the alias waiter acquired concurrently with the retargeted real path"
+    );
+
+    drop(b_lease);
+    tokio::time::timeout(Duration::from_secs(1), &mut waiter)
+        .await
+        .expect("alias waiter remained blocked after the real path lease was released")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn unrelated_lease_start_does_not_invalidate_resolved_keys() {
+    let (temp, coordinator) = coordinator();
+    let target = temp.path().join("target");
+    let alias = temp.path().join("alias");
+    std::fs::create_dir(&target).unwrap();
+    symlink("target", &alias).unwrap();
+
+    let lexical = normalize_key(&alias.join("file.txt"));
+    let expected_epoch = coordinator.inner.lease_epoch.load(Ordering::Acquire);
+    let resolved = coordinator
+        .inner
+        .rooted_fs
+        .resolved_path_key(&lexical)
+        .await
+        .unwrap();
+    let requested = [LeaseKey { lexical, resolved }];
+
+    let intervening_lease = coordinator.acquire([temp.path().join("unrelated")]).await;
+    let mut registration = WaiterRegistration::new(
+        coordinator.inner.clone(),
+        std::slice::from_ref(&requested[0].lexical),
+    );
+    let requested_lease =
+        match coordinator.try_acquire(&requested, expected_epoch, registration.id, &mut None) {
+            AcquireAttempt::Acquired(lease) => lease,
+            _ => panic!("an unrelated lease start invalidated a resolved semantic key"),
+        };
+    registration.disarm();
+    assert_eq!(
+        coordinator
+            .inner
+            .leases
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
+        2,
+        "unrelated semantic keys should be leased concurrently"
+    );
+    drop(requested_lease);
+    drop(intervening_lease);
+}
+
+#[tokio::test]
+async fn semantic_resolution_failure_never_grants_a_lexical_only_alias_lease() {
+    let (temp, coordinator) = coordinator();
+    std::fs::create_dir(temp.path().join("target")).unwrap();
+    symlink("target", temp.path().join("alias")).unwrap();
+    let coordinator = Arc::new(coordinator);
+    let held = coordinator
+        .acquire([temp.path().join("target/file.txt")])
+        .await;
+    coordinator
+        .inner
+        .resolution_failures
+        .store(1, Ordering::SeqCst);
+    let attempts_before = coordinator.inner.resolution_attempts.load(Ordering::SeqCst);
+    let alias = temp.path().join("alias/file.txt");
+    let mut waiter = {
+        let coordinator = coordinator.clone();
+        tokio::spawn(async move { coordinator.acquire([alias]).await })
+    };
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while coordinator.inner.resolution_attempts.load(Ordering::SeqCst) == attempts_before {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the injected resolution failure was not exercised");
+    tokio::task::yield_now().await;
+    assert!(
+        !waiter.is_finished(),
+        "a failed semantic resolution must not grant an alias lease"
+    );
+
+    drop(held);
+    tokio::time::timeout(Duration::from_secs(1), &mut waiter)
+        .await
+        .expect("alias waiter did not acquire after the conflicting lease was released")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn persistent_semantic_resolution_failure_uses_a_finite_global_lease() {
+    let (temp, coordinator) = coordinator();
+    coordinator
+        .inner
+        .resolution_failures
+        .store(usize::MAX, Ordering::SeqCst);
+
+    let lease = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        coordinator.acquire([temp.path().join("permanently-unresolved")]),
+    )
+    .await
+    .expect("persistent resolution errors must not leave a mutation task running forever");
+
+    assert_eq!(
+        coordinator
+            .inner
+            .leases
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
+        1
+    );
+    drop(lease);
+}

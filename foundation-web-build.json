@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "web": {
+    "directory": ".",
+    "script": "build:platform",
+    "dist": "web/runtime-dist"
+  },
+  "rust": {
+    "manifest": "Cargo.toml",
+    "package": "xczs",
+    "binary": "xczs",
+    "source_revision_env": "XCZS_BUILD_GIT_SHA"
+  }
+}

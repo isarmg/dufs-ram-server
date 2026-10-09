@@ -1,0 +1,3 @@
+[
+  {"id":"upload-auth-before-body","method":"PUT","path":"/not-created.bin","authenticated":false,"headers":{},"body":"abc","preset":{},"status":401,"required_headers":{"content-type":"application/json"},"forbidden_headers":["location"],"body_contains":"auth.","response_fields":{},"file_changes":{},"operation_state":null}
+]

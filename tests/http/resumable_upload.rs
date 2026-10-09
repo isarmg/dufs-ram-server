@@ -1,0 +1,703 @@
+use super::*;
+
+#[rstest]
+fn resumable_upload(server: TestServer) -> Result<(), Error> {
+    let url = format!("{}file1", server.url());
+    let upload_id = Uuid::new_v4();
+    let resp = with_upload_headers(server.request(reqwest::Method::PUT, &url), upload_id, 6)
+        .body(b"abc".to_vec())
+        .send()?;
+    assert_eq!(resp.status(), 409);
+    let resp = with_resume_upload_headers(
+        server.request(reqwest::Method::PATCH, &url),
+        upload_id,
+        6,
+        3,
+    )
+    .body(b"123".to_vec())
+    .send()?;
+    assert_eq!(resp.status(), 204);
+    let resp = server.get(url)?;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().unwrap(), "abc123");
+    Ok(())
+}
+
+#[rstest]
+fn chunked_excess_resume_body_preserves_the_durable_checkpoint(
+    server: TestServer,
+) -> Result<(), Error> {
+    use fixtures::{TEST_PASSWORD, TEST_USER};
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+        time::Duration,
+    };
+
+    let url = format!("{}chunked-excess-resume.bin", server.url());
+    let upload_id = Uuid::new_v4();
+    let initial = with_upload_headers(server.request(reqwest::Method::PUT, &url), upload_id, 6)
+        .body(b"abc".to_vec())
+        .send()?;
+    assert_eq!(initial.status(), 409);
+
+    let session = server.login(TEST_USER, TEST_PASSWORD)?;
+    let mut resume = TcpStream::connect(("127.0.0.1", server.port()))?;
+    resume.set_read_timeout(Some(Duration::from_secs(10)))?;
+    resume.set_write_timeout(Some(Duration::from_secs(10)))?;
+    resume.write_all(
+        format!(
+            concat!(
+                "PATCH /chunked-excess-resume.bin HTTP/1.1\r\n",
+                "Host: localhost:{}\r\n",
+                "Origin: http://localhost:{}\r\n",
+                "Sec-Fetch-Site: same-origin\r\n",
+                "Cookie: {}\r\n",
+                "X-CSRF-Token: {}\r\n",
+                "X-Xczs-Upload-Id: {}\r\n",
+                "X-Xczs-Upload-Length: 6\r\n",
+                "X-Xczs-Upload-Offset: 3\r\n",
+                "Transfer-Encoding: chunked\r\n",
+                "Connection: close\r\n",
+                "\r\n",
+                "4\r\n1234\r\n",
+                "0\r\n\r\n"
+            ),
+            server.port(),
+            server.port(),
+            session.cookie(),
+            session.csrf_token(),
+            upload_id,
+        )
+        .as_bytes(),
+    )?;
+    resume.flush()?;
+    let mut excess_response = String::new();
+    resume.read_to_string(&mut excess_response)?;
+    assert!(
+        excess_response.starts_with("HTTP/1.1 413"),
+        "{excess_response}"
+    );
+
+    let checkpoint = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(checkpoint.status(), 200);
+    assert_eq!(
+        checkpoint.headers().get("x-xczs-operation-state").unwrap(),
+        "running"
+    );
+    assert_eq!(
+        checkpoint.headers().get("x-xczs-upload-offset").unwrap(),
+        "3"
+    );
+
+    let completed = with_resume_upload_headers(
+        server.request(reqwest::Method::PATCH, &url),
+        upload_id,
+        6,
+        3,
+    )
+    .body(b"123".to_vec())
+    .send()?;
+    assert_eq!(completed.status(), 204);
+    assert_eq!(server.get(url)?.text()?, "abc123");
+    Ok(())
+}
+
+#[rstest]
+fn full_running_checkpoint_can_reenter_commit_with_empty_patch(
+    #[with(&[
+        "--upload-idle-timeout",
+        "1",
+        "--upload-total-timeout",
+        "10",
+        "--min-free-space",
+        "0"
+    ])]
+    server: TestServer,
+) -> Result<(), Error> {
+    use fixtures::{TEST_PASSWORD, TEST_USER};
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+        time::Duration,
+    };
+
+    const UPLOAD_LENGTH: usize = 20 * 1024 * 1024;
+
+    let session = server.login(TEST_USER, TEST_PASSWORD)?;
+    let upload_id = Uuid::new_v4();
+    let mut upload = TcpStream::connect(("127.0.0.1", server.port()))?;
+    upload.set_read_timeout(Some(Duration::from_secs(10)))?;
+    upload.set_write_timeout(Some(Duration::from_secs(10)))?;
+    upload.write_all(
+        format!(
+            concat!(
+                "PUT /full-checkpoint.bin HTTP/1.1\r\n",
+                "Host: localhost:{}\r\n",
+                "Origin: http://localhost:{}\r\n",
+                "Sec-Fetch-Site: same-origin\r\n",
+                "Cookie: {}\r\n",
+                "X-CSRF-Token: {}\r\n",
+                "X-Xczs-Upload-Id: {}\r\n",
+                "X-Xczs-Upload-Length: {}\r\n",
+                "Transfer-Encoding: chunked\r\n",
+                "Connection: close\r\n",
+                "\r\n",
+                "{:x}\r\n"
+            ),
+            server.port(),
+            server.port(),
+            session.cookie(),
+            session.csrf_token(),
+            upload_id,
+            UPLOAD_LENGTH,
+            UPLOAD_LENGTH,
+        )
+        .as_bytes(),
+    )?;
+    upload.write_all(&vec![b'x'; UPLOAD_LENGTH])?;
+    upload.write_all(b"\r\n")?;
+    upload.flush()?;
+
+    // The complete chunk is durable, but withholding the terminating zero
+    // chunk forces the request through the timeout checkpoint path.
+    let mut timeout_response = String::new();
+    upload.read_to_string(&mut timeout_response)?;
+    assert!(
+        timeout_response.starts_with("HTTP/1.1 408"),
+        "{timeout_response}"
+    );
+    assert!(!server.path().join("full-checkpoint.bin").exists());
+
+    let checkpoint = server
+        .request(
+            reqwest::Method::HEAD,
+            server.url().join("full-checkpoint.bin")?,
+        )
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(checkpoint.status(), 200);
+    assert_eq!(
+        checkpoint.headers().get("x-xczs-operation-state").unwrap(),
+        "running"
+    );
+    assert_eq!(
+        checkpoint.headers().get("x-xczs-upload-offset").unwrap(),
+        UPLOAD_LENGTH.to_string().as_str()
+    );
+
+    let committed = with_resume_upload_headers(
+        server.request(
+            reqwest::Method::PATCH,
+            server.url().join("full-checkpoint.bin")?,
+        ),
+        upload_id,
+        UPLOAD_LENGTH as u64,
+        UPLOAD_LENGTH as u64,
+    )
+    .body(Vec::new())
+    .send()?;
+    assert_eq!(committed.status(), 204);
+    assert_eq!(
+        committed.headers().get("x-xczs-operation-state").unwrap(),
+        "committed"
+    );
+    let metadata = std::fs::metadata(server.path().join("full-checkpoint.bin"))?;
+    assert_eq!(metadata.len(), UPLOAD_LENGTH as u64);
+    Ok(())
+}
+
+#[rstest]
+fn resumed_small_checkpoint_survives_a_later_idle_timeout(
+    #[with(&[
+        "--upload-idle-timeout",
+        "1",
+        "--upload-total-timeout",
+        "10",
+        "--min-free-space",
+        "0"
+    ])]
+    server: TestServer,
+) -> Result<(), Error> {
+    use fixtures::{TEST_PASSWORD, TEST_USER};
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+        time::Duration,
+    };
+
+    let url = format!("{}small-resume.bin", server.url());
+    let upload_id = Uuid::new_v4();
+    let initial = with_upload_headers(server.request(reqwest::Method::PUT, &url), upload_id, 10)
+        .body(b"abc".to_vec())
+        .send()?;
+    assert_eq!(initial.status(), 409);
+    assert_eq!(initial.headers().get("x-xczs-upload-offset").unwrap(), "3");
+
+    let session = server.login(TEST_USER, TEST_PASSWORD)?;
+    let mut resume = TcpStream::connect(("127.0.0.1", server.port()))?;
+    resume.set_read_timeout(Some(Duration::from_secs(10)))?;
+    resume.set_write_timeout(Some(Duration::from_secs(10)))?;
+    resume.write_all(
+        format!(
+            concat!(
+                "PATCH /small-resume.bin HTTP/1.1\r\n",
+                "Host: localhost:{}\r\n",
+                "Origin: http://localhost:{}\r\n",
+                "Sec-Fetch-Site: same-origin\r\n",
+                "Cookie: {}\r\n",
+                "X-CSRF-Token: {}\r\n",
+                "X-Xczs-Upload-Id: {}\r\n",
+                "X-Xczs-Upload-Length: 10\r\n",
+                "X-Xczs-Upload-Offset: 3\r\n",
+                "Transfer-Encoding: chunked\r\n",
+                "Connection: close\r\n",
+                "\r\n",
+                "2\r\n",
+                "de\r\n"
+            ),
+            server.port(),
+            server.port(),
+            session.cookie(),
+            session.csrf_token(),
+            upload_id,
+        )
+        .as_bytes(),
+    )?;
+    resume.flush()?;
+    let mut timeout_response = String::new();
+    resume.read_to_string(&mut timeout_response)?;
+    assert!(
+        timeout_response.starts_with("HTTP/1.1 408"),
+        "{timeout_response}"
+    );
+
+    let checkpoint = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(checkpoint.status(), 200);
+    assert_eq!(
+        checkpoint.headers().get("x-xczs-operation-state").unwrap(),
+        "running"
+    );
+    assert_eq!(
+        checkpoint.headers().get("x-xczs-upload-offset").unwrap(),
+        "5"
+    );
+
+    let committed = with_resume_upload_headers(
+        server.request(reqwest::Method::PATCH, &url),
+        upload_id,
+        10,
+        5,
+    )
+    .body(b"fghij".to_vec())
+    .send()?;
+    assert_eq!(committed.status(), 204);
+    assert_eq!(
+        std::fs::read(server.path().join("small-resume.bin"))?,
+        b"abcdefghij"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn resuming_an_unknown_upload_returns_a_problem_with_protocol_headers(
+    server: TestServer,
+) -> Result<(), Error> {
+    let url = format!("{}unknown-upload.bin", server.url());
+    let upload_id = Uuid::new_v4();
+    let response = with_resume_upload_headers(
+        server.request(reqwest::Method::PATCH, &url),
+        upload_id,
+        3,
+        0,
+    )
+    .body(b"abc".to_vec())
+    .send()?;
+
+    assert_eq!(response.status(), 404);
+    assert_eq!(
+        response.headers().get("x-xczs-upload-id").unwrap(),
+        upload_id.to_string().as_str()
+    );
+    assert_eq!(
+        response.headers().get("x-xczs-operation-state").unwrap(),
+        "not-seen"
+    );
+    assert!(!response.headers().contains_key("x-xczs-upload-length"));
+    assert!(!response.headers().contains_key("x-xczs-upload-offset"));
+    assert_upload_problem_body(
+        response,
+        "upload_session_not_found",
+        "Not Found",
+        "retry_with_new_id",
+    )?;
+    assert!(!server.path().join("unknown-upload.bin").exists());
+    Ok(())
+}
+
+#[rstest]
+fn durable_resumable_upload_keeps_old_file_until_commit() -> Result<(), Error> {
+    let state_dir = assert_fs::TempDir::new()?;
+    std::fs::set_permissions(state_dir.path(), std::fs::Permissions::from_mode(0o700))?;
+    let state_args = [
+        OsString::from("--data-dir"),
+        state_dir.path().as_os_str().to_owned(),
+    ];
+    let mut server = fixtures::server(state_args.clone(), &[fixtures::TEST_ACCOUNT]);
+    let url = format!("{}index.html", server.url());
+    let upload_id = Uuid::new_v4();
+    let preflight = preflight_upload_target(&server, "/index.html")?;
+    let revision = preflight.revision.ok_or("existing file has no revision")?;
+
+    let resp = with_upload_overwrite_headers(
+        server.request(reqwest::Method::PUT, &url),
+        upload_id,
+        6,
+        &revision,
+    )
+    .body(b"abc".to_vec())
+    .send()?;
+    assert_eq!(resp.status(), 409);
+    assert_eq!(
+        std::fs::read_to_string(server.path().join("index.html"))?,
+        "This is index.html"
+    );
+
+    let resp = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert!(!resp.headers().contains_key("content-length"));
+    assert_eq!(resp.headers().get("x-xczs-upload-offset").unwrap(), "3");
+    assert_eq!(resp.headers().get("x-xczs-upload-length").unwrap(), "6");
+
+    let staging_path = std::fs::read_dir(server.path().join(UPLOAD_STAGE_DIRECTORY))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with(".part"))
+        })
+        .expect("upload staging file");
+    let mut staging_file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(staging_path)?;
+    std::io::Write::write_all(&mut staging_file, b"uncheckpointed")?;
+    drop(staging_file);
+    server.restart_with_default_auth_args(state_args.clone());
+    let url = format!("{}index.html", server.url());
+
+    let resp = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers().get("x-xczs-upload-offset").unwrap(), "3");
+
+    let resp = with_upload_overwrite_headers(
+        server.request(reqwest::Method::PATCH, &url),
+        upload_id,
+        6,
+        &revision,
+    )
+    .header("X-Xczs-Upload-Offset", "3")
+    .body(b"123".to_vec())
+    .send()?;
+    assert_eq!(resp.status(), 204);
+    assert_eq!(
+        std::fs::read_to_string(server.path().join("index.html"))?,
+        "abc123"
+    );
+    assert!(!server.path().join(UPLOAD_STAGE_DIRECTORY).exists());
+
+    let resp = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("x-xczs-operation-state").unwrap(),
+        "committed"
+    );
+    assert_eq!(
+        resp.headers().get("x-xczs-upload-id").unwrap(),
+        upload_id.to_string().as_str()
+    );
+    assert_eq!(resp.headers().get("x-xczs-upload-length").unwrap(), "6");
+    assert_eq!(resp.headers().get("x-xczs-upload-offset").unwrap(), "6");
+
+    let replay = with_upload_overwrite_headers(
+        server.request(reqwest::Method::PUT, &url),
+        upload_id,
+        6,
+        &revision,
+    )
+    .body(b"xxxxxx".to_vec())
+    .send()?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(
+        replay.headers().get("x-xczs-operation-state").unwrap(),
+        "committed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(server.path().join("index.html"))?,
+        "abc123"
+    );
+
+    server.restart_with_default_auth_args(state_args);
+    let url = format!("{}index.html", server.url());
+    let after_restart = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(after_restart.status(), 200);
+    assert_eq!(
+        after_restart
+            .headers()
+            .get("x-xczs-operation-state")
+            .unwrap(),
+        "committed"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn durable_upload_session_rejects_changed_total_length(server: TestServer) -> Result<(), Error> {
+    let target = server.path().join("changed-total-length.bin");
+    let url = format!("{}changed-total-length.bin", server.url());
+    let upload_id = Uuid::new_v4();
+    let resp = with_upload_headers(server.request(reqwest::Method::PUT, &url), upload_id, 6)
+        .body(b"abc".to_vec())
+        .send()?;
+    assert_eq!(resp.status(), 409);
+
+    let resp = with_resume_upload_headers(
+        server.request(reqwest::Method::PATCH, &url),
+        upload_id,
+        4,
+        3,
+    )
+    .body(b"d".to_vec())
+    .send()?;
+    assert_eq!(resp.status(), 409);
+    assert!(!target.exists());
+
+    let resp = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers().get("x-xczs-upload-offset").unwrap(), "3");
+    assert_eq!(resp.headers().get("x-xczs-upload-length").unwrap(), "6");
+    Ok(())
+}
+
+#[rstest]
+fn durable_upload_rejects_stage_shorter_than_checkpoint(server: TestServer) -> Result<(), Error> {
+    let target = server.path().join("short-checkpoint.bin");
+    let url = format!("{}short-checkpoint.bin", server.url());
+    let upload_id = Uuid::new_v4();
+    let resp = with_upload_headers(server.request(reqwest::Method::PUT, &url), upload_id, 6)
+        .body(b"abc".to_vec())
+        .send()?;
+    assert_eq!(resp.status(), 409);
+
+    let staging_path = std::fs::read_dir(server.path().join(UPLOAD_STAGE_DIRECTORY))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with(".part"))
+        })
+        .expect("upload staging file");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(staging_path)?
+        .set_len(2)?;
+
+    let resp = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(resp.status(), 404);
+    assert!(!target.exists());
+
+    let retry_upload_id = Uuid::new_v4();
+    let resp = with_upload_headers(
+        server.request(reqwest::Method::PUT, &url),
+        retry_upload_id,
+        6,
+    )
+    .body(b"abc123".to_vec())
+    .send()?;
+    assert_eq!(resp.status(), 201);
+    assert_eq!(std::fs::read_to_string(target)?, "abc123");
+    Ok(())
+}
+
+#[rstest]
+fn durable_put_rejects_invalid_length_without_replacing_target(
+    server: TestServer,
+) -> Result<(), Error> {
+    let url = format!("{}index.html", server.url());
+    let revision = preflight_upload_target(&server, "/index.html")?
+        .revision
+        .ok_or("existing file has no revision")?;
+    let upload_id = Uuid::new_v4();
+    let resp = with_upload_overwrite_headers(
+        server.request(reqwest::Method::PUT, &url),
+        upload_id,
+        7,
+        &revision,
+    )
+    .body(b"abc".to_vec())
+    .send()?;
+    assert_eq!(resp.status(), 409);
+    assert_eq!(
+        resp.headers().get("x-xczs-operation-state").unwrap(),
+        "running"
+    );
+    assert_eq!(resp.headers().get("x-xczs-upload-offset").unwrap(), "3");
+    assert_problem_code(resp, "upload_length_mismatch")?;
+    assert_eq!(
+        std::fs::read_to_string(server.path().join("index.html"))?,
+        "This is index.html"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn durable_upload_session_requires_total_length(server: TestServer) -> Result<(), Error> {
+    let url = format!("{}index.html", server.url());
+    let upload_id = Uuid::new_v4();
+    let resp = server
+        .request(reqwest::Method::PUT, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .body(b"replacement".to_vec())
+        .send()?;
+    assert_eq!(resp.status(), 400);
+    assert_problem_code(resp, "invalid_upload_length")?;
+    assert_eq!(
+        std::fs::read_to_string(server.path().join("index.html"))?,
+        "This is index.html"
+    );
+
+    let resp = server
+        .request(reqwest::Method::HEAD, &url)
+        .header("X-Xczs-Upload-Id", upload_id.to_string())
+        .send()?;
+    assert_eq!(resp.status(), 404);
+    Ok(())
+}
+
+#[rstest]
+fn patch_requires_current_upload_protocol_headers(server: TestServer) -> Result<(), Error> {
+    let url = format!("{}index.html", server.url());
+    let resp = server
+        .request(reqwest::Method::PATCH, &url)
+        .body(b"partial".to_vec())
+        .send()?;
+    assert_eq!(resp.status(), 400);
+    assert_problem_code(resp, "invalid_upload_id")?;
+    assert_eq!(
+        std::fs::read_to_string(server.path().join("index.html"))?,
+        "This is index.html"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn only_the_current_private_upload_stage_namespace_is_hidden(
+    server: TestServer,
+) -> Result<(), Error> {
+    let upload_id = Uuid::new_v4();
+    let target_tag = xczs::utils::encode_hex(Sha256::digest(b"target.txt"));
+    let stage_name = format!(".xczs-upload-{target_tag}-{upload_id}.part");
+    let former_root_stage_names = [
+        stage_name.clone(),
+        format!("{stage_name}.state"),
+        format!("{stage_name}.state-{}.tmp", Uuid::new_v4()),
+    ];
+    for staging_name in &former_root_stage_names {
+        std::fs::write(server.path().join(staging_name), b"partial")?;
+    }
+    let trash_name = format!(".xczs-upload-delete-{}.trash", Uuid::new_v4());
+    std::fs::write(server.path().join(&trash_name), b"trash")?;
+    let private_stage_directory = server.path().join(UPLOAD_STAGE_DIRECTORY);
+    std::fs::create_dir(&private_stage_directory)?;
+    std::fs::write(
+        private_stage_directory.join(&stage_name),
+        b"private partial",
+    )?;
+
+    let resp = server.get(server.url())?;
+    let paths = server.paths_from_page(resp)?;
+    for staging_name in &former_root_stage_names {
+        assert!(paths.contains(staging_name));
+        let resp = server.get(format!("{}{}", server.url(), staging_name))?;
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.bytes()?.as_ref(), b"partial");
+    }
+    assert!(
+        !paths
+            .iter()
+            .any(|path| path.contains(UPLOAD_STAGE_DIRECTORY))
+    );
+    assert!(!paths.iter().any(|path| path.contains(&trash_name)));
+    assert_eq!(
+        server
+            .get(format!("{}{}", server.url(), UPLOAD_STAGE_DIRECTORY))?
+            .status(),
+        400
+    );
+    assert_eq!(
+        server
+            .get(format!(
+                "{}{UPLOAD_STAGE_DIRECTORY}/{stage_name}",
+                server.url()
+            ))?
+            .status(),
+        400
+    );
+    assert_eq!(
+        server
+            .get(format!("{}{}", server.url(), trash_name))?
+            .status(),
+        400
+    );
+    let search_paths =
+        server.paths_from_page(server.get(format!("{}?q=.xczs-upload", server.url()))?)?;
+    for staging_name in &former_root_stage_names {
+        assert!(search_paths.contains(staging_name));
+    }
+    assert!(!search_paths.iter().any(|path| path.contains(&trash_name)));
+    assert!(
+        !search_paths
+            .iter()
+            .any(|path| path.contains(UPLOAD_STAGE_DIRECTORY))
+    );
+
+    let ordinary_names = [
+        ".xczs-upload-not-a-stage.part",
+        ".xczs-upload-delete-old.trash",
+    ];
+    for ordinary_name in ordinary_names {
+        std::fs::write(server.path().join(ordinary_name), b"ordinary")?;
+    }
+    let resp = server.get(server.url())?;
+    let paths = server.paths_from_page(resp)?;
+    for ordinary_name in ordinary_names {
+        assert!(paths.iter().any(|path| path.contains(ordinary_name)));
+        let resp = server.get(format!("{}{}", server.url(), ordinary_name))?;
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.bytes()?.as_ref(), b"ordinary");
+    }
+    Ok(())
+}

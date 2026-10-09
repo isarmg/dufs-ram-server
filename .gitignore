@@ -1,0 +1,17 @@
+/target
+/.vscode
+/node_modules
+/playwright-report
+/test-results
+/.xczs-data/
+/xczs.yaml
+/xczs.log
+/dist/
+/web/dist/
+/web/types/
+target/**
+
+/web/runtime-dist/
+
+# Keep legacy deployment data out of source control after renaming.
+/.dufs-data/

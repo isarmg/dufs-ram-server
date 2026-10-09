@@ -1,0 +1,227 @@
+#[path = "support/fixtures.rs"]
+mod fixtures;
+#[path = "support/utils.rs"]
+mod utils;
+
+use fixtures::{Error, TestServer, server};
+use reqwest::header::{CONTENT_RANGE, ETAG, HeaderValue, IF_RANGE, LAST_MODIFIED};
+use rstest::rstest;
+
+#[rstest]
+fn get_file_range(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=0-6"))
+        .send()?;
+    assert_eq!(resp.status(), 206);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes 0-6/18");
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    assert_eq!(resp.headers().get("content-length").unwrap(), "7");
+    assert_eq!(resp.text()?, "This is");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_range_unit_is_case_insensitive(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("Bytes=0-6"))
+        .send()?;
+    assert_eq!(resp.status(), 206);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes 0-6/18");
+    assert_eq!(resp.text()?, "This is");
+    Ok(())
+}
+
+#[rstest]
+fn unknown_range_unit_is_ignored(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("items=0-6"))
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert!(!resp.headers().contains_key(CONTENT_RANGE));
+    assert_eq!(resp.headers().get("content-length").unwrap(), "18");
+    assert_eq!(resp.text()?, "This is index.html");
+    Ok(())
+}
+
+#[rstest]
+fn repeated_unknown_range_unit_is_ignored(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("items=0-6"))
+        .header("range", HeaderValue::from_static("items=8-12"))
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert!(!resp.headers().contains_key(CONTENT_RANGE));
+    assert_eq!(resp.headers().get("content-length").unwrap(), "18");
+    assert_eq!(resp.text()?, "This is index.html");
+    Ok(())
+}
+
+#[rstest]
+#[case("bytes=0-6")]
+#[case("bytes=999-999")]
+fn head_ignores_range(server: TestServer, #[case] range: &str) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::HEAD, format!("{}index.html", server.url()))
+        .header("range", range)
+        .send()?;
+    assert_eq!(resp.status(), 200);
+    assert!(!resp.headers().contains_key(CONTENT_RANGE));
+    assert_eq!(resp.headers().get("content-length").unwrap(), "18");
+    assert!(resp.bytes()?.is_empty());
+    Ok(())
+}
+
+#[rstest]
+fn get_file_range_beyond(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=12-20"))
+        .send()?;
+    assert_eq!(resp.status(), 206);
+    assert_eq!(
+        resp.headers().get("content-range").unwrap(),
+        "bytes 12-17/18"
+    );
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    assert_eq!(resp.headers().get("content-length").unwrap(), "6");
+    assert_eq!(resp.text()?, "x.html");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_suffix_larger_than_representation_returns_whole_file(
+    server: TestServer,
+) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=-999"))
+        .send()?;
+    assert_eq!(resp.status(), 206);
+    assert_eq!(
+        resp.headers().get("content-range").unwrap(),
+        "bytes 0-17/18"
+    );
+    assert_eq!(resp.headers().get("content-length").unwrap(), "18");
+    assert_eq!(resp.text()?, "This is index.html");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_range_invalid(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=20-"))
+        .send()?;
+    assert_eq!(resp.status(), 416);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes */18");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_multiple_ranges_is_rejected(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=0-11, 6-17"))
+        .send()?;
+    assert_eq!(resp.status(), 416);
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes */18");
+    assert_eq!(resp.headers().get("content-length").unwrap(), "0");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_multiple_range_header_fields_is_rejected(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=0-3"))
+        .header("range", HeaderValue::from_static("bytes=6-9"))
+        .send()?;
+    assert_eq!(resp.status(), 416);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes */18");
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    assert_eq!(resp.headers().get("content-length").unwrap(), "0");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_multiple_ranges_with_invalid_member_is_rejected(
+    server: TestServer,
+) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=0-6, 20-30"))
+        .send()?;
+    assert_eq!(resp.status(), 416);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes */18");
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    assert_eq!(resp.headers().get("content-length").unwrap(), "0");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_range_reversed(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=10-1"))
+        .send()?;
+    assert_eq!(resp.status(), 416);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes */18");
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    Ok(())
+}
+
+#[rstest]
+fn get_file_multiple_reversed_ranges_are_rejected(server: TestServer) -> Result<(), Error> {
+    let resp = server
+        .request(reqwest::Method::GET, format!("{}index.html", server.url()))
+        .header("range", HeaderValue::from_static("bytes=10-1,20-2"))
+        .send()?;
+    assert_eq!(resp.status(), 416);
+    assert_eq!(resp.headers().get("content-range").unwrap(), "bytes */18");
+    assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
+    Ok(())
+}
+
+#[rstest]
+fn weak_validators_cannot_authorize_if_range(server: TestServer) -> Result<(), Error> {
+    let url = format!("{}index.html", server.url());
+    let head = server.request(reqwest::Method::HEAD, &url).send()?;
+    let weak_etag = head
+        .headers()
+        .get(ETAG)
+        .and_then(|value| value.to_str().ok())
+        .ok_or("Missing ETag")?
+        .to_owned();
+    assert!(weak_etag.starts_with("W/\""));
+    let last_modified = head
+        .headers()
+        .get(LAST_MODIFIED)
+        .and_then(|value| value.to_str().ok())
+        .ok_or("Missing Last-Modified")?
+        .to_owned();
+
+    for if_range in [
+        weak_etag.clone(),
+        weak_etag
+            .strip_prefix("W/")
+            .expect("weak ETag prefix")
+            .to_owned(),
+        last_modified,
+    ] {
+        let response = server
+            .request(reqwest::Method::GET, &url)
+            .header("range", HeaderValue::from_static("bytes=0-6"))
+            .header(IF_RANGE, if_range)
+            .send()?;
+        assert_eq!(response.status(), 200);
+        assert!(!response.headers().contains_key(CONTENT_RANGE));
+        assert_eq!(response.headers().get("content-length").unwrap(), "18");
+        assert_eq!(response.text()?, "This is index.html");
+    }
+    Ok(())
+}

@@ -1,0 +1,4 @@
+[
+  {"id":"range-stream","method":"GET","path":"/contract.bin","authenticated":true,"headers":{"range":"bytes=1-3"},"body":"","preset":{"contract.bin":"abcdef"},"status":206,"required_headers":{"content-range":"bytes 1-3/6","content-length":"3"},"forbidden_headers":["location"],"body_contains":"bcd","response_fields":{},"file_changes":{},"operation_state":null},
+  {"id":"head-content","method":"HEAD","path":"/contract.bin","authenticated":true,"headers":{},"body":"","preset":{"contract.bin":"abcdef"},"status":200,"required_headers":{"content-length":"6"},"forbidden_headers":["location"],"body_contains":"","response_fields":{},"file_changes":{},"operation_state":null}
+]

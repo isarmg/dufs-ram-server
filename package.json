@@ -1,0 +1,52 @@
+{
+  "name": "xczs-browser-tests",
+  "private": true,
+  "os": [
+    "linux"
+  ],
+  "engines": {
+    "node": ">=26.7.0 <27"
+  },
+  "scripts": {
+    "build:platform": "node scripts/build-platform.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:independence": "node scripts/check-independence.mjs",
+    "check:js": "node scripts/check-js.mjs",
+    "check:types": "tsc -p web/tsconfig.json",
+    "test:frontend:unit": "node --test tests/frontend/unit/*.test.mjs",
+    "test:language": "npm run build:platform && node tests/frontend/language.mjs",
+    "test:frontend": "node scripts/build-frontend-candidate.mjs",
+    "test:frontend:run": "node scripts/run-frontend-prepared.mjs",
+    "test:frontend:headed": "node scripts/build-frontend-candidate.mjs --headed",
+    "test:frontend:edge": "node scripts/build-frontend-candidate.mjs --edge --project=edge",
+    "test:frontend:install": "playwright install chromium firefox",
+    "build:server": "xcss-build-server --config foundation-web-build.json --mode development",
+    "build:server:release": "xcss-build-server --config foundation-web-build.json --mode release"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@xcss/admin-web": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-admin-web-1.0.0.tgz",
+    "@xcss/contracts": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-contracts-1.0.0.tgz",
+    "@xcss/http-client": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-http-client-1.0.0.tgz",
+    "@xcss/design-tokens": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-design-tokens-1.0.0.tgz",
+    "@xcss/web-fonts": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-web-fonts-1.0.0.tgz",
+    "@xcss/web-toolchain": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-web-toolchain-1.0.0.tgz",
+    "@xcss/admin-shell": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-admin-shell-1.0.0.tgz",
+    "@xcss/admin-ui": "https://github.com/isarmg/xcss/releases/download/v1.0.0/xcss-admin-ui-1.0.0.tgz"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "eslint-plugin-no-unsanitized": "4.1.5",
+    "globals": "17.12.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.3",
+    "yaml": "2.9.1"
+  }
+}

@@ -1,0 +1,1206 @@
+use anyhow::{Context, Result, anyhow, bail, ensure};
+use sqlx::{Connection as _, Row as _, SqliteConnection as Connection};
+
+// Heterogeneous bindings use SQLx native arguments; SQL never includes user values.
+macro_rules! sql_arguments {
+    ($($value:expr),* $(,)?) => {{
+        let mut arguments = sqlx::sqlite::SqliteArguments::default();
+        $(sqlx::Arguments::add(&mut arguments, $value).map_err(anyhow::Error::from_boxed)?;)*
+        arguments
+    }};
+}
+#[cfg(test)]
+use std::fs::{self, Permissions};
+use std::{
+    collections::VecDeque,
+    convert::TryFrom,
+    ffi::OsString,
+    fmt,
+    os::unix::ffi::{OsStrExt, OsStringExt},
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender, SyncSender, TrySendError},
+    },
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::oneshot;
+use uuid::Uuid;
+
+use super::StatePathScanLease;
+
+mod actor;
+mod database;
+pub(super) use database::expected_schema_identity;
+pub(super) use database::{initialize_current, validate_current};
+mod model;
+mod operation;
+mod purge;
+mod upload;
+
+pub(super) use model::{
+    ExpiredUploadSession, OperationKey, PurgeJobKey, RejectUploadSession, RootIdentity,
+    StateBlockingPath, StatePathCursor, StatePathPage, StoreBegin, StorePurgeJob, StoreStatus,
+    StoreUploadSession, StoredFileIdentity, StoredOutcome, StoredPurgeJob, StoredPurgeState,
+    StoredTerminalState, StoredUploadSession, StoredUploadState, UploadSessionKey,
+};
+
+const APPLICATION: &str = "xczs";
+const CURRENT_SCHEMA_REVISION: i64 = 1;
+const COMMAND_QUEUE_CAPACITY: usize = 256;
+const UPLOAD_SESSION_CAPACITY: usize = 16_384;
+const UPLOAD_SESSION_PER_OWNER_CAPACITY: usize = 4_096;
+const PURGE_JOB_CAPACITY: usize = 4_096;
+const PURGE_JOB_PER_OWNER_CAPACITY: usize = 1_024;
+
+const OPERATION_RESERVED: i64 = 0;
+const OPERATION_COMMIT_STARTED: i64 = 1;
+const OPERATION_COMPLETED: i64 = 2;
+
+const UPLOAD_RUNNING: i64 = 0;
+const UPLOAD_COMMIT_STARTED: i64 = 1;
+const UPLOAD_COMMITTED: i64 = 2;
+const UPLOAD_REJECTED: i64 = 3;
+const UPLOAD_UNKNOWN: i64 = 4;
+const UPLOAD_AWAITING_CONFIRMATION: i64 = 5;
+
+const PURGE_PREPARED: i64 = 0;
+const PURGE_READY: i64 = 1;
+const PURGE_CLAIMED: i64 = 2;
+
+const UNKNOWN_STATUS: u16 = 500;
+const UNKNOWN_CODE: &str = "outcome_uncertain";
+
+const MAX_ERROR_CODE_CHARS: usize = 128;
+
+/// A command that was rejected before the state actor accepted ownership of
+/// it. Callers may safely report these failures as known, retryable
+/// rejections; failures after enqueue remain ordinary errors because the
+/// command's outcome may no longer be known to the requester.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum StateStoreDispatchError {
+    QueueFull,
+    Unavailable,
+}
+
+impl fmt::Display for StateStoreDispatchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::QueueFull => "The state store command queue is full",
+            Self::Unavailable => "The state store is unavailable",
+        })
+    }
+}
+
+impl std::error::Error for StateStoreDispatchError {}
+
+#[derive(Clone)]
+pub(super) struct StateStore {
+    inner: Arc<StateStoreInner>,
+}
+
+struct StateStoreInner {
+    channels: ActorChannels,
+    healthy: Arc<AtomicBool>,
+    lifecycle: Mutex<ThreadLifecycle>,
+    lifecycle_changed: Condvar,
+    // Tests exercise the same file-backed implementation in an isolated
+    // temporary directory. Keeping the directory here ties its lifetime to the
+    // actor and avoids retaining a second, memory-only database mode.
+    _temporary_directory: Option<tempfile::TempDir>,
+}
+
+impl Drop for StateStoreInner {
+    fn drop(&mut self) {
+        let _ = self.close_blocking();
+    }
+}
+
+impl StateStoreInner {
+    fn close_blocking(&self) -> Result<()> {
+        let handle = {
+            let mut lifecycle = self
+                .lifecycle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            while lifecycle.closing && !lifecycle.closed {
+                lifecycle = self
+                    .lifecycle_changed
+                    .wait(lifecycle)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+            if lifecycle.closed {
+                return Ok(());
+            }
+            lifecycle.closing = true;
+            lifecycle.handle.take()
+        };
+
+        self.healthy.store(false, Ordering::Release);
+        let control_result = self.channels.send_control(ControlCommand::Shutdown);
+        let join_result = handle
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| anyhow!("The state store thread panicked during shutdown"))
+            })
+            .unwrap_or(Ok(()));
+
+        let mut lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        lifecycle.closed = true;
+        lifecycle.closing = false;
+        self.lifecycle_changed.notify_all();
+        drop(lifecycle);
+
+        if control_result.is_err() && join_result.is_ok() {
+            // A cleanly joined worker may already have exited after reporting a
+            // database failure. Closing remains idempotent; health already
+            // carries the failure to callers.
+            return Ok(());
+        }
+        join_result
+    }
+}
+
+struct ThreadLifecycle {
+    handle: Option<thread::JoinHandle<()>>,
+    closing: bool,
+    closed: bool,
+}
+
+#[derive(Clone)]
+struct ActorChannels {
+    commands: SyncSender<Command>,
+    controls: Sender<ControlCommand>,
+}
+
+impl ActorChannels {
+    fn send_control(&self, control: ControlCommand) -> Result<()> {
+        self.controls
+            .send(control)
+            .map_err(|_| anyhow!("The state store control channel is unavailable"))?;
+        match self.commands.try_send(Command::Wake) {
+            Ok(()) | Err(TrySendError::Full(Command::Wake)) => Ok(()),
+            Err(TrySendError::Disconnected(Command::Wake)) => {
+                bail!("The state store thread is unavailable")
+            }
+            Err(_) => unreachable!("a wake command is returned unchanged"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RepositoryLimits {
+    upload_capacity: usize,
+    upload_per_owner: usize,
+    purge_capacity: usize,
+    purge_per_owner: usize,
+}
+
+const REPOSITORY_LIMITS: RepositoryLimits = RepositoryLimits {
+    upload_capacity: UPLOAD_SESSION_CAPACITY,
+    upload_per_owner: UPLOAD_SESSION_PER_OWNER_CAPACITY,
+    purge_capacity: PURGE_JOB_CAPACITY,
+    purge_per_owner: PURGE_JOB_PER_OWNER_CAPACITY,
+};
+
+struct Limits {
+    capacity: i64,
+    per_owner: i64,
+    ttl_ms: i64,
+    upload_ttl_ms: i64,
+    upload_capacity: i64,
+    upload_per_owner: i64,
+    purge_capacity: i64,
+    purge_per_owner: i64,
+}
+
+struct StateStoreOptions {
+    path: PathBuf,
+    root: RootIdentity,
+    capacity: usize,
+    per_owner: usize,
+    ttl: Duration,
+    upload_ttl: Duration,
+    command_queue_capacity: usize,
+    repository_limits: RepositoryLimits,
+    temporary_directory: Option<tempfile::TempDir>,
+}
+
+impl StateStoreOptions {
+    fn production(
+        path: PathBuf,
+        root: RootIdentity,
+        capacity: usize,
+        per_owner: usize,
+        ttl: Duration,
+        upload_ttl: Duration,
+    ) -> Self {
+        Self {
+            path,
+            root,
+            capacity,
+            per_owner,
+            ttl,
+            upload_ttl,
+            command_queue_capacity: COMMAND_QUEUE_CAPACITY,
+            repository_limits: REPOSITORY_LIMITS,
+            temporary_directory: None,
+        }
+    }
+}
+
+enum Command {
+    Wake,
+    ProbeReadiness {
+        reply: oneshot::Sender<Result<()>>,
+    },
+    Begin {
+        key: OperationKey,
+        fingerprint: [u8; 32],
+        reply: oneshot::Sender<Result<BeginEnvelope>>,
+    },
+    Status {
+        key: OperationKey,
+        reply: oneshot::Sender<Result<StoreStatus>>,
+    },
+    MarkCommitStarted {
+        key: OperationKey,
+        lease: [u8; 16],
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    Complete {
+        key: OperationKey,
+        lease: [u8; 16],
+        outcome: StoredOutcome,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    SaveUploadSession {
+        session: StoredUploadSession,
+        ttl_ms: i64,
+        reply: oneshot::Sender<Result<StoreUploadSession>>,
+    },
+    LoadUploadSession {
+        key: UploadSessionKey,
+        reply: oneshot::Sender<Result<Option<StoredUploadSession>>>,
+    },
+    ListUploadSessionsPageBlocking {
+        after: Option<UploadSessionKey>,
+        limit: i64,
+        reply: SyncSender<Result<Vec<StoredUploadSession>>>,
+    },
+    ListUploadSessionsPage {
+        after: Option<UploadSessionKey>,
+        limit: i64,
+        reply: oneshot::Sender<Result<Vec<StoredUploadSession>>>,
+    },
+    RejectUploadSession {
+        key: UploadSessionKey,
+        target_path: PathBuf,
+        stage_path: PathBuf,
+        ttl_ms: i64,
+        reply: oneshot::Sender<Result<RejectUploadSession>>,
+    },
+    ListExpiredUploadSessions {
+        after: Option<UploadSessionKey>,
+        limit: i64,
+        reply: oneshot::Sender<Result<Vec<ExpiredUploadSession>>>,
+    },
+    MatchExpiredUploadSession {
+        expected: ExpiredUploadSession,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    RemoveUploadSessionIfMatches {
+        expected: StoredUploadSession,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    RemoveExpiredUploadSessionIfMatches {
+        expected: ExpiredUploadSession,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    PreparePurgeJob {
+        job: StoredPurgeJob,
+        reply: oneshot::Sender<Result<StorePurgeJob>>,
+    },
+    LoadPurgeJob {
+        key: PurgeJobKey,
+        reply: oneshot::Sender<Result<Option<StoredPurgeJob>>>,
+    },
+    ListPreparedPurgeJobs {
+        limit: i64,
+        reply: oneshot::Sender<Result<Vec<StoredPurgeJob>>>,
+    },
+    ListPurgeJobs {
+        limit: i64,
+        reply: oneshot::Sender<Result<Vec<StoredPurgeJob>>>,
+    },
+    IsStatePathBoundBlocking {
+        path: PathBuf,
+        reply: SyncSender<Result<bool>>,
+    },
+    ListStateBlockingPaths {
+        after: Option<StatePathCursor>,
+        limit: i64,
+        scan_lease: StatePathScanLease,
+        reply: oneshot::Sender<Result<StatePathPage>>,
+    },
+    MarkPurgeJobReady {
+        key: PurgeJobKey,
+        trash_revision: [u8; 32],
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    ClaimDuePurgeJob {
+        reply: oneshot::Sender<Result<Option<StoredPurgeJob>>>,
+    },
+    RetryPurgeJob {
+        key: PurgeJobKey,
+        delay_ms: i64,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    CompletePurgeJob {
+        key: PurgeJobKey,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    RemovePurgeJob {
+        key: PurgeJobKey,
+        reply: oneshot::Sender<Result<bool>>,
+    },
+    #[cfg(test)]
+    InspectPragmas {
+        reply: oneshot::Sender<Result<PragmaSnapshot>>,
+    },
+    #[cfg(test)]
+    InspectActorExecutionCounts {
+        reply: oneshot::Sender<Result<ActorExecutionCounts>>,
+    },
+    #[cfg(test)]
+    InjectSqlError {
+        reply: oneshot::Sender<Result<()>>,
+    },
+    #[cfg(test)]
+    SetQueryOnly {
+        enabled: bool,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    #[cfg(test)]
+    Block {
+        entered: SyncSender<()>,
+        release: Receiver<()>,
+    },
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ActorExecutionCounts {
+    begin: usize,
+    status: usize,
+    complete: usize,
+}
+
+enum ControlCommand {
+    Abandon { key: OperationKey, lease: [u8; 16] },
+    Shutdown,
+}
+
+struct BeginEnvelope {
+    begin: StoreBegin,
+    cleanup: Option<ReservationCleanup>,
+}
+
+impl BeginEnvelope {
+    fn new(begin: StoreBegin, channels: &ActorChannels, key: OperationKey) -> Self {
+        let cleanup = match begin {
+            StoreBegin::Started { lease } => Some(ReservationCleanup {
+                channels: channels.clone(),
+                key,
+                lease,
+                armed: true,
+            }),
+            _ => None,
+        };
+        Self { begin, cleanup }
+    }
+
+    fn reservation(&self) -> Option<[u8; 16]> {
+        match &self.begin {
+            StoreBegin::Started { lease } => Some(*lease),
+            _ => None,
+        }
+    }
+
+    fn disarm_cleanup(&mut self) {
+        if let Some(cleanup) = self.cleanup.as_mut() {
+            cleanup.armed = false;
+        }
+    }
+
+    fn disarm(mut self) -> StoreBegin {
+        self.disarm_cleanup();
+        self.begin
+    }
+}
+
+struct ReservationCleanup {
+    channels: ActorChannels,
+    key: OperationKey,
+    lease: [u8; 16],
+    armed: bool,
+}
+
+impl Drop for ReservationCleanup {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = self.channels.send_control(ControlCommand::Abandon {
+                key: self.key,
+                lease: self.lease,
+            });
+        }
+    }
+}
+
+impl StateStore {
+    #[cfg(test)]
+    pub(super) fn initialize_or_open_for_test(
+        path: &Path,
+        root: &RootIdentity,
+        capacity: usize,
+        per_owner: usize,
+        ttl: Duration,
+    ) -> Result<Self> {
+        if !path.try_exists()? {
+            database::initialize_current(path, *root)?;
+        }
+        Self::open_with_upload_ttl(path, root, capacity, per_owner, ttl, ttl)
+    }
+
+    pub(super) fn open_with_upload_ttl(
+        path: &Path,
+        root: &RootIdentity,
+        capacity: usize,
+        per_owner: usize,
+        ttl: Duration,
+        upload_ttl: Duration,
+    ) -> Result<Self> {
+        database::validate_current(path, *root)?;
+        Self::start(StateStoreOptions::production(
+            path.to_path_buf(),
+            *root,
+            capacity,
+            per_owner,
+            ttl,
+            upload_ttl,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(super) fn temporary_for_test(
+        capacity: usize,
+        per_owner: usize,
+        ttl: Duration,
+    ) -> Result<Self> {
+        Self::temporary_with_limits_for_test(
+            capacity,
+            per_owner,
+            ttl,
+            COMMAND_QUEUE_CAPACITY,
+            REPOSITORY_LIMITS,
+        )
+    }
+
+    fn start(options: StateStoreOptions) -> Result<Self> {
+        let StateStoreOptions {
+            path,
+            root,
+            capacity,
+            per_owner,
+            ttl,
+            upload_ttl,
+            command_queue_capacity,
+            repository_limits,
+            temporary_directory,
+        } = options;
+        ensure!(
+            command_queue_capacity > 0,
+            "State store command queue capacity must be positive"
+        );
+        let limits = validate_limits(capacity, per_owner, ttl, upload_ttl, repository_limits)?;
+        let (command_sender, command_receiver) = mpsc::sync_channel(command_queue_capacity);
+        let (control_sender, control_receiver) = mpsc::channel();
+        let channels = ActorChannels {
+            commands: command_sender,
+            controls: control_sender,
+        };
+        let thread_channels = channels.clone();
+        let healthy = Arc::new(AtomicBool::new(false));
+        let thread_healthy = healthy.clone();
+        let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
+
+        let handle = thread::Builder::new()
+            .name("xczs-state-store".to_string())
+            .spawn(move || {
+                actor::run(actor::ActorRuntime {
+                    path,
+                    root,
+                    limits,
+                    command_receiver,
+                    control_receiver,
+                    channels: thread_channels,
+                    healthy: thread_healthy,
+                    ready: ready_sender,
+                });
+            })
+            .context("Failed to start the state store thread")?;
+
+        let ready = ready_receiver
+            .recv()
+            .context("The state store thread exited during startup")?;
+        if let Err(error) = ready {
+            let _ = handle.join();
+            return Err(error);
+        }
+        Ok(Self {
+            inner: Arc::new(StateStoreInner {
+                channels,
+                healthy,
+                lifecycle: Mutex::new(ThreadLifecycle {
+                    handle: Some(handle),
+                    closing: false,
+                    closed: false,
+                }),
+                lifecycle_changed: Condvar::new(),
+                _temporary_directory: temporary_directory,
+            }),
+        })
+    }
+
+    #[cfg(test)]
+    fn temporary_with_limits_for_test(
+        capacity: usize,
+        per_owner: usize,
+        ttl: Duration,
+        command_queue_capacity: usize,
+        repository_limits: RepositoryLimits,
+    ) -> Result<Self> {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory =
+            tempfile::tempdir().context("Failed to create temporary state directory")?;
+        fs::set_permissions(directory.path(), Permissions::from_mode(0o700))?;
+        let path = directory.path().join("state.sqlite3");
+        let root = RootIdentity {
+            device: 0,
+            inode: 0,
+        };
+        database::initialize_current(&path, root)?;
+        Self::start(StateStoreOptions {
+            path,
+            root,
+            capacity,
+            per_owner,
+            ttl,
+            upload_ttl: ttl,
+            command_queue_capacity,
+            repository_limits,
+            temporary_directory: Some(directory),
+        })
+    }
+
+    pub(super) async fn begin_operation(
+        &self,
+        key: OperationKey,
+        fingerprint: [u8; 32],
+    ) -> Result<StoreBegin> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::Begin {
+            key,
+            fingerprint,
+            reply,
+        })?;
+        let envelope = self.receive(receiver).await?;
+        // There is intentionally no await point between receiving the envelope
+        // and disarming its cleanup. Cancellation before delivery therefore
+        // abandons the durable reservation, while successful delivery transfers
+        // responsibility for the lease to OperationGuard.
+        Ok(envelope.disarm())
+    }
+
+    pub(super) async fn operation_status(&self, key: OperationKey) -> Result<StoreStatus> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::Status { key, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn mark_operation_commit_started(
+        &self,
+        key: OperationKey,
+        lease: [u8; 16],
+    ) -> Result<bool> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::MarkCommitStarted { key, lease, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn complete_operation(
+        &self,
+        key: OperationKey,
+        lease: [u8; 16],
+        outcome: StoredOutcome,
+    ) -> Result<bool> {
+        outcome.validate()?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::Complete {
+            key,
+            lease,
+            outcome,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) fn abandon_operation(&self, key: OperationKey, lease: [u8; 16]) {
+        if self
+            .inner
+            .channels
+            .send_control(ControlCommand::Abandon { key, lease })
+            .is_err()
+        {
+            self.inner.healthy.store(false, Ordering::Release);
+        }
+    }
+
+    pub(super) async fn save_upload_session(
+        &self,
+        session: StoredUploadSession,
+        ttl: Duration,
+    ) -> Result<StoreUploadSession> {
+        session.validate()?;
+        let ttl_ms = duration_ms(ttl, "Upload session TTL")?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::SaveUploadSession {
+            session,
+            ttl_ms,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn upload_session(
+        &self,
+        key: UploadSessionKey,
+    ) -> Result<Option<StoredUploadSession>> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::LoadUploadSession { key, reply })?;
+        self.receive(receiver).await
+    }
+
+    /// Startup-only keyset page used before listeners and maintenance tasks
+    /// are started. The small fixed upper bound prevents valid maximum-length
+    /// stored paths from turning reconciliation into a multi-gigabyte Vec.
+    pub(super) fn upload_sessions_page_blocking(
+        &self,
+        after: Option<UploadSessionKey>,
+        limit: usize,
+    ) -> Result<Vec<StoredUploadSession>> {
+        ensure!(
+            (1..=64).contains(&limit),
+            "Upload startup page size must be between 1 and 64"
+        );
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.send(Command::ListUploadSessionsPageBlocking {
+            after,
+            limit: i64::try_from(limit).context("Upload startup page size is too large")?,
+            reply,
+        })?;
+        receiver
+            .recv()
+            .context("The state store thread exited while listing upload sessions")?
+    }
+
+    pub(super) async fn upload_sessions_page(
+        &self,
+        after: Option<UploadSessionKey>,
+        limit: usize,
+    ) -> Result<Vec<StoredUploadSession>> {
+        ensure!(
+            (1..=64).contains(&limit),
+            "Upload snapshot page size must be between 1 and 64"
+        );
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListUploadSessionsPage {
+            after,
+            limit: i64::try_from(limit).context("Upload snapshot page size is too large")?,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn reject_upload_session(
+        &self,
+        key: UploadSessionKey,
+        target_path: PathBuf,
+        stage_path: PathBuf,
+        ttl: Duration,
+    ) -> Result<RejectUploadSession> {
+        model::validate_stored_path(&target_path, "Upload target")?;
+        model::validate_stored_path(&stage_path, "Upload stage")?;
+        let ttl_ms = duration_ms(ttl, "Upload session TTL")?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RejectUploadSession {
+            key,
+            target_path,
+            stage_path,
+            ttl_ms,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn expired_upload_sessions_page(
+        &self,
+        after: Option<UploadSessionKey>,
+        limit: usize,
+    ) -> Result<Vec<ExpiredUploadSession>> {
+        let limit = query_limit(limit)?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListExpiredUploadSessions {
+            after,
+            limit,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn expired_upload_session_matches(
+        &self,
+        expected: ExpiredUploadSession,
+    ) -> Result<bool> {
+        expected.session.validate()?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::MatchExpiredUploadSession { expected, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn remove_upload_session_if_matches(
+        &self,
+        expected: StoredUploadSession,
+    ) -> Result<bool> {
+        expected.validate()?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RemoveUploadSessionIfMatches { expected, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn remove_expired_upload_session_if_matches(
+        &self,
+        expected: ExpiredUploadSession,
+    ) -> Result<bool> {
+        expected.session.validate()?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RemoveExpiredUploadSessionIfMatches { expected, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn prepare_purge_job(&self, job: StoredPurgeJob) -> Result<StorePurgeJob> {
+        job.validate_new()?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::PreparePurgeJob { job, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn purge_job(&self, key: PurgeJobKey) -> Result<Option<StoredPurgeJob>> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::LoadPurgeJob { key, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn prepared_purge_jobs(&self, limit: usize) -> Result<Vec<StoredPurgeJob>> {
+        let limit = query_limit(limit)?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListPreparedPurgeJobs { limit, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn purge_jobs(&self, limit: usize) -> Result<Vec<StoredPurgeJob>> {
+        let limit = query_limit(limit)?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListPurgeJobs { limit, reply })?;
+        self.receive(receiver).await
+    }
+
+    /// Recheck one canonical rooted path immediately before maintenance acts on
+    /// it. The synchronous reply keeps this read ordered with every upload and
+    /// purge mutation already accepted by the state-store actor.
+    pub(super) fn state_path_is_bound_blocking(&self, path: &Path) -> Result<bool> {
+        model::validate_stored_path(path, "Maintenance state")?;
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.send(Command::IsStatePathBoundBlocking {
+            path: path.to_path_buf(),
+            reply,
+        })?;
+        receiver
+            .recv()
+            .context("The state store thread exited while checking a maintenance path")?
+    }
+
+    /// Return a bounded, keyset-paginated snapshot of paths whose physical
+    /// meaning must not be changed by a namespace mutation. The caller must
+    /// hold every affected mutation lease across all pages; those leases
+    /// prevent a new relevant upload/purge row from appearing behind the
+    /// cursor.
+    pub(super) async fn state_blocking_paths(
+        &self,
+        after: Option<StatePathCursor>,
+        limit: usize,
+        scan_lease: StatePathScanLease,
+    ) -> Result<StatePathPage> {
+        let limit = query_limit(limit)?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListStateBlockingPaths {
+            after,
+            limit,
+            scan_lease,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn mark_purge_job_ready(
+        &self,
+        key: PurgeJobKey,
+        trash_revision: [u8; 32],
+    ) -> Result<bool> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::MarkPurgeJobReady {
+            key,
+            trash_revision,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn claim_due_purge_job(&self) -> Result<Option<StoredPurgeJob>> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ClaimDuePurgeJob { reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn retry_purge_job(&self, key: PurgeJobKey, delay: Duration) -> Result<bool> {
+        let delay_ms = duration_ms(delay, "Purge retry delay")?;
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RetryPurgeJob {
+            key,
+            delay_ms,
+            reply,
+        })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn complete_purge_job(&self, key: PurgeJobKey) -> Result<bool> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::CompletePurgeJob { key, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn remove_purge_job(&self, key: PurgeJobKey) -> Result<bool> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RemovePurgeJob { key, reply })?;
+        self.receive(receiver).await
+    }
+
+    pub(super) async fn close(&self) -> Result<()> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.inner.close_blocking())
+            .await
+            .map_err(|error| anyhow!("Failed to join state store shutdown task: {error}"))?
+    }
+
+    pub(super) fn is_healthy(&self) -> bool {
+        self.inner.healthy.load(Ordering::Acquire)
+    }
+
+    /// Exercise the live actor connection with both a read and a rolled-back
+    /// write transaction. Unlike `is_healthy`, this detects storage failures
+    /// that occurred after the actor initialized.
+    pub(super) async fn probe_readiness(&self) -> Result<()> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ProbeReadiness { reply })?;
+        self.receive(receiver).await
+    }
+
+    fn send(&self, command: Command) -> std::result::Result<(), StateStoreDispatchError> {
+        if !self.is_healthy() {
+            return Err(StateStoreDispatchError::Unavailable);
+        }
+        match self.inner.channels.commands.try_send(command) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => return Err(StateStoreDispatchError::QueueFull),
+            Err(TrySendError::Disconnected(_)) => {
+                self.inner.healthy.store(false, Ordering::Release);
+                return Err(StateStoreDispatchError::Unavailable);
+            }
+        }
+        Ok(())
+    }
+
+    async fn receive<T>(&self, receiver: oneshot::Receiver<Result<T>>) -> Result<T> {
+        match receiver.await {
+            Ok(result) => result,
+            Err(_) => {
+                self.inner.healthy.store(false, Ordering::Release);
+                bail!("The state store thread exited before replying")
+            }
+        }
+    }
+
+    #[cfg(test)]
+    async fn inspect_pragmas(&self) -> Result<PragmaSnapshot> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::InspectPragmas { reply })?;
+        self.receive(receiver).await
+    }
+
+    #[cfg(test)]
+    async fn inspect_actor_execution_counts(&self) -> Result<ActorExecutionCounts> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::InspectActorExecutionCounts { reply })?;
+        self.receive(receiver).await
+    }
+
+    #[cfg(test)]
+    async fn inject_sql_error(&self) -> Result<()> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::InjectSqlError { reply })?;
+        self.receive(receiver).await
+    }
+
+    #[cfg(test)]
+    pub(super) async fn set_query_only(&self, enabled: bool) -> Result<()> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::SetQueryOnly { enabled, reply })?;
+        self.receive(receiver).await
+    }
+
+    #[cfg(test)]
+    pub(super) fn shutdown_for_test(self) {
+        let _ = self.inner.close_blocking();
+    }
+
+    #[cfg(test)]
+    pub(super) fn block_actor_for_test(&self) -> Result<SyncSender<()>> {
+        let (entered_sender, entered_receiver) = mpsc::sync_channel(0);
+        let (release_sender, release_receiver) = mpsc::sync_channel(0);
+        self.send(Command::Block {
+            entered: entered_sender,
+            release: release_receiver,
+        })?;
+        entered_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .context("State store did not enter the test block")?;
+        Ok(release_sender)
+    }
+
+    #[cfg(test)]
+    pub(super) fn saturate_command_queue_for_test(&self) -> Result<SyncSender<()>> {
+        let release_sender = self.block_actor_for_test()?;
+        loop {
+            match self.inner.channels.commands.try_send(Command::Wake) {
+                Ok(()) => {}
+                Err(TrySendError::Full(Command::Wake)) => return Ok(release_sender),
+                Err(TrySendError::Disconnected(Command::Wake)) => {
+                    bail!("State store disconnected while saturating its test queue")
+                }
+                Err(_) => unreachable!("a wake command is returned unchanged"),
+            }
+        }
+    }
+}
+
+fn validate_limits(
+    capacity: usize,
+    per_owner: usize,
+    ttl: Duration,
+    upload_ttl: Duration,
+    repository: RepositoryLimits,
+) -> Result<Limits> {
+    ensure!(capacity > 0, "State store capacity must be positive");
+    ensure!(
+        (1..=capacity).contains(&per_owner),
+        "Per-owner state store capacity must be positive and no greater than global capacity"
+    );
+    let capacity = i64::try_from(capacity).context("State store capacity is too large")?;
+    let per_owner =
+        i64::try_from(per_owner).context("Per-owner state store capacity is too large")?;
+    let ttl_ms = i64::try_from(ttl.as_millis()).context("State store result TTL is too large")?;
+    let upload_ttl_ms = duration_ms(upload_ttl, "Upload session recovery TTL")?;
+    ensure!(
+        repository.upload_capacity > 0
+            && (1..=repository.upload_capacity).contains(&repository.upload_per_owner),
+        "Upload session capacities are invalid"
+    );
+    ensure!(
+        repository.purge_capacity > 0
+            && (1..=repository.purge_capacity).contains(&repository.purge_per_owner),
+        "Purge job capacities are invalid"
+    );
+    Ok(Limits {
+        capacity,
+        per_owner,
+        ttl_ms,
+        upload_ttl_ms,
+        upload_capacity: i64::try_from(repository.upload_capacity)
+            .context("Upload session capacity is too large")?,
+        upload_per_owner: i64::try_from(repository.upload_per_owner)
+            .context("Per-owner upload session capacity is too large")?,
+        purge_capacity: i64::try_from(repository.purge_capacity)
+            .context("Purge job capacity is too large")?,
+        purge_per_owner: i64::try_from(repository.purge_per_owner)
+            .context("Per-owner purge job capacity is too large")?,
+    })
+}
+
+fn duration_ms(duration: Duration, description: &str) -> Result<i64> {
+    i64::try_from(duration.as_millis()).with_context(|| format!("{description} is too large"))
+}
+
+fn query_limit(limit: usize) -> Result<i64> {
+    ensure!(limit > 0, "State store query limit must be positive");
+    i64::try_from(limit).context("State store query limit is too large")
+}
+
+struct StoreWorker {
+    connection: Connection,
+    clock: StoreClock,
+    limits: Limits,
+    deferred_abandons: VecDeque<(OperationKey, [u8; 16])>,
+    #[cfg(test)]
+    execution_counts: ActorExecutionCounts,
+}
+
+struct StoreClock {
+    wall_anchor_ms: i64,
+    monotonic_anchor: Instant,
+    last_ms: i64,
+}
+
+impl StoreClock {
+    fn new() -> Result<Self> {
+        let wall_anchor_ms = system_time_ms()?;
+        Ok(Self {
+            wall_anchor_ms,
+            monotonic_anchor: Instant::now(),
+            last_ms: wall_anchor_ms,
+        })
+    }
+
+    fn now_ms(&mut self) -> Result<i64> {
+        self.observe(system_time_ms().ok(), Instant::now())
+    }
+
+    fn observe(&mut self, wall_now_ms: Option<i64>, monotonic_now: Instant) -> Result<i64> {
+        let elapsed = monotonic_now
+            .checked_duration_since(self.monotonic_anchor)
+            .ok_or_else(|| anyhow!("The monotonic clock moved backwards"))?;
+        let elapsed_ms = i64::try_from(elapsed.as_millis())
+            .context("The monotonic clock cannot be represented in milliseconds")?;
+        let mut candidate = self
+            .wall_anchor_ms
+            .checked_add(elapsed_ms)
+            .ok_or_else(|| anyhow!("The state store clock overflowed"))?;
+
+        if let Some(wall_now_ms) = wall_now_ms.filter(|wall_now_ms| *wall_now_ms > candidate) {
+            self.wall_anchor_ms = wall_now_ms;
+            self.monotonic_anchor = monotonic_now;
+            candidate = wall_now_ms;
+        }
+
+        candidate = candidate.max(self.last_ms);
+        self.last_ms = candidate;
+        Ok(candidate)
+    }
+}
+
+impl StoreWorker {
+    fn now_ms(&mut self) -> Result<i64> {
+        self.clock.now_ms()
+    }
+}
+
+#[cfg(test)]
+impl StoreWorker {
+    fn inspect_pragmas(&mut self) -> Result<PragmaSnapshot> {
+        xcss_sqlite::block_on_sqlite_connection(async {
+            Ok(PragmaSnapshot {
+                journal_mode: sqlx::query_scalar("PRAGMA journal_mode")
+                    .fetch_one(&mut self.connection)
+                    .await?,
+                synchronous: sqlx::query_scalar("PRAGMA synchronous")
+                    .fetch_one(&mut self.connection)
+                    .await?,
+                foreign_keys: sqlx::query_scalar("PRAGMA foreign_keys")
+                    .fetch_one(&mut self.connection)
+                    .await?,
+                trusted_schema: sqlx::query_scalar("PRAGMA trusted_schema")
+                    .fetch_one(&mut self.connection)
+                    .await?,
+                mmap_size: sqlx::query_scalar("PRAGMA mmap_size")
+                    .fetch_one(&mut self.connection)
+                    .await?,
+                application: sqlx::query_scalar(
+                    "SELECT application FROM product_metadata WHERE singleton=1",
+                )
+                .fetch_one(&mut self.connection)
+                .await?,
+                application_version: sqlx::query_scalar(
+                    "SELECT application_version FROM product_metadata WHERE singleton=1",
+                )
+                .fetch_one(&mut self.connection)
+                .await?,
+                schema_revision: sqlx::query_scalar(
+                    "SELECT schema_revision FROM product_metadata WHERE singleton=1",
+                )
+                .fetch_one(&mut self.connection)
+                .await?,
+                schema_sha256: sqlx::query_scalar(
+                    "SELECT schema_sha256 FROM product_metadata WHERE singleton=1",
+                )
+                .fetch_one(&mut self.connection)
+                .await?,
+            })
+        })
+    }
+}
+
+fn system_time_ms() -> Result<i64> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("The system clock is before the Unix epoch")?;
+    i64::try_from(elapsed.as_millis())
+        .context("The system clock cannot be represented in milliseconds")
+}
+
+fn expiration_time(now: i64, ttl_ms: i64) -> Result<i64> {
+    now.checked_add(ttl_ms)
+        .ok_or_else(|| anyhow!("Operation expiration time overflowed"))
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+struct PragmaSnapshot {
+    journal_mode: String,
+    synchronous: i64,
+    foreign_keys: i64,
+    trusted_schema: i64,
+    mmap_size: i64,
+    application: String,
+    application_version: String,
+    schema_revision: i64,
+    schema_sha256: String,
+}
+
+#[cfg(test)]
+mod tests;
