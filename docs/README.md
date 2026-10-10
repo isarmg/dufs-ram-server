@@ -9,7 +9,8 @@
 - [完整功能与取舍清单](feature-inventory-and-tradeoffs.md)：功能边界、依赖关系和删除成本。
 - [开发者决策矩阵](feature-decision-matrix.md)：逐项唯一 ID、代码锚点、分类、复杂度、删除后果与验证边界。
 - [生产部署与运行诊断](operations.md)：生产环境的权威操作说明。
-- [根目录 README](../README.md)：产品范围、配置和公开协议总览。
+- [界面、操作反馈与开发](ui-and-development.md)：标签交互、导航、日志、错误处理与开发验证。
+- [根目录 README](../README.md)：项目简介、功能、平台和部署入口。
 
 ## 教学资料
 

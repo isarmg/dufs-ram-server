@@ -753,7 +753,7 @@ flowchart TD
 
 `recovery` 扩展只有 `retry`、`retry_with_new_id`、`resume_upload`、`query_job`、`query_upload` 和 `refresh_target`；没有该字段就表示服务端没有宣告安全的恢复步骤。`RetryAfterSeconds` 同时输出 `recovery: "retry"`、整数秒 `retry_after` 和 `Retry-After` 响应头。这些建议不会把 `unknown` 变成可重放：未知 operation 只能通过原 ID 查询 job，未知上传只能 HEAD 核对或刷新目标。
 
-operation 错误体可附加平铺的 `operation_id`/`state`/`http_status`，但客户端以 `X-Xczs-Operation-Id` 和 `X-Xczs-Operation-State` 为权威值。上传错误体可附加平铺的 `upload_id`/`upload_state`/`upload_length`/`upload_offset`，但客户端以 `X-Xczs-Upload-Id`、`X-Xczs-Operation-State`、`X-Xczs-Upload-Length` 和 `X-Xczs-Upload-Offset` 为权威值；只有严格绑定的 `409`、精确 upload 状态/长度/偏移和合法 `X-Xczs-Target-Revision`/`X-Xczs-Target-Replaceable` 才能触发覆盖选择。前端不解析旧 `message`、纯文本、vendor JSON 或嵌套/驼峰扩展。详细字段和恢复枚举见 [README 的统一错误反馈](../README.md#统一错误反馈)。
+operation 错误体可附加平铺的 `operation_id`/`state`/`http_status`，但客户端以 `X-Xczs-Operation-Id` 和 `X-Xczs-Operation-State` 为权威值。上传错误体可附加平铺的 `upload_id`/`upload_state`/`upload_length`/`upload_offset`，但客户端以 `X-Xczs-Upload-Id`、`X-Xczs-Operation-State`、`X-Xczs-Upload-Length` 和 `X-Xczs-Upload-Offset` 为权威值；只有严格绑定的 `409`、精确 upload 状态/长度/偏移和合法 `X-Xczs-Target-Revision`/`X-Xczs-Target-Replaceable` 才能触发覆盖选择。前端不解析旧 `message`、纯文本、vendor JSON 或嵌套/驼峰扩展。详细字段和恢复枚举见 [统一错误反馈](ui-and-development.md#统一错误反馈)。
 
 Problem Details 只表示 Xczs 业务 API 失败，不改变成功资源表示；认证/CSRF 失败始终使用 xcss ErrorEnvelope。客户端按 HTTP 状态和经过共享合同验证的 auth.session_required/auth.csrf_rejected 分类，不使用私有认证响应头。HEAD 不发送正文，204 不增加 JSON。
 

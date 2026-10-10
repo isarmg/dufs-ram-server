@@ -407,7 +407,7 @@ RUST_BACKTRACE=1 cargo test --locked --lib 测试过滤词 -- --nocapture
 
 如果目标在集成测试中，把 `--lib` 换成明确的 `--test <target>`。只写一个名称过滤词会过滤运行的用例，但 Cargo 仍可能编译较广的测试 targets；显式选择 target 才能同时缩小编译范围。
 
-项目的自定义 logger 固定输出 INFO 及更高等级，不通过 `RUST_LOG=debug` 开启调试日志，见 [src/logger.rs](../../src/logger.rs)。访问日志支持把请求、用户、状态以及 operation ID/state 放在同一行。日志内容和运行参数见 [src/http_logger.rs](../../src/http_logger.rs) 与 [README](../../README.md#访问日志)。生产日志的保存、轮转和服务管理属于部署主题，见[第 9 章](09-deployment-security-and-operations.md)。
+项目的自定义 logger 固定输出 INFO 及更高等级，不通过 `RUST_LOG=debug` 开启调试日志，见 [src/logger.rs](../../src/logger.rs)。访问日志支持把请求、用户、状态以及 operation ID/state 放在同一行。日志内容和运行参数见 [src/http_logger.rs](../../src/http_logger.rs) 与 [访问日志说明](../ui-and-development.md#访问日志)。生产日志的保存、轮转和服务管理属于部署主题，见[第 9 章](09-deployment-security-and-operations.md)。
 
 测试输出很少时，不要立刻在生产代码到处添加永久日志。先使用 `--nocapture`、已有访问日志和更小的测试过滤器；确认缺少关键诊断后，再添加不会泄露密码、Cookie、CSRF、完整文件内容或内部绝对路径的有界日志。
 
