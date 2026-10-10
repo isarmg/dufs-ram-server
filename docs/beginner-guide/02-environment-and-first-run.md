@@ -81,8 +81,7 @@ target/x86_64-unknown-linux-gnu/release/xczs
 当前 xcss Rust/Web 依赖固定正式 1.0.0 的完整 revision、Release URL 和锁文件 integrity，无需相邻 xcss checkout。Xczs 1.0.0 的独立构建与发行验收由当前提交的 CI 与标签工作流执行。后续改动仍须通过发行门禁，不能仅凭本地编译成功宣称已发布，也不能复制认证、Schema 或 target 合同代替共享包。
 
 内嵌资源清单由 xcss 自动生成，覆盖 native 文件控制器与 React/font/icon/许可证资源；
-`web/dist/platform.d.ts` 是类型检查产物，不放入运行清单。调用 `xczs web-assets` 可以无配置、无业务
-副作用地查看 binary 的精确清单。
+TypeScript 检查使用 `noEmit`；运行资源由 Vite 构建到 `web/runtime-dist`。调用 `xczs web-assets` 可查看程序中的精确清单。
 
 开发热更新使用未绑定的开发 binary。设置 `XCSS_DEV_WEB_DIR` 为 `web/runtime-dist` 的绝对路径，并
 显式传入 `--development`。该模式只允许 loopback 监听，资源每次请求重新读取，支持新增 Vite chunk；

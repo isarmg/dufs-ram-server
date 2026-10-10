@@ -2,7 +2,7 @@
 
 本文以当前工作树（Cargo 版本 `1.0.0`）的实际代码为准，盘点 Xczs 当前所有对外可见、可配置，以及会显著影响安全性、正确性、性能和可维护性的功能。普通辅助函数和测试夹具不单独作为“功能”列出；最终发布身份必须以制品内 `xczs --version` 的完整 Git SHA 为准。
 
-本文的用途是帮助判断后续应该保留、简化还是删除哪些能力。它不是删除计划；没有得到明确选择前，本文不会改变任何现有功能。
+本页供功能设计和代码评审使用。日常操作请从[文档入口](README.md)选择安装、使用或排障指南。
 
 逐项开发决策请先查阅[规范化开发者决策矩阵](feature-decision-matrix.md)。矩阵为每项能力强制提供唯一 ID、代码锚点、规定分类、复杂度、删除后果和验证边界；本文继续承担完整协议语义与取舍背景。
 
@@ -34,16 +34,7 @@
 
 `Cargo.toml` 当前也没有可选 feature 组合；发布二进制会编译进全部现有模块。`--log-format=''` 或某个较小预算只能改变具体运行行为，不能视为已经从程序中移除对应能力。
 
-因此，若决定删除某项能力，应同时清理：
-
-- 浏览器入口和前端调用；
-- HTTP 路由与协议；
-- 命令行和 JSON 配置；
-- 后台维护与共享状态；
-- 直接依赖；
-- Rust、浏览器和文档测试。
-
-仅隐藏按钮不能视为已经删除功能，因为已认证客户端仍可能直接调用后端路由。
+变更功能时共同核对浏览器入口、路由、配置、状态、依赖和测试，记录用户影响；页面显示与后端能力分别验证。
 
 ### 1.4 覆盖范围与编号规则
 
@@ -173,9 +164,9 @@ Xczs 的认证唯一所有者是 xcss：受保护 JSON 经 `AuthConfig` 验证�
 | A-19 | 安全响应与资源 | xcss 响应 + administrator_web/assets | no-store、nosniff、同源外部脚本/字体、无 inline/eval |
 | A-20 | 已验证身份日志 | xcss VerifiedAdministrator + 产品访问日志 | 只记录验证后的 username；Cookie/CSRF/Authorization 脱敏 |
 
-xcss 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
+登录的正文、并发与失败预算由 xcss 统一提供，数值与来源判定见[运行参考](runtime-reference.md#请求与网关)。
 
-生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
+生产采用规范域名的同源 HTTPS，后端由网关独占访问；具体头部与来源规则见[运行参考](runtime-reference.md#请求与网关)。
 
 当前 xcss Rust/Web 固定正式 1.0.0 的完整 revision、Release tarball 与锁文件 integrity。Xczs 1.0.0 的独立构建和发行验收由当前提交的 CI 与标签工作流执行；独立发布不代表公开二进制带独立发布者签名。
 
@@ -402,17 +393,15 @@ xcss 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个
 | T-11 | 依赖安全审计 | `cargo audit` 固定为 0.22.2，并与 `npm audit --audit-level=high` 一起由 lockfile/manifest push、PR、每周计划及人工任务触发；Rust 审计显式 `--deny yanked`。发布只复用通过 canonical origin、HEAD/FETCH_HEAD、新鲜度、物理/Git/内容完整性检查的宿主 RustSec DB；alternates、不安全条目、untracked 或 tracked 内容/mode 漂移均拒绝。数据库以无硬链接私有 clone 封存 revision/fetch epoch/index/config；否则在任何项目/依赖代码前用 dummy lockfile 联网刷新。先执行 sealed `--no-fetch --no-yanked` advisory pre-audit，再用私有 Cargo home `fetch --locked` 填充覆盖完整锁图的 crates.io 索引项并执行 `--deny yanked`，随后以必填 `XCZS_QUALITY_AUDIT_DB` 交给 `scripts/check.sh`，在任何构建、测试或依赖安装前复审；预审计和 yanked 检查后重验封存，完整门后随质量树销毁数据库。制品清单只记录 revision/fetch epoch | 无法及时发现已知漏洞或已撤回依赖；空 crates.io 索引会让 cargo-audit 只打印无法检查而仍返回成功，因此覆盖完整锁图的私有索引项也是绿色结论的必要输入；直接复用可变、过期、内容漂移或来源不明的数据库会破坏时间、来源和完整性证据 | 开发运维 |
 | T-12 | 统一质量与部署门禁 | `scripts/check.sh` 运行 Rustfmt、Clippy `-D warnings`、全 targets/features 测试、固定 `cargo-llvm-cov 0.8.6` 且行覆盖率不低于 70%、Cargo/npm 审计、固定 ESLint 与 `no-unsanitized` 的语法/格式/常见浏览器安全规则及边界单测、TypeScript 7.0.2 strict 全生产源码类型检查、支持围栏代码与 symlink fail-closed 的 Markdown 链接/锚点检查、含固定 `@axe-core/playwright 4.13.0` WCAG A/AA 扫描的双浏览器测试、生产解析器 JSON 校验、systemd/nginx 语法及隔离的真实 nginx 行为测试，并执行发布 no-clobber、Git 来源替换、归档树、SPDX notice、签名算法矩阵/失败传播和 lockfile npm cache 播种自测。统一入口自动发现 `scripts/` 与 `tests/` 中未忽略的 Shell 源，逐文件执行 `bash -n`，安装 ShellCheck 时再执行 warning 门；CI 固定安装并强制使用 0.11.0。外部/解析输入保持 `unknown` 并由类型守卫收窄，生产源码不保留显式或隐式 `any`。部署 fixture 的真实 checkout 路径包含空格、`&`、`#` 和反斜杠，运行副本再使用安全名称 | 仍可手工执行，但容易漏项或让文档/部署示例与代码漂移；ESLint 规则用于正常维护中的常见误用，不是完整跨过程别名或污点证明；严格 TypeScript 检查不等价于运行时守卫或通用 CommonMark parser。本地缺少 ShellCheck 时会明确跳过以保持离线可用，强制性由 CI 提供 | 开发运维 |
 | T-13 | 100000 项手工基准 | 默认忽略，按需创建真实超大目录检查第一页性能 | 删除不影响正确性，但失去大目录回归基线 | 开发运维 |
-| T-14 | 可验证本地发布 | release profile 使用 `opt-level=3`、LTO、单 codegen unit、`panic=abort` 和 strip；脚本要求干净 worktree、Cargo 版本与精确指向 HEAD 的 tag。完整 `scripts/check-release.sh` 在已验证 commit archive 的无 Git 私有副本中以清空环境、独立 Cargo/npm/target/tmp 执行；Cargo vendor 后离线，npm cache 只按 lockfile HTTPS+SHA-512 播种并 prefer-offline。门禁后用 snapshot index 复验 tracked 内容/mode 并拒绝非忽略新增路径，丢弃质量树，再 fresh extract 构建；签名/发布前继续复核 exact source。所有源码树拒绝 symlink、submodule 和特殊文件，只从摘要锁定 bare façade 归档，前后构建/打包 archive 的 commit、树、mode、额外路径和 SHA-256 均复核。固定 `cargo-cyclonedx 0.5.9` 离线生成规范化 SBOM，source revision 只接受恰为 40 或 64 位的小写十六进制对象 ID；第三方 notice 要求每个 vendored 可达非开发依赖有非空、经审核的 SPDX `license` 表达式，再解析审核清单内 SPDX AST 并要求完整 permissive 分支。`license_file` 仅收集依赖自身 no-follow UTF-8 许可证文本，不能替代缺失表达式或作为分类 fallback，项目许可证也不作正文 fallback。Rust 1.99.0 标准库 notice 还须匹配审核摘要。`BUILD-ENVIRONMENT.txt` 记录完整 SHA/版本/epoch/target 和实际 Bash、Rust/Cargo、Node/npm、Git、OpenSSL、归档/coreutils 版本。该清单、SBOM、项目许可证、两类 notice 和包内文件均进 checksum；签名密钥最后才短暂打开，并只允许 Ed25519、Ed448、RSA ≥3072 bit 或 `prime256v1`/`secp384r1`/`secp521r1` ECDSA，其他算法/强度失败关闭。输出目录须为当前 UID 所有且 group/other 不可写，经目录 fd 独占锁和 `/proc/self/fd` 锚定；私有 stage 与目标必须同文件系统，并依赖支持 `--update=none --no-copy` 的 GNU `mv` 做原子 no-clobber 发布，且以 source 必须消失的后置条件把静默碰撞变为失败 | 删除会失去源码到制品的可追踪性、依赖/许可清单、密钥强度底线和隔离验收流程。npm 缺失包/审计仍可能联网，环境清单只记录事实而不钉扎宿主工具，SBOM 规范化不等于完整 CycloneDX schema 验证；晚打开只缩短同 UID 暴露面，正式签名仍需独立账号、主机或 HSM | 开发运维 |
-| T-15 | Node、浏览器与宿主工具边界 | `.node-version`、`package.json` 根 engine、根 lockfile engine 和全部 Node 工作流共同锁定当前唯一支持的 Node 26.7.0；文档门交叉核对这些声明并含旧版本、格式漂移和工作流旁路负例。`scripts/check.sh` 与独立的正式打包入口都在任何审计、构建或依赖代码前验证 `.node-version` 是内容精确为 `26.7.0\n` 的实体普通文件，并要求 `node --version` 完整输出精确为 `v26.7.0`，不接受 npm 只告警的 engine mismatch。发布支持树也携带该版本基准并重新验收。`package-lock.json` 另精确锁定 Playwright 1.63.0、`@axe-core/playwright` 4.13.0、ESLint 10.11.0、`eslint-plugin-no-unsanitized` 4.1.5、JSON 2.9.1 和 TypeScript 7.0.2；远程工作流固定 Rust 1.99.0、ShellCheck 0.11.0、cargo-audit 0.22.2 及 ShellCheck 归档 SHA-256。静态、Rust、浏览器、审计、性能和 release binary job 使用 `ubuntu-24.04`；需要 nginx 1.25.1+ 的质量与正式包 E2E 使用 x64 `ubuntu-26.04` preview，所有关键 job 记录实际 runner image 和工具版本。正式包另以 `BUILD-ENVIRONMENT.txt` v1 记录实际发布工具和 RustSec DB 身份。本地 ShellCheck、npm、nginx、systemd、OpenSSL、Bash、Git、curl、GNU tar/gzip/coreutils、util-linux `flock` 和可选 Edge 的版本未由仓库统一钉死 | 删除任一本地入口的运行时校验会让错误 Node 在 npm 仅告警后继续执行并制造假绿；删除 `.node-version` 或任一声明会让开发机、包内检查和 CI 失去交叉核对基准，文档门应立即失败。删除 lockfile 会让前端门禁漂移；环境清单只支持追溯，不会把“固定 CI 关键工具”或一次记录变成整条宿主链逐包可重复；26.04 preview 的调度或镜像回归会阻断质量/正式包 E2E，但不得因此回退旧 nginx 语法；仍须复验 GitHub runner 镜像和本地宿主工具 | 开发运维 |
-| T-16 | 支持版本与私密报告策略 | 安全修复在当前源码树开发，但 dirty worktree 或仓库 HEAD 不自动成为受支持二进制；仅按 exact tag、checksum 和签名流程生成的最新正式制品受支持，正式发布前不声明任何受支持二进制。漏洞应通过供应方的私密安全/事件通道报告，提供受影响版本和 `xczs --version` 的完整 Git SHA，并对配置、路径和凭据材料脱敏；发行方必须随二进制公布实际受监控的私密联系地址，公开上游 issue 不视为保密渠道 | 删除明确策略会混淆源码审查、正式制品和下游修改版的支持责任，也可能把敏感报告泄露到公开渠道 | 开发运维 |
-| T-17 | 只读分层远程 CI | `.github/workflows/read-only-ci.yml` 仅使用 `pull_request`、`push` 和人工触发，权限为 `contents: read`，checkout 不持久化凭据，Action 固定完整 commit SHA。静态层以唯一当前 Node 26.7.0 运行 Shell/JS/type/docs，Rust 层运行 fmt/Clippy/test，质量层独立报告覆盖率、部署、发布脚本自测和 release binary smoke，浏览器层独立矩阵运行 Chromium 与 Firefox；静态、Rust 和浏览器用稳定 `ubuntu-24.04`，含现代 nginx 部署验证的质量层用 x64 `ubuntu-26.04` preview；不接收发布密钥、不创建 tag/release、不上传制品 | 删除后仍可运行权威本地门，但会失去每次远程变更的分层反馈；把该门当正式发布会绕过审计、exact-tag、签名和原子发布链；preview runner 不可用时质量结论不可用，不能跳过质量 job 合并 | 开发运维 |
-| T-18 | 可选完整签名包 E2E | `.github/workflows/formal-release-e2e.yml` 可人工触发，以只读权限在隔离 clone 中建立精确标签、生成临时 Ed25519 key 并运行完整 `package-release.sh`；独立核验归档、SBOM、签名、公钥、包内摘要及完整版本/SHA。标签便捷 Release 保留精确源码、依赖审计、release 构建和摘要检查，不等待该扩展验收 | 临时测试密钥只证明打包流程，不构成生产信任根；便捷 Release 的 SHA-256 也不是独立发布者签名 | 开发运维 |
+| T-14 | 可验证本地发布 | 完整质量门、精确源码快照、隔离依赖审计、SBOM/许可证、强算法签名及原子发布；细节见[发行指南](releasing.md) | 改动需保持源码、依赖和产物对应，签名由隔离身份或主机管理 | 开发运维 |
+| T-15 | 工具链与宿主记录 | Node 26.7.0、Rust 1.99.0 与锁定前端工具由各构建入口核对；完整运行包记录实际构建环境，源码 `.node-version` 是工具链基准 | 更换工具后重新执行平台和发行验证，记录宿主差异 | 开发运维 |
+| T-16 | 制品身份与私密报告 | 程序完整 SHA、checksum 和发行身份定位问题；安全报告提供脱敏复现和实际版本 | 明确发布者与报告渠道，保护配置和用户内容 | 开发运维 |
+| T-17 | 只读分层 CI | Rust、静态、质量与双浏览器回归分别报告，工作流权限及平台见[发行指南](releasing.md#ci-与发行通道) | 保持各层结果可追溯，目标环境失败时修复或报告 | 开发运维 |
+| T-18 | 完整签名包 E2E | 只读工作流用临时 Ed25519 key 验证打包、签名和清单 | 临时测试签名与生产信任分别管理 | 开发运维 |
 
 T-12 的覆盖率门要求仓库总行覆盖率至少 70%，并保留逐文件报告供审查。日常开发门不重复运行插桩测试。
 
-T-14 的原子 no-clobber 保证要求发布文件系统支持 Linux `RENAME_NOREPLACE`。脚本只在 source 消失、destination 是实体目录且设备号/inode 与移动前 source 相同时确认发布；`--update=none` 静默跳过、身份不符或不完整移动都会失败。
-
-T-14 的发布顺序还包含 RustSec 输入封存：宿主 DB 通过完整验证或在任何项目/依赖代码前用 dummy lockfile 私有刷新，随后执行 sealed `--no-fetch --no-yanked` advisory pre-audit；私有 Cargo home 再用 `fetch --locked` 取得完整锁图所需的 crates.io 索引项，执行 `--deny yanked` 后才进入 vendor；该 Cargo home 每次全新创建，因此正式打包当前要求 registry 网络可达。`scripts/check.sh` 要求同一 `XCZS_QUALITY_AUDIT_DB` 并把审计放在其他项目/依赖步骤之前。封存时校验 seal 与新鲜度，pre-audit 和 yanked 检查后复核相同 revision/index/config；完整质量门后同时复核 seal 与新鲜度，随后销毁质量树和该 RustSec 数据库。`BUILD-ENVIRONMENT.txt` 当前使用 `xczs-build-environment-v1`，除既有工具字段外记录 cargo-audit 版本、RustSec advisory DB revision 和最近 fetch epoch，但不记录内部 index/config seal 摘要。包内文档检查先完成，`SHA256SUMS` 才作为最后一次内容变更生成；之后只读复核递归覆盖。`--self-test` 另验证深层 sentinel、篡改失败、两次归档一致和解包往返，T-18 再覆盖未缩短的真实正式入口。部署门中的 systemd 只使用占位 `ExecStart` 做静态验证，真实 nginx 连接的是 mock upstream，不等价于生产 systemd+Xczs+nginx 联合启动。
+T-14 的依赖审计、文件系统原子发布、签名隔离和制品检查统一见[发行指南](releasing.md)。部署测试使用隔离 nginx 与模拟上游、静态 systemd 验证；正式主机还需实际启动和文件操作验收。
 
 ## 15. HTTP 入口总表
 
@@ -483,7 +472,7 @@ browser API JSON 中的 `path`、`source`、`directory` 与 `name` 已经是逻�
 这些内容不是隐藏功能，判断取舍时应同时了解：
 
 1. xcss 当前密码合同是 12～1024 个 UTF-8 字节且不含 ASCII 控制字符，并固定当前 Argon2id 参数；它没有字符类别或强制熵规则，管理员仍应使用高熵密码管理流程。
-2. xcss 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
+2. 登录的正文、并发与失败预算由 xcss 统一提供，数值与来源判定见[运行参考](runtime-reference.md#请求与网关)。
 3. xcss Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
 4. 公开 `/healthz` 只证明进程和路由能响应；公开 `/readyz` 返回最近一次有界探针汇总；后台探针在启动时及每 5 秒通过开始监听前固定打开的私有隐藏文件执行写入、同步和读回，不改变共享根目录时间戳，还会在当前 SQLite actor 连接中执行回滚写事务。它仍不执行 rename，也不预测目标冲突、上传/purge 容量等全部业务准入，因此不能替代完整 CRUD 冒烟和备份恢复演练。
 5. `$remote_addr` 与应用限流来源均为 TCP peer；代理头不能覆盖。网关必须独立按真实客户端 IP 限速，并阻止绕过网关。

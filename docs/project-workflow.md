@@ -62,7 +62,7 @@ Xczs 的认证唯一所有者是 xcss：受保护 JSON 经 `AuthConfig` 验证�
 
 三个唯一端点是 POST /api/v1/auth/login、GET /api/v1/auth/session、POST /api/v1/auth/logout。登录只接受恰好 username/password 的 JSON；wire 形状错误为 400，错误凭据为 401。成功返回 authenticated、user_id、username、role=admin、csrf_token 五字段合同。认证和 CSRF 失败统一为 xcss ErrorEnvelope，不按产品路由改写成 Problem Details。
 
-xcss 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
+登录的正文、并发与失败预算由 xcss 统一提供，数值与来源判定见[运行参考](runtime-reference.md#请求与网关)。
 
 xcss Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
 

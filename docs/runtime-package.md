@@ -1,8 +1,12 @@
-# Xczs 运行包
+# xczs 完整运行包
 
-本目录是可直接部署的 Xczs 运行包。它包含服务端二进制、配置与网关样例、许可证、依赖清单、SBOM、构建记录和校验文件。Web 资源全部嵌入二进制，`WEB-ASSETS.json` 记录资源路径、大小、MIME 和 SHA256，并与其他文件一起受到签名校验保护。完整源码、开发测试及教学手册位于与 `BUILD-ENVIRONMENT.txt` 中 `source_sha` 对应的项目仓库提交。
+本包包含 `xczs`、`config/`、`deploy/`、本手册、许可证、SBOM、依赖清单、构建记录和校验文件。
+Web 资源已内嵌；源码、测试和完整手册通过 `BUILD-ENVIRONMENT.txt` 的 `source_sha` 定位。
+运行平台为 Linux AMD64 GNU，需匹配 glibc/动态加载器并提供内核 `openat2`。
 
-部署前先验证包内完整性：
+## 1. 检查完整性
+
+先按发布渠道提供的信任方式验证外层签名与归档摘要，解压后在包根目录执行：
 
 ```sh
 sha256sum --check SHA256SUMS
@@ -10,6 +14,42 @@ sha256sum --check SHA256SUMS
 ./xczs web-assets | cmp - WEB-ASSETS.json
 ```
 
-`web-assets` 只输出内嵌清单，不启动服务或读取配置。运行包不需要额外的 Web 目录。
+校验成功，程序身份与预期源码 SHA 一致后继续。`web-assets` 只输出清单，不启动服务。
 
-复制 `config/xczs.json` 并在共享根之外保存实际配置，权限设为 `0600`。先用 `./xczs hash-password` 生成管理员密码哈希，再按环境修改共享根、状态目录和监听地址。显式执行 `./xczs init --config /absolute/private/xczs.json` 创建管理员状态与数据库；运行使用 `./xczs run --config /absolute/private/xczs.json`，不会初始化空实例。浏览器会话要求 HTTPS；生产边界应使用 `deploy/` 中经过项目检查的 systemd 与 nginx 样例，并按实际主机名、证书和回源地址调整。
+## 2. 准备配置
+
+创建专用 `xczs` 用户和同名组；以下系统安装命令由 root 执行：
+
+```sh
+install -d -o root -g root -m 0755 /opt/xczs/bin
+install -d -o root -g xczs -m 0750 /etc/xczs
+install -d -o xczs -g xczs -m 0700 /var/lib/xczs
+install -d -o xczs -g xczs -m 0750 /srv/xczs
+install -o root -g root -m 0755 xczs /opt/xczs/bin/xczs
+install -o root -g xczs -m 0640 config/xczs.json.example /etc/xczs/xczs.json
+/opt/xczs/bin/xczs hash-password
+```
+
+编辑 `/etc/xczs/xczs.json`，填入完整密码哈希并核对共享根、私有状态目录、监听地址。
+配置位于共享根之外，为无扩展 access ACL 的单硬链接普通文件。共享根和状态目录分别管理，根由 xczs 独占写入。
+
+## 3. 初始化并运行
+
+```sh
+sudo -u xczs /opt/xczs/bin/xczs init --config /etc/xczs/xczs.json
+sudo -u xczs /opt/xczs/bin/xczs config validate --config /etc/xczs/xczs.json
+sudo -u xczs /opt/xczs/bin/xczs run --config /etc/xczs/xczs.json
+```
+
+`init` 只用于全新状态；已有实例执行校验并运行。当前状态库绑定共享根身份，已有实例保留同一组根与状态。
+
+## 4. 通过 HTTPS 使用
+
+按实际域名和证书修改 `deploy/nginx-xczs.conf` 与代理片段，将 HTTPS 请求转发到配置的回环监听地址。
+样例要求 nginx 1.25.1+。只允许网关访问后端。浏览器经 HTTPS 登录后上传并下载测试文件，核对实际内容。
+需要常驻服务时安装 `deploy/xczs.service`，先检查 `systemd-analyze verify` 和 `nginx -t`，再启用服务。
+
+服务诊断使用 `xczs status --config /etc/xczs/xczs.json --json` 和 systemd Journal。
+操作结果未确认时先检查任务与目标文件，保留状态数据库、上传目录和隔离对象。
+
+完整配置、安装和排障步骤见 [项目文档](https://github.com/isarmg/xczs/blob/main/docs/README.md)，应选择与包内源码 SHA 对应的提交阅读。

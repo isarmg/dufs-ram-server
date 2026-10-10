@@ -1,25 +1,20 @@
-# Xczs 文档导航
+# xczs 文档
 
-本目录保存当前实现的功能、协议、开发和运维说明。修改代码时，应同步核对源码、测试和对应文档。
+从浏览器管理自己的文件：先部署单个服务进程，再通过 HTTPS 登录。
 
-## 当前规范
+## 开始使用
 
-- [项目工作流程与流程树](project-workflow.md)：启动、认证、路由、文件操作、上传和停机流程。
-- [HTTP 与运行时合同](http-runtime-contract.md)：路由、安全预算、xcss 边界与验证入口。
-- [完整功能与取舍清单](feature-inventory-and-tradeoffs.md)：功能边界、依赖关系和删除成本。
-- [开发者决策矩阵](feature-decision-matrix.md)：逐项唯一 ID、代码锚点、分类、复杂度、删除后果与验证边界。
-- [生产部署与运行诊断](operations.md)：生产环境的权威操作说明。
-- [界面、操作反馈与开发](ui-and-development.md)：标签交互、导航、日志、错误处理与开发验证。
-- [根目录 README](../README.md)：项目简介、功能、平台和部署入口。
+1. [安装与首次运行](getting-started.md)：选择二进制或源码、准备目录、初始化并登录。
+2. [文件和标签操作](usage.md)：浏览、上传、续传、下载、移动、标签和删除。
+3. [配置与服务命令](cli.md)：JSON、环境变量、初始化、校验和状态。
+4. [部署与日常运维](operations.md)：systemd、网关、监控及数据维护。
+5. [故障排查](troubleshooting.md)：启动、登录、上传结果与文件状态。
 
-## 教学资料
+## 开发与参考
 
-- [从零读懂 Xczs](beginner-guide/README.md)：面向初学者的十章教程和源码阅读路线。
-
-教程为了建立直觉会使用简化例子；涉及安全边界、故障语义或生产参数时，应回到当前规范和测试核对。
-
-安全模型、漏洞报告、备份恢复和事件响应统一归入[运维文档](operations.md)，避免并行文档产生事实漂移。
-
-当前发行说明：[版本 1.0.0](releases/1.0.0.md)。
-
-公共支撑的职责、单体依赖、平台边界与验证方法见[公共支撑说明](common-support.md)。
+- [界面与开发验证](ui-and-development.md)、[从零读懂 xczs](beginner-guide/README.md)。
+- [请求与上传流程](project-workflow.md)、[HTTP 参考](http-runtime-contract.md)、[持久状态参考](runtime-reference.md)。
+- [构建与发行验证](releasing.md)、[完整运行包说明](runtime-package.md)。
+- [功能设计参考](feature-inventory-and-tradeoffs.md)、[设计决策矩阵](feature-decision-matrix.md)。
+- [账号设置](account-settings.md)、[仓库职责](repository-boundary.md)、[公共支撑](common-support.md)、[安全审查](unsafe-audit.md)。
+- [1.0.0 发行记录](releases/1.0.0.md)、[项目首页](../README.md)。
