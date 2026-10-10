@@ -27,3 +27,8 @@ Node 文档格式/本地链接（55 文件）及独立性检查已通过；Rust/
 此前历史 Web 输入的静态验收覆盖 Vite 生产构建、严格 TypeScript、JavaScript 规则、字体校验及文档/独立性检查；这些原始结果不代替当前单体包和最终制品的实际验收。49 项前端/脚本单测中 48 项本机通过，余下一项 release-archive Shell 测试受 macOS Bash 3 缺 `mapfile` 限制，保留 Linux CI 原测试，未降低门禁。
 
 最终正式 Web 输出参与的 Linux AMD64 目标、全部 targets/features Clippy `-D warnings` 已通过；它是交叉静态验证，原生 Linux 行为及正式包结果仍由实际 CI/发行门确认。
+
+
+## 2026-10-10 xcss 1.0.1 输入更新
+
+当前 Rust/Web 共享输入已同步更新为正式 `xcss 1.0.1`：Rust 固定 Git 修订 `fd90ca39b8f03359a0ba92e182f7d84bc7c1a315`，Web 固定同版官方 `xcss-web-1.0.1.tgz` URL 和真实归档 SHA-512 integrity。上文 xcss 旧版制品与验收描述保留为历史记录，不代表新输入已经完成相同的原生或浏览器验收。当前已完成新修订的 manifest/source/schema/web 一致性校验、锁定 npm 安装和内嵌 Web 重建；最终产品 CI 与发行资产另行核验。
