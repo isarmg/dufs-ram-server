@@ -219,6 +219,8 @@ export function createDirectoryListing(options: DirectoryListingOptions) {
       return;
     }
     const focusAnchor = captureListingFocus();
+    // Search and browser history mutate params without recreating this controller.
+    renderHead();
     revision++;
     if (loading) {
       refreshAfterLoad = true;

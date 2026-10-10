@@ -413,3 +413,22 @@ test("Large directories limit DOM entries with an accessible window", async ({ a
   }
   expect(requests.map(request => request.method())).toEqual(["POST", "DELETE", "POST"]);
 });
+
+test("Sorting retains filters changed within the current document and after Back", async ({ appPage: page }) => {
+  const search = page.getByLabel("Search files or folders");
+  await search.fill("existing");
+  await search.press("Enter");
+  await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("existing");
+  let size = page.locator(".paths-table thead .cell-size a");
+  await expect.poll(async () => new URL(await size.getAttribute("href"), page.url()).searchParams.get("q")).toBe("existing");
+  await search.fill("download");
+  await search.press("Enter");
+  await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("download");
+  await page.goBack();
+  await expect(search).toHaveValue("existing");
+  size = page.locator(".paths-table thead .cell-size a");
+  await expect.poll(async () => new URL(await size.getAttribute("href"), page.url()).searchParams.get("q")).toBe("existing");
+  await size.click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("sort")).toBe("size");
+  expect(new URL(page.url()).searchParams.get("q")).toBe("existing");
+});
