@@ -17,6 +17,8 @@ xczs status --config /absolute/config.json --data-dir /absolute/data --json
 
 `config validate` 用私有 SQLite 快照检验状态库和标签库，并只读验证静态管理员文件；原库、WAL、SHM 和业务文件保持不变。`status` 查询当前监听地址的 `/readyz`，核对服务身份和真实业务就绪；端口占用、其他服务、连接失败或未就绪均返回非零退出码。`--json` 输出单个机器记录；失败返回稳定 `code/message/details` 错误记录。帮助和版本查询不要求初始化。
 
+服务运行时，活动写事务可能使 `config validate --json` 返回 `snapshot.busy`；快照采集前后发生正常数据库提交、WAL 更新或 journal 创建、移除时，可能返回 `snapshot.source_changed`。这两个错误的 `retryable` 为 `true`，本次检查仍以非零退出码结束；应等待写入停止后重新执行原命令，不能据此重置数据。检查仍会拒绝文件身份、权限、链接或结构不符的状态；不能把其他错误一律当成并发写入重试。
+
 共享配置、命令、快照与日志均固定到同一 xcss Git 完整提交和精确版本；Web 包使用封存制品的真实 SHA-512 完整性。每次正式发行从这些精确输入独立构建并验证最终制品，源码检查和 Linux 发行物验收分别记录。
 
 Xczs 使用 `serve_path`、`data_dir`、`auth` 等 snake_case JSON 字段；命令行共享根为 `--serve-path /absolute/shared-root`。状态目录与共享根均需完整备份；人工标签、管理员文件和上传/操作状态不可由文件扫描恢复。

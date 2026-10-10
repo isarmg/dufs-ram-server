@@ -83,6 +83,8 @@ SQLite 提交与共享根中的 mkdir、rename、文件同步和目录 `fsync` �
 
 上传任务是否可能产生未知结果，取决于是否通过首次 mutation 边界。任务可以在持有路径租约和上传槽时只读查询 owner 会话、目标 identity/metadata 与空间状态；创建祖先或 stage、截断既有 stage、更新 SQLite 会话或接收正文等首次 mutation 必须先通过一个与总 deadline 原子竞争的边界。deadline 先赢会关闭边界并 abort 任务，返回绑定的 `408 request_timeout + not-started + retry`；只读准备中逸出的超时类错误同样返回 `408`，其他未处理 I/O 返回 `503 upload_precommit_failed + not-started + retry`。边界关闭后任务不能稍后恢复并写入。若 mutation 先赢，随后外层 deadline 或未处理错误才是 `unknown + query_upload`。运维自动化不要只按 HTTP `408/503` 重放；仍应遵守响应中的 upload state/recovery，并以原 ID 做 owner-scoped HEAD，因为 `not-started` 不排除更早请求留下的检查点或终态。
 
+只读的 `config validate` 只打开经过验证的私有快照，不打开原路径的业务连接。在线写入导致主库或辅助文件的正常数据代际变化时，本次诊断仍失败，并返回可重试的 `snapshot.source_changed`；活动写事务返回 `snapshot.busy`。等待写入停止后重新执行检查即可，不能通过删除数据库处理这类瞬时错误。文件替换、权限和链接异常仍受身份检查约束；启动及修改路径继续使用严格复核。错误记录和命令作用见[当前服务命令](cli.md)。
+
 ### 1.2 上传预检与条件覆盖
 
 首方浏览器在批次入队前向 `POST /__xczs__/api/upload/preflight` 提交最终绝对逻辑路径。一次请求必须包含 1～512 个互不重复的路径，解码后的路径 UTF-8 总量最多 256 KiB，JSON wire body 最多 2 MiB；响应按原顺序返回 `path`、`exists`、`replaceable` 和可选 `revision`。没有已存在目标时不会弹出确认；已存在且可替换的文件才进入覆盖/跳过/取消对话框，不能替换的目标不会自动覆盖。预检是有界观察，不是锁定文件系统的事务；提交时仍须执行 no-replace 或 identity 条件检查。

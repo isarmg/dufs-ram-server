@@ -103,6 +103,44 @@ impl SidecarMetadataSnapshot {
     }
 }
 
+/// A generation change is separate from an anchored file's security identity.
+/// Read-only diagnostics defer that classification until every guard is checked.
+fn compare_guard_metadata(
+    expected: SidecarMetadataSnapshot,
+    actual: SidecarMetadataSnapshot,
+    allow_generation_change: bool,
+    diagnostic: &str,
+) -> Result<bool> {
+    ensure!(
+        expected.device == actual.device
+            && expected.inode == actual.inode
+            && expected.mode == actual.mode
+            && expected.links == actual.links
+            && expected.uid == actual.uid
+            && expected.gid == actual.gid,
+        "{diagnostic}"
+    );
+    let changed = actual != expected;
+    ensure!(allow_generation_change || !changed, "{diagnostic}");
+    Ok(changed)
+}
+
+fn require_private_sidecar_security(
+    path: &Path,
+    metadata: &fs::Metadata,
+    database: SidecarMetadataSnapshot,
+) -> Result<()> {
+    validate_sidecar_metadata(path, metadata)?;
+    ensure!(
+        metadata.mode() == database.mode
+            && metadata.uid() == database.uid
+            && metadata.gid() == database.gid,
+        "SQLite sidecar `{}` does not match the private database ownership and permissions",
+        path.display()
+    );
+    Ok(())
+}
+
 struct MainDatabaseGuard {
     path: PathBuf,
     file: File,
@@ -111,6 +149,17 @@ struct MainDatabaseGuard {
 
 impl MainDatabaseGuard {
     fn inspect(path: &Path) -> Result<Self> {
+        Ok(Self::inspect_with_generation_policy(path, false)?.0)
+    }
+
+    fn inspect_read_only(path: &Path) -> Result<(Self, bool)> {
+        Self::inspect_with_generation_policy(path, true)
+    }
+
+    fn inspect_with_generation_policy(
+        path: &Path,
+        allow_generation_change: bool,
+    ) -> Result<(Self, bool)> {
         let path_metadata = fs::symlink_metadata(path)
             .with_context(|| format!("Failed to inspect state database `{}`", path.display()))?;
         validate_main_database_metadata(path, &path_metadata)?;
@@ -131,19 +180,34 @@ impl MainDatabaseGuard {
         })?;
         validate_main_database_metadata(path, &opened_metadata)?;
         let snapshot = SidecarMetadataSnapshot::from_metadata(&opened_metadata);
-        ensure!(
-            SidecarMetadataSnapshot::from_metadata(&path_metadata) == snapshot,
-            "State database `{}` was replaced while it was being inspected",
-            path.display()
-        );
-        Ok(Self {
-            path: path.to_path_buf(),
-            file,
+        let changed = compare_guard_metadata(
+            SidecarMetadataSnapshot::from_metadata(&path_metadata),
             snapshot,
-        })
+            allow_generation_change,
+            &format!(
+                "State database `{}` was replaced while it was being inspected",
+                path.display()
+            ),
+        )?;
+        Ok((
+            Self {
+                path: path.to_path_buf(),
+                file,
+                snapshot,
+            },
+            changed,
+        ))
     }
 
     fn revalidate(&self) -> Result<()> {
+        self.revalidate_with_generation_policy(false).map(|_| ())
+    }
+
+    fn revalidate_read_only(&self) -> Result<bool> {
+        self.revalidate_with_generation_policy(true)
+    }
+
+    fn revalidate_with_generation_policy(&self, allow_generation_change: bool) -> Result<bool> {
         let opened_metadata = self.file.metadata().with_context(|| {
             format!(
                 "Failed to re-inspect opened state database `{}`",
@@ -151,11 +215,15 @@ impl MainDatabaseGuard {
             )
         })?;
         validate_main_database_metadata(&self.path, &opened_metadata)?;
-        ensure!(
-            SidecarMetadataSnapshot::from_metadata(&opened_metadata) == self.snapshot,
-            "Opened state database `{}` changed identity or metadata",
-            self.path.display()
-        );
+        let mut changed = compare_guard_metadata(
+            self.snapshot,
+            SidecarMetadataSnapshot::from_metadata(&opened_metadata),
+            allow_generation_change,
+            &format!(
+                "Opened state database `{}` changed identity or metadata",
+                self.path.display()
+            ),
+        )?;
         let path_metadata = fs::symlink_metadata(&self.path).with_context(|| {
             format!(
                 "State database `{}` disappeared or was replaced after validation",
@@ -163,12 +231,16 @@ impl MainDatabaseGuard {
             )
         })?;
         validate_main_database_metadata(&self.path, &path_metadata)?;
-        ensure!(
-            SidecarMetadataSnapshot::from_metadata(&path_metadata) == self.snapshot,
-            "State database `{}` was replaced after validation",
-            self.path.display()
-        );
-        Ok(())
+        changed |= compare_guard_metadata(
+            self.snapshot,
+            SidecarMetadataSnapshot::from_metadata(&path_metadata),
+            allow_generation_change,
+            &format!(
+                "State database `{}` was replaced after validation",
+                self.path.display()
+            ),
+        )?;
+        Ok(changed)
     }
 }
 
@@ -191,7 +263,22 @@ enum SqliteSidecarState {
 
 impl SqliteSidecarGuard {
     fn inspect(database_path: &Path) -> Result<Self> {
+        Ok(Self::inspect_with_security(database_path, None)?.0)
+    }
+
+    fn inspect_read_only(
+        database_path: &Path,
+        security: SidecarMetadataSnapshot,
+    ) -> Result<(Self, bool)> {
+        Self::inspect_with_security(database_path, Some(security))
+    }
+
+    fn inspect_with_security(
+        database_path: &Path,
+        security: Option<SidecarMetadataSnapshot>,
+    ) -> Result<(Self, bool)> {
         let mut entries = Vec::with_capacity(SQLITE_SIDECAR_SUFFIXES.len());
+        let mut changed = false;
         for suffix in SQLITE_SIDECAR_SUFFIXES {
             let path = sqlite_sidecar_path(database_path, suffix);
             let state = match fs::symlink_metadata(&path) {
@@ -216,11 +303,15 @@ impl SqliteSidecarGuard {
                     validate_sidecar_metadata(&path, &opened_metadata)?;
                     let expected = SidecarMetadataSnapshot::from_metadata(&metadata);
                     let opened = SidecarMetadataSnapshot::from_metadata(&opened_metadata);
-                    ensure!(
-                        opened == expected,
-                        "SQLite sidecar `{}` was replaced while it was being inspected",
-                        path.display()
-                    );
+                    changed |= compare_guard_metadata(
+                        expected,
+                        opened,
+                        security.is_some(),
+                        &format!(
+                            "SQLite sidecar `{}` was replaced while it was being inspected",
+                            path.display()
+                        ),
+                    )?;
                     SqliteSidecarState::Present {
                         file,
                         snapshot: opened,
@@ -236,19 +327,64 @@ impl SqliteSidecarGuard {
             entries.push(SqliteSidecarEntry { path, state });
         }
         let guard = Self { entries };
-        guard.revalidate()?;
-        Ok(guard)
+        changed |= guard.revalidate_with_security(security)?;
+        Ok((guard, changed))
     }
 
     fn revalidate(&self) -> Result<()> {
+        self.revalidate_with_security(None).map(|_| ())
+    }
+
+    fn revalidate_read_only(&self, security: SidecarMetadataSnapshot) -> Result<bool> {
+        self.revalidate_with_security(Some(security))
+    }
+
+    fn revalidate_with_security(&self, security: Option<SidecarMetadataSnapshot>) -> Result<bool> {
+        let mut changed = false;
         for entry in &self.entries {
             match &entry.state {
                 SqliteSidecarState::Absent => match fs::symlink_metadata(&entry.path) {
                     Err(error) if error.kind() == ErrorKind::NotFound => {}
-                    Ok(_) => bail!(
-                        "SQLite sidecar `{}` appeared or was replaced after validation",
-                        entry.path.display()
-                    ),
+                    Ok(metadata) => {
+                        let Some(security) = security else {
+                            bail!(
+                                "SQLite sidecar `{}` appeared or was replaced after validation",
+                                entry.path.display()
+                            );
+                        };
+                        require_private_sidecar_security(&entry.path, &metadata, security)?;
+                        let file = OpenOptions::new()
+                            .read(true)
+                            .custom_flags(
+                                (rustix::fs::OFlags::NONBLOCK | rustix::fs::OFlags::NOFOLLOW).bits()
+                                    as i32,
+                            )
+                            .open(&entry.path)?;
+                        let opened_metadata = file.metadata()?;
+                        require_private_sidecar_security(&entry.path, &opened_metadata, security)?;
+                        let named_metadata = fs::symlink_metadata(&entry.path)?;
+                        require_private_sidecar_security(&entry.path, &named_metadata, security)?;
+                        let opened = SidecarMetadataSnapshot::from_metadata(&opened_metadata);
+                        compare_guard_metadata(
+                            SidecarMetadataSnapshot::from_metadata(&metadata),
+                            opened,
+                            true,
+                            &format!(
+                                "SQLite sidecar `{}` changed identity or security metadata while appearing",
+                                entry.path.display()
+                            ),
+                        )?;
+                        compare_guard_metadata(
+                            opened,
+                            SidecarMetadataSnapshot::from_metadata(&named_metadata),
+                            true,
+                            &format!(
+                                "SQLite sidecar `{}` was replaced while appearing",
+                                entry.path.display()
+                            ),
+                        )?;
+                        changed = true;
+                    }
                     Err(error) => {
                         return Err(error).with_context(|| {
                             format!(
@@ -265,29 +401,63 @@ impl SqliteSidecarGuard {
                             entry.path.display()
                         )
                     })?;
+                    let named = fs::symlink_metadata(&entry.path);
+                    if security.is_some()
+                        && named
+                            .as_ref()
+                            .is_err_and(|error| error.kind() == ErrorKind::NotFound)
+                    {
+                        // A real unlink drops the anchored inode's last link. A rename
+                        // or replacement retains/changes identity and stays a hard failure.
+                        let mut unlinked = SidecarMetadataSnapshot::from_metadata(&opened_metadata);
+                        ensure!(
+                            opened_metadata.is_file() && snapshot.links == 1 && unlinked.links == 0,
+                            "SQLite sidecar `{}` disappeared without a normal unlink",
+                            entry.path.display()
+                        );
+                        unlinked.links = snapshot.links;
+                        compare_guard_metadata(
+                            *snapshot,
+                            unlinked,
+                            true,
+                            &format!(
+                                "Opened SQLite sidecar `{}` changed identity or security metadata during removal",
+                                entry.path.display()
+                            ),
+                        )?;
+                        changed = true;
+                        continue;
+                    }
                     validate_sidecar_metadata(&entry.path, &opened_metadata)?;
-                    ensure!(
-                        SidecarMetadataSnapshot::from_metadata(&opened_metadata) == *snapshot,
-                        "Opened SQLite sidecar `{}` changed identity or security metadata",
-                        entry.path.display()
-                    );
-
-                    let path_metadata = fs::symlink_metadata(&entry.path).with_context(|| {
+                    changed |= compare_guard_metadata(
+                        *snapshot,
+                        SidecarMetadataSnapshot::from_metadata(&opened_metadata),
+                        security.is_some(),
+                        &format!(
+                            "Opened SQLite sidecar `{}` changed identity or security metadata",
+                            entry.path.display()
+                        ),
+                    )?;
+                    let path_metadata = named.with_context(|| {
                         format!(
                             "SQLite sidecar `{}` disappeared or was replaced after validation",
                             entry.path.display()
                         )
                     })?;
                     validate_sidecar_metadata(&entry.path, &path_metadata)?;
-                    ensure!(
-                        SidecarMetadataSnapshot::from_metadata(&path_metadata) == *snapshot,
-                        "SQLite sidecar `{}` was replaced after validation",
-                        entry.path.display()
-                    );
+                    changed |= compare_guard_metadata(
+                        *snapshot,
+                        SidecarMetadataSnapshot::from_metadata(&path_metadata),
+                        security.is_some(),
+                        &format!(
+                            "SQLite sidecar `{}` was replaced after validation",
+                            entry.path.display()
+                        ),
+                    )?;
                 }
             }
         }
-        Ok(())
+        Ok(changed)
     }
 
     fn has_present_sidecar(&self) -> bool {
@@ -503,7 +673,7 @@ pub(in crate::server) fn initialize_current(path: &Path, root: RootIdentity) -> 
 }
 
 pub(in crate::server) fn validate_current(path: &Path, root: RootIdentity) -> Result<()> {
-    let mut connection = open_existing_database_for_preflight(path, root)?;
+    let mut connection = open_existing_database_after_snapshot(path, root, true, || Ok(()))?;
     xcss::sqlite::block_on_sqlite_connection(async {
         validate_product_metadata(&mut connection).await?;
         verify_root_identity(&mut connection, root).await?;
@@ -633,12 +803,47 @@ fn open_existing_database_for_preflight_after_snapshot<F>(
 where
     F: FnOnce() -> Result<()>,
 {
-    let sidecars = SqliteSidecarGuard::inspect(path)?;
-    let main_database = MainDatabaseGuard::inspect(path)?;
+    open_existing_database_after_snapshot(path, root, false, after_snapshot)
+}
+
+fn open_existing_database_after_snapshot<F>(
+    path: &Path,
+    root: RootIdentity,
+    read_only_diagnostics: bool,
+    after_snapshot: F,
+) -> Result<ValidationConnection>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let (main_database, sidecars) = if read_only_diagnostics {
+        let (main_database, main_changed) = MainDatabaseGuard::inspect_read_only(path)?;
+        let (sidecars, sidecars_changed) =
+            SqliteSidecarGuard::inspect_read_only(path, main_database.snapshot)?;
+        // Check every anchored identity before classifying any generation change.
+        let main_rechecked = main_database.revalidate_read_only()?;
+        let sidecars_rechecked = sidecars.revalidate_read_only(main_database.snapshot)?;
+        if main_changed || sidecars_changed || main_rechecked || sidecars_rechecked {
+            return Err(xcss::sqlite::SnapshotError::SourceChanged.into());
+        }
+        (main_database, sidecars)
+    } else {
+        // Initialization and runtime preflight retain their original strict guards.
+        let sidecars = SqliteSidecarGuard::inspect(path)?;
+        let main_database = MainDatabaseGuard::inspect(path)?;
+        (main_database, sidecars)
+    };
     let snapshot = xcss::sqlite::ValidationSnapshot::capture(path)?;
     after_snapshot()?;
-    main_database.revalidate()?;
-    sidecars.revalidate()?;
+    if read_only_diagnostics {
+        let main_changed = main_database.revalidate_read_only()?;
+        let sidecars_changed = sidecars.revalidate_read_only(main_database.snapshot)?;
+        if main_changed || sidecars_changed {
+            return Err(xcss::sqlite::SnapshotError::SourceChanged.into());
+        }
+    } else {
+        main_database.revalidate()?;
+        sidecars.revalidate()?;
+    }
     validate_raw_main_snapshot(&snapshot, root)?;
     drop(main_database);
     drop(sidecars);
@@ -747,6 +952,18 @@ where
     F: FnOnce() -> Result<()>,
 {
     open_existing_database_for_preflight_after_snapshot(path, root, after_snapshot)
+}
+
+#[cfg(test)]
+pub(super) fn open_read_only_database_after_sidecar_snapshot_for_test<F>(
+    path: &Path,
+    root: RootIdentity,
+    after_snapshot: F,
+) -> Result<ValidationConnection>
+where
+    F: FnOnce() -> Result<()>,
+{
+    open_existing_database_after_snapshot(path, root, true, after_snapshot)
 }
 
 fn connection_limits() -> xcss::sqlite::ConnectionLimits {

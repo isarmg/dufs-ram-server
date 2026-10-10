@@ -271,8 +271,8 @@ fn explicit_initialization_read_only_diagnostics_and_real_readiness() {
         std::thread::sleep(Duration::from_millis(20));
     }
     // Initial tagging or journal checkpoints may overlap this independent
-    // read-only process. Only the precise active-writer rejection is retried;
-    // corruption, permissions, and schema failures must fail immediately.
+    // read-only process. Only precise active-writer or safe generation-change
+    // rejection is retried; corruption, permissions, and schema failures fail immediately.
     let validation_deadline = Instant::now() + Duration::from_secs(5);
     let while_running = loop {
         let result = output(&config, &["config", "validate"]);
@@ -280,9 +280,11 @@ fn explicit_initialization_read_only_diagnostics_and_real_readiness() {
             break result;
         };
         let envelope = report(&result);
-        assert_eq!(
-            envelope["code"],
-            "snapshot.busy",
+        assert!(
+            matches!(
+                envelope["code"].as_str(),
+                Some("snapshot.busy" | "snapshot.source_changed")
+            ),
             "{}",
             String::from_utf8_lossy(&result.stdout)
         );

@@ -2341,3 +2341,344 @@ fn rejects_invalid_limits_and_outcomes() -> Result<()> {
     assert!(invalid_purge.validate_new().is_err());
     Ok(())
 }
+
+// Run live SQLite writers in a separate process so raw diagnostic descriptors
+// cannot release the writer process's native SQLite locks.
+const PREFLIGHT_WRITER_PATH: &str = "XCZS_TEST_PREFLIGHT_WRITER_PATH";
+const PREFLIGHT_WRITER_MODE: &str = "XCZS_TEST_PREFLIGHT_WRITER_MODE";
+const PREFLIGHT_WRITER_HELPER: &str =
+    "server::state_store::tests::sqlite_readonly_generation_writer_fixture_helper";
+
+#[test]
+#[ignore = "subprocess helper; parent executes exactly this test"]
+fn sqlite_readonly_generation_writer_fixture_helper() -> Result<()> {
+    let path =
+        PathBuf::from(std::env::var_os(PREFLIGHT_WRITER_PATH).context("writer fixture path")?);
+    let mode = std::env::var(PREFLIGHT_WRITER_MODE)?;
+    xcss::sqlite::block_on_sqlite_connection(async {
+        let mut connection = fixture_connection(&path, false).await?;
+        if mode == "wal" || mode == "removed-journal" || mode == "replacement-journal" {
+            let pragma = if mode == "wal" {
+                "PRAGMA journal_mode=WAL"
+            } else {
+                "PRAGMA journal_mode=PERSIST"
+            };
+            let journal_mode: String = sqlx::query_scalar(pragma)
+                .fetch_one(&mut connection)
+                .await?;
+            ensure!(journal_mode == if mode == "wal" { "wal" } else { "persist" });
+            sqlx::raw_sql("INSERT INTO operations(owner_digest,operation_id,fingerprint,lease_token,state,created_at_ms,updated_at_ms) VALUES(zeroblob(32),CAST('0000000000000001' AS BLOB),zeroblob(32),zeroblob(16),0,1,1)")
+                .execute(&mut connection).await?;
+        }
+        println!("PREFLIGHT_WRITER_READY");
+        std::io::stdout().flush()?;
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        ensure!(line.trim() == "write");
+        if mode == "removed-journal" {
+            let journal_mode: String = sqlx::query_scalar("PRAGMA journal_mode=DELETE")
+                .fetch_one(&mut connection)
+                .await?;
+            ensure!(journal_mode == "delete");
+        }
+        let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
+        sqlx::raw_sql("INSERT INTO operations(owner_digest,operation_id,fingerprint,lease_token,state,created_at_ms,updated_at_ms) VALUES(zeroblob(32),CAST('0000000000000002' AS BLOB),zeroblob(32),zeroblob(16),0,1,1)")
+            .execute(&mut *tx).await?;
+        if mode != "wal" {
+            let journal = PathBuf::from(format!("{}-journal", path.display()));
+            ensure!(
+                fs::symlink_metadata(&journal)?.is_file(),
+                "actual SQLite rollback journal must exist during the write"
+            );
+            println!("PREFLIGHT_ROLLBACK_JOURNAL_PRESENT");
+        }
+        if mode == "held-journal" {
+            println!("PREFLIGHT_WRITER_HELD");
+            std::io::stdout().flush()?;
+            line.clear();
+            std::io::stdin().read_line(&mut line)?;
+            ensure!(line.trim() == "commit");
+        }
+        tx.commit().await?;
+        println!("PREFLIGHT_WRITER_COMMITTED");
+        std::io::stdout().flush()?;
+        line.clear();
+        std::io::stdin().read_line(&mut line)?;
+        ensure!(line.trim() == "close");
+        connection.close().await?;
+        Ok(())
+    })
+}
+
+#[test]
+fn readonly_preflight_classifies_safe_generations_without_masking_unsafe_entries() -> Result<()> {
+    use std::process::{Child, Stdio};
+    struct ChildGuard(Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    fn through(reader: &mut impl std::io::BufRead, token: &str) -> Result<String> {
+        let mut observed = String::new();
+        loop {
+            let mut line = String::new();
+            ensure!(
+                reader.read_line(&mut line)? != 0,
+                "writer ended before {token}: {observed}"
+            );
+            observed.push_str(&line);
+            if line.contains(token) {
+                return Ok(observed);
+            }
+        }
+    }
+    fn identity(m: &fs::Metadata) -> (u64, u64, u32, u64, u32, u32) {
+        (m.dev(), m.ino(), m.mode(), m.nlink(), m.uid(), m.gid())
+    }
+    for mode in [
+        "delete",
+        "wal",
+        "held-journal",
+        "removed-journal",
+        "unsafe-later-entry",
+        "replacement-journal",
+    ] {
+        let directory = tempdir()?;
+        let path = directory.path().join("state.sqlite3");
+        let root = root(919, 929);
+        database::initialize_current(&path, root)?;
+        let mut child = ChildGuard(
+            ProcessCommand::new(std::env::current_exe()?)
+                .args([
+                    "--exact",
+                    PREFLIGHT_WRITER_HELPER,
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(PREFLIGHT_WRITER_PATH, &path)
+                .env(PREFLIGHT_WRITER_MODE, mode)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()?,
+        );
+        let mut stdin = child.0.stdin.take().context("writer stdin")?;
+        let mut stdout = std::io::BufReader::new(child.0.stdout.take().context("writer stdout")?);
+        let ready = through(&mut stdout, "PREFLIGHT_WRITER_READY")?;
+        ensure!(
+            ready.contains("running 1 test"),
+            "the writer helper must execute exactly one test"
+        );
+        let main_before = fs::symlink_metadata(&path)?;
+        let sidecar = PathBuf::from(format!(
+            "{}-{}",
+            path.display(),
+            if mode == "wal" { "wal" } else { "journal" }
+        ));
+        let sidecar_before = fs::symlink_metadata(&sidecar).ok();
+        let removed_anchor = if mode == "removed-journal" {
+            Some(File::open(&sidecar)?)
+        } else {
+            None
+        };
+        let unsafe_path = PathBuf::from(format!("{}-shm", path.display()));
+        let renamed_journal = directory.path().join("original-journal");
+        let result =
+            database::open_read_only_database_after_sidecar_snapshot_for_test(&path, root, || {
+                writeln!(stdin, "write")?;
+                stdin.flush()?;
+                let token = if mode == "held-journal" {
+                    "PREFLIGHT_WRITER_HELD"
+                } else {
+                    "PREFLIGHT_WRITER_COMMITTED"
+                };
+                let committed = through(&mut stdout, token)?;
+                if mode != "wal" {
+                    ensure!(committed.contains("PREFLIGHT_ROLLBACK_JOURNAL_PRESENT"));
+                }
+                if mode == "unsafe-later-entry" {
+                    symlink(&path, &unsafe_path)?;
+                }
+                if mode == "replacement-journal" {
+                    let permissions = fs::metadata(&sidecar)?.permissions();
+                    fs::rename(&sidecar, &renamed_journal)?;
+                    fs::write(&sidecar, b"replacement journal")?;
+                    fs::set_permissions(&sidecar, permissions)?;
+                }
+                Ok(())
+            });
+        let error = result.expect_err("the changed generation or unsafe entry must be rejected");
+        let diagnostic = format!("{error:#}");
+        if mode == "unsafe-later-entry" || mode == "replacement-journal" {
+            ensure!(
+                error
+                    .downcast_ref::<xcss::server_cli::SnapshotError>()
+                    .is_none(),
+                "a later unsafe path must take precedence over the earlier generation change"
+            );
+            ensure!(
+                diagnostic.contains(if mode == "replacement-journal" {
+                    "was replaced after validation"
+                } else {
+                    "cannot be a symbolic link"
+                }),
+                "unexpected security failure: {diagnostic}"
+            );
+        } else {
+            let precise = error
+                .downcast_ref::<xcss::server_cli::SnapshotError>()
+                .context("safe generation change must retain its exact public error type")?;
+            ensure!(matches!(
+                precise,
+                xcss::server_cli::SnapshotError::SourceChanged
+            ));
+            let public = serde_json::to_value(xcss::server_cli::snapshot_error(precise))?;
+            ensure!(public["code"] == "snapshot.source_changed" && public["retryable"] == true);
+        }
+        let main_after = fs::symlink_metadata(&path)?;
+        ensure!(
+            identity(&main_before) == identity(&main_after),
+            "the main inode and all security fields must remain unchanged"
+        );
+        if mode == "wal" {
+            let before = sidecar_before.context("WAL existed before capture")?;
+            let after = fs::symlink_metadata(&sidecar)?;
+            ensure!(
+                identity(&before) == identity(&after),
+                "the WAL inode and all security fields must remain unchanged"
+            );
+            ensure!(
+                (
+                    before.len(),
+                    before.mtime(),
+                    before.mtime_nsec(),
+                    before.ctime(),
+                    before.ctime_nsec()
+                ) != (
+                    after.len(),
+                    after.mtime(),
+                    after.mtime_nsec(),
+                    after.ctime(),
+                    after.ctime_nsec()
+                )
+            );
+        } else if mode == "held-journal" {
+            ensure!(
+                sidecar_before.is_none(),
+                "journal absent before the coherent capture"
+            );
+            let journal = fs::symlink_metadata(&sidecar)?;
+            ensure!(
+                journal.is_file()
+                    && journal.nlink() == 1
+                    && journal.mode() & 0o7777 == 0o600
+                    && journal.uid() == main_before.uid()
+            );
+            let conflict = xcss::sqlite::ValidationSnapshot::capture(&path)
+                .err()
+                .context("the live child writer must block a fresh native snapshot")?;
+            ensure!(matches!(conflict, xcss::server_cli::SnapshotError::Busy));
+            println!(
+                "PREFLIGHT_MODE=held-journal; FRESH_NATIVE_CAPTURE_WHILE_TRANSACTION_OPEN=snapshot.busy"
+            );
+        } else if mode == "removed-journal" {
+            let before =
+                sidecar_before.context("persistent rollback journal existed before capture")?;
+            let unlinked = removed_anchor
+                .as_ref()
+                .context("journal inode anchor")?
+                .metadata()?;
+            ensure!(!sidecar.try_exists()? && before.nlink() == 1 && unlinked.nlink() == 0);
+            ensure!(
+                (
+                    before.dev(),
+                    before.ino(),
+                    before.mode(),
+                    before.uid(),
+                    before.gid()
+                ) == (
+                    unlinked.dev(),
+                    unlinked.ino(),
+                    unlinked.mode(),
+                    unlinked.uid(),
+                    unlinked.gid()
+                ),
+                "the removed journal's anchored identity and security must be unchanged"
+            );
+        } else if mode == "replacement-journal" {
+            let before = sidecar_before.context("persistent journal present before capture")?;
+            let after = fs::symlink_metadata(&sidecar)?;
+            ensure!(before.ino() != after.ino());
+            ensure!(
+                (
+                    before.dev(),
+                    before.mode(),
+                    before.nlink(),
+                    before.uid(),
+                    before.gid()
+                ) == (
+                    after.dev(),
+                    after.mode(),
+                    after.nlink(),
+                    after.uid(),
+                    after.gid()
+                )
+            );
+            ensure!(fs::read(&sidecar)? == b"replacement journal");
+        } else {
+            ensure!(
+                sidecar_before.is_none() && !sidecar.try_exists()?,
+                "rollback journal must be created and normally removed by the completed writer"
+            );
+            ensure!(
+                (
+                    main_before.len(),
+                    main_before.mtime(),
+                    main_before.mtime_nsec(),
+                    main_before.ctime(),
+                    main_before.ctime_nsec()
+                ) != (
+                    main_after.len(),
+                    main_after.mtime(),
+                    main_after.mtime_nsec(),
+                    main_after.ctime(),
+                    main_after.ctime_nsec()
+                )
+            );
+        }
+        println!(
+            "PREFLIGHT_MODE={mode}; MAIN_SECURITY_IDENTITY_UNCHANGED=true; RESULT={diagnostic}; PRECISE_CLASSIFICATION=passed"
+        );
+        if mode == "unsafe-later-entry" {
+            fs::remove_file(&unsafe_path)?;
+        }
+        if mode == "replacement-journal" {
+            fs::remove_file(&sidecar)?;
+            fs::rename(&renamed_journal, &sidecar)?;
+        }
+        if mode == "held-journal" {
+            writeln!(stdin, "commit")?;
+            stdin.flush()?;
+            through(&mut stdout, "PREFLIGHT_WRITER_COMMITTED")?;
+        }
+        writeln!(stdin, "close")?;
+        stdin.flush()?;
+        drop(stdin);
+        let mut ending = String::new();
+        std::io::Read::read_to_string(&mut stdout, &mut ending)?;
+        ensure!(
+            child.0.wait()?.success(),
+            "writer child must succeed: {ending}"
+        );
+        ensure!(
+            ending.contains("1 passed"),
+            "writer child must prove one test executed: {ending}"
+        );
+        database::validate_current(&path, root)
+            .context("fresh capture of the committed same-inode database must remain valid")?;
+        println!("PREFLIGHT_MODE={mode}; FRESH_SCHEMA_ROOT_INTEGRITY_VALIDATION=passed");
+    }
+    Ok(())
+}
