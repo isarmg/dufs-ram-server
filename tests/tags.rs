@@ -30,7 +30,7 @@ fn tags_survive_scans_and_relink_without_changing_file_contents(
         .raw_request(Method::GET, endpoint(&server, "files")?)
         .send()?;
     assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
-    let page = server.get(server.url().join("__xczs__/tags")?)?;
+    let page = server.get(server.url())?;
     assert_eq!(page.status(), StatusCode::OK);
     let markup = page.text()?;
     assert!(markup.contains("/index.js") && markup.contains("/dist/platform.css"));
