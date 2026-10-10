@@ -1260,3 +1260,86 @@ async fn cancelled_state_scan_retains_admission_until_blocking_lookup_finishes()
         STATE_PATH_SCAN_CAPACITY
     );
 }
+
+#[tokio::test]
+async fn current_directory_page_and_unknown_internal_routes_are_distinct() {
+    use axum::{body::Body, extract::ConnectInfo};
+    use http::{Method, StatusCode, header};
+    use http_body_util::BodyExt as _;
+    use tower::ServiceExt as _;
+
+    let root = assert_fs::TempDir::new().unwrap();
+    let state_dir = private_state_dir();
+    let server = Arc::new(
+        Server::initialize_with_lifecycle_for_test(
+            authenticated_args(root.path().to_path_buf(), state_dir.path()),
+            ServerLifecycle::new(),
+        )
+        .unwrap(),
+    );
+    let handle = xcss::server_runtime::platform_handle(xcss::server_runtime::ProductDescriptor {
+        id: "xczs".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        common_revision: env!("XCSS_REVISION").into(),
+        profile: "server-filesystem".into(),
+        capabilities: Vec::new(),
+    })
+    .unwrap();
+    let service = server.http_service(handle).unwrap();
+    let request = |method, path, body| {
+        http::Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::HOST, "files.test")
+            .header(header::ORIGIN, "https://files.test")
+            .header("sec-fetch-site", "same-origin")
+            .header(header::CONTENT_TYPE, "application/json")
+            .extension(ConnectInfo(
+                "127.0.0.1:41234".parse::<std::net::SocketAddr>().unwrap(),
+            ))
+            .body(Body::from(body))
+            .unwrap()
+    };
+    let login = service
+        .clone()
+        .oneshot(request(
+            Method::POST,
+            "/api/v1/auth/login",
+            r#"{"username":"user","password":"test-password"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::OK);
+    let cookie = login.headers()[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    login.into_body().collect().await.unwrap();
+
+    for (path, status) in [
+        ("/", StatusCode::OK),
+        ("/__xczs__/tags", StatusCode::NOT_FOUND),
+        ("/__xczs__/missing-page", StatusCode::NOT_FOUND),
+    ] {
+        let mut request = request(Method::GET, path, "");
+        request
+            .headers_mut()
+            .insert(header::COOKIE, cookie.parse().unwrap());
+        let response = service.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), status, "{path}");
+        assert!(!response.headers().contains_key(header::LOCATION));
+        if status == StatusCode::OK {
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/html; charset=utf-8"
+            );
+        } else {
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let problem: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(problem["code"], "api_endpoint_not_found");
+        }
+    }
+}

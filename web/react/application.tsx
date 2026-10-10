@@ -35,7 +35,6 @@ import { isAdministratorPassword } from "@xcss/web/admin-web";
 import {
   navigationEntries,
   workspaceView,
-  normalizeWorkspaceLocation,
   type WorkspaceView,
 } from "./navigation.ts";
 import { FileLibrary } from "./tags.tsx";
@@ -499,7 +498,6 @@ function FileWorkspace({
   useEffect(() => client.subscribe(setSession), [client]);
   useEffect(() => {
     const changed = () => {
-      normalizeWorkspaceLocation();
       setView(workspaceView());
     };
     window.addEventListener("hashchange", changed);
@@ -538,6 +536,11 @@ function FileWorkspace({
         tabIndex: -1,
         "data-workspace-view": view,
       },
+      view === "unknown" && h(
+        "p",
+        { className: "workspace-navigation-error", role: "alert" },
+        t("页面不存在，请选择上方菜单。", "Page not found. Choose a menu above."),
+      ),
       h(FileActions, { client }),
       h(FileActionHint),
       h(FileTagsToolbar, { client }),

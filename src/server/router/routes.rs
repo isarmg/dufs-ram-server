@@ -82,10 +82,6 @@ pub(super) fn assemble(
             "/__xczs__/api/upload/discard",
             on(MethodFilter::POST, discard).fallback(post_api_method_denied),
         )
-        .route(
-            "/__xczs__/tags",
-            on(MethodFilter::GET, tags_page).fallback(get_api_method_denied),
-        )
         .nest("/api/v1/file-tags", crate::server::tagging::api::routes())
         .route("/__xczs__", any(unknown_internal))
         .route("/__xczs__/{*path}", any(unknown_internal))
@@ -240,14 +236,6 @@ async fn login(State(server): State<Arc<Server>>) -> Response {
     finish(
         server
             .send_login_page_for_get(&mut response)
-            .map(|()| response),
-    )
-}
-async fn tags_page(State(server): State<Arc<Server>>) -> Response {
-    let mut response = Response::default();
-    finish(
-        server
-            .send_tags_page_for_get(&mut response)
             .map(|()| response),
     )
 }

@@ -792,7 +792,7 @@ button {
 }
 
 /* Keep file/queue controllers mounted while another workspace view is active. */
-.main[data-workspace-view]:not([data-workspace-view="files"]) > :not(.library-page):not(.xcss-account-page) { display: none !important; }
+.main[data-workspace-view]:not([data-workspace-view="files"]) > :not(.library-page):not(.xcss-account-page):not(.workspace-navigation-error) { display: none !important; }
 
 .file-action-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-inline: 16px; }
 .file-action-hint[hidden] { display: none; }

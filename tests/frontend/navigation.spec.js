@@ -152,20 +152,20 @@ test("Switching every menu during upload neither unmounts tasks nor prompts to l
   expect(requests).toHaveLength(1);
 });
 
-test("Old tag bookmarks and new menu deep links enter the same application", async ({ appPage: page }) => {
+test("Current menu deep links enter the directory application", async ({ appPage: page }) => {
   const directory = new URL(page.url()).pathname;
-  for (const [legacy, canonical, selector] of [
-    ["files", "files", ".paths-table"],
-    ["tags", "tags", ".library-tag-form"],
-    ["status", "status", ".library-status"],
+  for (const [view, selector] of [
+    ["files", ".paths-table"],
+    ["tags", ".library-tag-form"],
+    ["status", ".library-status"],
   ]) {
-    await page.goto(`/__xczs__/tags#${legacy}`);
-    await expect(page).toHaveURL(new RegExp(`/#${canonical}$`));
+    await page.goto(`${directory}#${view}`);
+    await expect(page).toHaveURL(new RegExp(`${directory}#${view}$`));
     await expect(page.locator(selector)).toBeVisible();
     await expect(page.locator("#xczs-root > header")).toHaveCount(1);
     await expect(
       page.locator(".xcss-header-navigation a[aria-current=page]"),
-    ).toHaveAttribute("href", `#${canonical}`);
+    ).toHaveAttribute("href", `#${view}`);
   }
   await page.goto(directory + "#tags");
   await expect(page.locator(".library-tag-form")).toBeVisible();
@@ -177,20 +177,13 @@ test("Old tag bookmarks and new menu deep links enter the same application", asy
     page.getByRole("link", { name: "existing-folder", exact: true }),
   ).toBeVisible();
   expect(new URL(page.url()).pathname).toBe(directory);
-  await page.goto(directory + "#tag-files");
-  await expect(page).toHaveURL(new RegExp(`${directory}#files$`));
-  await expect(page.locator(".search-tags summary")).toBeVisible();
-
-  await expect(
-    page.getByRole("link", { name: "existing-folder", exact: true }),
-  ).toBeVisible();
 });
 
-test("Old tag browsing URLs retain the same directory listing and allow creating files", async ({
+test("The current files deep link retains the directory and allows creating files", async ({
   appPage: page,
 }) => {
   const directory = new URL(page.url()).pathname;
-  await page.goto(directory + "#files/tags");
+  await page.goto(directory + "#files");
   await expect(page.locator(".search-tags summary")).toBeVisible();
   await page
     .getByRole("button", { name: "New empty file", exact: true })
@@ -202,6 +195,22 @@ test("Old tag browsing URLs retain the same directory listing and allow creating
     page.getByRole("link", { name: "newfile", exact: true }),
   ).toBeVisible();
   expect(new URL(page.url()).pathname).toBe(directory);
+});
+
+test("Unknown menu links show an error without rewriting the URL or reloading controllers", async ({ appPage: page }) => {
+  const directory = new URL(page.url()).pathname;
+  const row = await page.locator(".paths-table tbody tr").first().elementHandle();
+  for (const hash of ["#missing", "#tag-files", "#files/tags"]) {
+    await page.evaluate(value => { window.location.hash = value; }, hash);
+    await expect(page.getByRole("alert")).toContainText("Page not found. Choose a menu above.");
+    await expect(page.locator(".index-page")).toBeHidden();
+    await expect(page.locator(".xcss-header-navigation a[aria-current=page]")).toHaveCount(0);
+    expect(new URL(page.url()).hash).toBe(hash);
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Files", exact: true }).click();
+    await expect(page.locator(".index-page")).toBeVisible();
+    expect(await row.evaluate(element => element.isConnected)).toBe(true);
+    expect(new URL(page.url()).pathname).toBe(directory);
+  }
 });
 
 test("Unified application tag requests return to login when the session expires", async ({ appPage: page }) => {

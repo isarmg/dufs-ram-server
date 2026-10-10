@@ -797,17 +797,6 @@ impl Server {
         })?
     }
 
-    pub(super) fn send_tags_page_for_get(&self, res: &mut Response) -> Result<()> {
-        self.send_index(
-            &self.content.args.serve_path,
-            IndexOptions {
-                exist: true,
-                head_only: false,
-            },
-            res,
-        )
-    }
-
     fn send_index(&self, path: &Path, options: IndexOptions, res: &mut Response) -> Result<()> {
         res.headers_mut()
             .typed_insert(ContentType::from(mime_guess::mime::TEXT_HTML_UTF_8));

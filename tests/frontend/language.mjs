@@ -28,7 +28,7 @@ async function fixture(page) {
       return route.fulfill({ json: payload });
     }
     if (path === '/__xczs__/api/list') return route.fulfill({ json: { paths: [{ path_type: 'File', name: file.name, mtime: 1791446400000, size: 2048, revision: 'a'.repeat(64) }], next_cursor: null, file_tags: [{ file_id: 1, tags: [tag], tags_has_more: false }] } });
-    if (path.startsWith('/__xczs__/') && path !== '/__xczs__/tags') {
+    if (path.startsWith('/__xczs__/')) {
       const name = path.slice('/__xczs__/'.length);
       const type = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.woff2') ? 'font/woff2' : 'image/svg+xml';
       return route.fulfill({ contentType: type, body: await readFile(resolve(root, 'web/runtime-dist', name)) });
@@ -53,7 +53,7 @@ for (const engine of [chromium, firefox]) {
       const page = await context.newPage(), errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await fixture(page);
-      await page.goto(base + '/__xczs__/tags?lang=zh-CN#files');
+      await page.goto(base + '/?lang=zh-CN#files');
       await expect(page.getByRole('table', { name: '文件列表', exact: true })).toBeVisible();
       await page.getByRole('button', { name: '切换为英文', exact: true }).click();
       await expect(page.getByRole('table', { name: 'File list', exact: true })).toBeVisible();
