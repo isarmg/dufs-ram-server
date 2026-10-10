@@ -161,7 +161,7 @@ jobs:
             sha256sum --check "$asset_name.sha256"
           )
           cp "docs/releases/$VERSION.md" dist/RELEASE_NOTES.md
-          printf '\nSource commit: `%s`\n' "$GITHUB_SHA" >> dist/RELEASE_NOTES.md
+          printf '\n源码提交：`%s`\n' "$GITHUB_SHA" >> dist/RELEASE_NOTES.md
           test -s dist/RELEASE_NOTES.md
           test -z "$(git status --porcelain --untracked-files=no)"
 
