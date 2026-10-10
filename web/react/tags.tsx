@@ -667,7 +667,7 @@ export function FileLibrary({
                     name: newTag,
                     color: newColor,
                   });
-                  setNewTag("");
+                  setNewTag((current) => current === newTag ? "" : current);
                 },
                 t("标签已创建。", "Tag created."),
               );

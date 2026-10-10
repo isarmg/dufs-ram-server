@@ -464,10 +464,16 @@ export function createDirectoryListing(options: DirectoryListingOptions) {
         renderedStart = 0;
         renderedEnd = items.length;
         renderedVisibleCount = visibleCount;
-      } else {
+      } else if (!activeEditor) {
+        // A rename can begin while this page is loading. Keep its row visible;
+        // the new items remain available through the existing window controls.
         renderWindow(Math.max(0, items.length - MAX_RENDERED_ITEMS));
       }
-      updateVisibility(invokedWithFocus);
+      const moveFocusFromLoadMore =
+        invokedWithFocus &&
+        (document.activeElement === loadMore ||
+          document.activeElement === document.body);
+      updateVisibility(moveFocusFromLoadMore);
     } catch (error) {
       if (isAuthenticationError(error)) return;
       listStatus.textContent = t(
