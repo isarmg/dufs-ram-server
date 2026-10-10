@@ -95,6 +95,8 @@ declare_error_codes! {
     INVALID_LIST_CURSOR => "invalid_list_cursor",
     INVALID_LIST_LIMIT => "invalid_list_limit",
     INVALID_LIST_PATH => "invalid_list_path",
+    INVALID_TAG_FILTER => "invalid_tag_filter",
+    TAG_LOOKUP_FAILED => "tag_lookup_failed",
     INVALID_MOVE_PATH => "invalid_move_path",
     INVALID_OPERATION_ID => "invalid_operation_id",
     INVALID_PATH => "invalid_path",

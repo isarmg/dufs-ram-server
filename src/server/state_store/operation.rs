@@ -6,7 +6,7 @@ impl StoreWorker {
         key: OperationKey,
         fingerprint: [u8; 32],
     ) -> Result<StoreBegin> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;
@@ -63,7 +63,7 @@ impl StoreWorker {
     }
 
     pub(super) fn operation_status(&mut self, key: OperationKey) -> Result<StoreStatus> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;
@@ -86,7 +86,7 @@ impl StoreWorker {
         key: OperationKey,
         lease: [u8; 16],
     ) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;
@@ -117,7 +117,7 @@ impl StoreWorker {
         lease: [u8; 16],
         outcome: &StoredOutcome,
     ) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let expires_at = expiration_time(now, self.limits.ttl_ms)?;
@@ -155,7 +155,7 @@ impl StoreWorker {
     }
 
     pub(super) fn abandon_operation(&mut self, key: OperationKey, lease: [u8; 16]) -> Result<()> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let expires_at = expiration_time(now, self.limits.ttl_ms)?;

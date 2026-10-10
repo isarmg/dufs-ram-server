@@ -78,9 +78,9 @@ target/x86_64-unknown-linux-gnu/release/xczs
 共同入口依次构建前端、运行 `cargo build --locked`、执行实际 binary 的 `web-assets` 命令，逐个验证
 内嵌资源与本次输出相同。正式模式还要求干净源码与完整 Git revision；开发模式把源码身份设为 `unbound`。
 `--locked` 要求 Cargo 严格使用 [Cargo.lock](../../Cargo.lock)，避免一次普通构建意外改变依赖解析结果。
-当前 Foundation Rust/Web 依赖固定正式 1.0.0 的完整 revision、Release URL 和锁文件 integrity，无需相邻 Foundation checkout。Xczs 1.0.0 的独立构建与发行验收由当前提交的 CI 与标签工作流执行。后续改动仍须通过发行门禁，不能仅凭本地编译成功宣称已发布，也不能复制认证、Schema 或 target 合同代替共享包。
+当前 xcss Rust/Web 依赖固定正式 1.0.0 的完整 revision、Release URL 和锁文件 integrity，无需相邻 xcss checkout。Xczs 1.0.0 的独立构建与发行验收由当前提交的 CI 与标签工作流执行。后续改动仍须通过发行门禁，不能仅凭本地编译成功宣称已发布，也不能复制认证、Schema 或 target 合同代替共享包。
 
-内嵌资源清单由 Foundation 自动生成，覆盖 native 文件控制器与 React/font/icon/许可证资源；
+内嵌资源清单由 xcss 自动生成，覆盖 native 文件控制器与 React/font/icon/许可证资源；
 `web/dist/platform.d.ts` 是类型检查产物，不放入运行清单。调用 `xczs web-assets` 可以无配置、无业务
 副作用地查看 binary 的精确清单。
 
@@ -356,7 +356,7 @@ JSON 采用严格字段校验。写错字段或保留已经删除的旧配置项
 
 ## 2.13 常见启动失败
 
-### `Address already in use`
+### 端口已被占用：`Address already in use`
 
 端口已经被占用。找出监听者：
 
@@ -368,7 +368,7 @@ ss -ltnp | rg ':5000\b'
 
 ### 账号参数解析失败
 
-常见原因是 PHC 没有用单引号包裹、管理员 username 不是 canonical 形式或发生重复，或者哈希不符合 Foundation 当前 Argon2id 参数。配置 username 必须是 3～64 个 lowercase ASCII 字节，首尾 alnum、字符仅 `[a-z0-9._-]`；不能写 `@`、空白、Unicode 或首尾分隔符。
+常见原因是 PHC 没有用单引号包裹、管理员 username 不是 canonical 形式或发生重复，或者哈希不符合 xcss 当前 Argon2id 参数。配置 username 必须是 3～64 个 lowercase ASCII 字节，首尾 alnum、字符仅 `[a-z0-9._-]`；不能写 `@`、空白、Unicode 或首尾分隔符。
 
 ### 状态目录权限或位置错误
 

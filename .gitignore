@@ -13,5 +13,5 @@ target/**
 
 /web/runtime-dist/
 
-# Keep legacy deployment data out of source control after renaming.
-/.dufs-data/
+# Keep hidden runtime data directories out of source control.
+/.*-data/

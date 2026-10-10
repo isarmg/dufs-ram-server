@@ -9,31 +9,18 @@ use http::{
 };
 
 const LOGIN_HTML: &str = include_str!("../../web/login.html");
-const TAGS_HTML: &str = include_str!("../../web/tags.html");
 
 impl Server {
-    pub(super) fn send_tags_page_for_get(&self, res: &mut Response) -> Result<()> {
-        let output = TAGS_HTML.replace("__ASSETS_PREFIX__", &self.content.assets_prefix);
-        res.headers_mut()
-            .typed_insert(ContentType::from(mime_guess::mime::TEXT_HTML_UTF_8));
-        res.headers_mut()
-            .typed_insert(ContentLength(output.len() as u64));
-        *res.status_mut() = StatusCode::OK;
-        *res.body_mut() = body_full(output);
-        self.add_private_security_headers(res);
-        Ok(())
-    }
-
     pub(super) fn send_login_page_for_get(&self, res: &mut Response) -> Result<()> {
         let output = LOGIN_HTML
             .replace("__ASSETS_PREFIX__", &self.content.assets_prefix)
             .replace(
                 "__MIN_PASSWORD_BYTES__",
-                &xcss_admin_auth::PASSWORD_MIN_BYTES.to_string(),
+                &xcss::admin_auth::PASSWORD_MIN_BYTES.to_string(),
             )
             .replace(
                 "__MAX_PASSWORD_BYTES__",
-                &xcss_admin_auth::PASSWORD_MAX_BYTES.to_string(),
+                &xcss::admin_auth::PASSWORD_MAX_BYTES.to_string(),
             );
         res.headers_mut()
             .typed_insert(ContentType::from(mime_guess::mime::TEXT_HTML_UTF_8));
@@ -67,7 +54,7 @@ impl Server {
         }
     }
 
-    // Outer product lifecycle errors use the shared envelope; Foundation authentication errors pass through unchanged.
+    // Outer product lifecycle errors use the shared envelope; xcss authentication errors pass through unchanged.
     pub(super) fn render_administrator_auth_error(
         &self,
         res: &mut Response,
@@ -77,8 +64,8 @@ impl Server {
         retryable: bool,
         retry_after: Option<u64>,
     ) -> Result<()> {
-        let envelope = xcss_contracts::ErrorEnvelope::with_code(
-            xcss_contracts::ErrorCode::new(code)?,
+        let envelope = xcss::contracts::ErrorEnvelope::with_code(
+            xcss::contracts::ErrorCode::new(code)?,
             "Request could not be completed",
         )
         .retryable(retryable);

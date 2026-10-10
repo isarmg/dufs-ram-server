@@ -1,6 +1,6 @@
 # 06. 前端页面与交互：从一张 HTML 骨架到可靠的文件管理器
 
-本章面向没有前端框架经验的读者。我们会从浏览器拿到页面的第一刻开始，依次理解资源如何进入 Rust 二进制、页面如何启动、文件列表如何分页、四个操作按钮为什么不会移动，以及一次新建、重命名、移动或删除如何安全地反馈到列表。
+本章面向没有前端框架经验的读者。我们会从浏览器拿到页面的第一刻开始，依次理解资源如何进入 Rust 二进制、页面如何启动、文件列表如何分页、二级菜单怎样选择操作与文件，以及一次新建、重命名、移动或删除如何安全地反馈到列表。
 
 上传拥有独立而且更复杂的状态机。本章只建立整体认识，预检、覆盖 revision、PUT、PATCH、断点恢复和 unknown 处理将在[第 7 章：上传协议逐步拆解](07-upload-protocol.md)中展开。
 
@@ -10,37 +10,37 @@
 
 1. React 页面与文件业务控制器如何分工，且不重建正在工作的上传行？
 2. 修改 `web/index.css` 后，为什么只刷新浏览器可能看不到变化？
-3. HTML 业务元数据与独立恢复的 Foundation session 如何一起启动页面？
-4. `listing/controller.js` 为什么同时维护数据项、cursor、revision 和 DOM 窗口？
-5. 文件夹没有下载按钮时，为什么删除和重命名按钮仍不会向左移动？
+3. HTML 业务元数据与独立恢复的 xcss session 如何一起启动页面？
+4. `listing/controller.ts` 为什么同时维护数据项、cursor、revision 和 DOM 窗口？
+5. 为什么先选择二级菜单操作，再点击文件行，能避免误进入文件夹或下载文件？
 6. 为什么点击“新建文件夹”后先创建 `newfolder`，再在原位置编辑？
 7. Move、Rename 和 Delete 为什么都不能把“网络报错”简单当成“操作失败”？
-8. JSDoc 类型检查和运行时 JSON 校验分别解决什么问题？
+8. TypeScript 类型检查和运行时 JSON 校验分别解决什么问题？
 9. 如何用浏览器开发者工具和仓库测试定位常见界面问题？
 
 ## 6.2 先建立正确的前端心智模型
 
-当前前端采用 Foundation React Profile。React 19.2.8 负责页面结构和登录状态，认证 wire contract 严格使用 Foundation：
+当前前端采用 xcss React Profile。React 19.3.0 负责页面结构和登录状态，认证 wire contract 严格使用 xcss：
 
 - HTML 只提供 React 根节点、资源引用及业务元数据；
-- `react/application.js` 使用 React 和 Foundation UI 渲染登录、导航、表格结构与对话框；
+- `react/application.js` 使用 React 和 xcss UI 渲染登录、导航、表格结构与对话框；
 - CSS 提供布局、主题、响应式和高对比度样式；
 - 原生 JavaScript ES Modules 拆分业务逻辑；
 - Fetch 处理普通 API 和状态查询；
 - XMLHttpRequest 处理需要上传进度事件的文件正文；
-- JSDoc 加 TypeScript `checkJs` 在开发阶段检查类型。
+- 严格 TypeScript 在开发阶段检查类型。
 
 它不是一个独立部署的 Node.js 服务，也没有运行时 npm 依赖。浏览器执行构建后的 React 平台 bundle，以及独立嵌入的文件业务模块。根目录的 [package.json](../../package.json) 中，TypeScript、ESLint、Playwright 和 axe 都是检查或测试工具。
 
-最短的前端入口只有三行，见 [web/index.js](../../web/index.js)：
+最短的前端入口只有三行，见 [web/index.ts](../../web/index.ts)：
 
 ```js
-import { start } from "./modules/app.js";
+import { start } from "./modules/app.ts";
 
 start();
 ```
 
-这不表示页面逻辑很少，而表示入口只负责把控制权交给 `app.js`。React 渲染入口在 `web/react/application.js`；列表、操作、上传和 API 逻辑在 `web/modules/` 中。React 首次同步挂载完成后才初始化控制器，主题组件的局部更新不能重新协调控制器独占的 DOM 区域。
+这不表示页面逻辑很少，而表示入口只负责把控制权交给 `app.ts`。React 渲染入口在 `web/react/application.tsx`；列表、操作、上传和 API 逻辑在 `web/modules/` 中。React 首次同步挂载完成后才初始化控制器，主题组件的局部更新不能重新协调控制器独占的 DOM 区域。
 
 ## 6.3 源码文件不等于运行时静态目录
 
@@ -80,7 +80,7 @@ web/modules/preview.js
 
 ```text
 /__xczs_assets_abcd.../index.js
-/__xczs_assets_abcd.../modules/app.js
+/__xczs_assets_abcd.../modules/app.ts
 ```
 
 这些资源返回：
@@ -95,7 +95,7 @@ Cache-Control: public, max-age=31536000, immutable
 
 ### 6.3.4 登录脚本也走同源资源合同
 
-[web/login.js](../../web/login.js) 是同源外置入口，调用 React 登录挂载函数；React 表单经 Foundation Admin Client 发送认证请求。密码规则由服务器注入根节点，组件读取并验证后传给输入框。必填错误由 React 渲染到第五行，不触发原生校验气泡。
+[web/login.ts](../../web/login.ts) 是同源外置入口，调用 React 登录挂载函数；React 表单经 xcss Admin Client 发送认证请求。密码规则由服务器注入根节点，组件读取并验证后传给输入框。必填错误由 React 渲染到第五行，不触发原生校验气泡。
 
 平台与业务 JS 均参与资源摘要。CSP 使用同源脚本策略，不需要为每次修改更新内联脚本哈希，也不能加入 `'unsafe-inline'`、eval 或 data:。实际规则见 [src/server/administrator_web.rs](../../src/server/administrator_web.rs)。
 
@@ -134,30 +134,30 @@ React 在根节点内渲染顶部项目名/文件入口及五个操作图标、�
 | `href` | 当前共享根内的逻辑目录，以 `/` 开头 |
 | `dir_exists` | 当前目录是否已经存在 |
 
-服务端把两个业务字段序列化、编码为 Base64，替换 `__INDEX_DATA__` 占位符。JavaScript 读取 `<template id="index-data">`，解码并解析为 `unknown`。随后共享 Admin Client 独立恢复会话并轮换 CSRF；`parseIndexData(raw, session)` 验证业务字段和 Foundation 五字段 Session，再复制、冻结后使用。HTML 不含身份或 CSRF。
+服务端把两个业务字段序列化、编码为 Base64，替换 `__INDEX_DATA__` 占位符。JavaScript 读取 `<template id="index-data">`，解码并解析为 `unknown`。随后共享 Admin Client 独立恢复会话并轮换 CSRF；`parseIndexData(raw, session)` 验证业务字段和 xcss 五字段 Session，再复制、冻结后使用。HTML 不含身份或 CSRF。
 
 Base64 只是为了安全、稳定地把文本嵌入 HTML，不是加密。认证和传输机密性仍依赖会话、HTTPS、CSP 和响应缓存策略。
 
 ### 6.4.3 页面启动顺序
 
-[web/modules/app.js](../../web/modules/app.js) 是页面的“装配层”。启动过程如下：
+[web/modules/app.ts](../../web/modules/app.ts) 是页面的“装配层”。启动过程如下：
 
 ```mermaid
 sequenceDiagram
     participant H as index.html
     participant E as index.js
-    participant A as app.js
-    participant L as listing/controller.js
-    participant O as operations/file_operations.js
-    participant U as upload/manager.js
+    participant A as app.ts
+    participant L as listing/controller.ts
+    participant O as operations/file_operations.ts
+    participant U as upload/manager.ts
     participant S as 服务器
     H->>E: 加载 type=module 及依赖图
-    H->>A: 求值 app.js，解析 URL 参数
+    H->>A: 求值 app.ts，解析 URL 参数
     E->>A: start()
     A->>A: 等待 DOMContentLoaded
     A->>A: React createRoot + 首次同步渲染
     A->>A: 解码 index-data → JSON.parse 为 unknown
-    A->>S: Foundation Admin Client 恢复 Session
+    A->>S: xcss Admin Client 恢复 Session
     S-->>A: 当前会话与轮换后的 CSRF
     A->>A: parseIndexData(raw, session)
     A->>A: 生成面包屑
@@ -194,31 +194,31 @@ aria-label="Root"
 
 ```mermaid
 flowchart TD
-    I[index.js] --> A[app.js]
-    A --> ID[shared/index_data.js]
-    A --> D[shared/dom.js]
-    A --> P[shared/path.js]
-    A --> L[listing/controller.js]
-    A --> OD[operations/dialogs.js]
-    A --> OF[operations/file_operations.js]
-    A --> U[upload/manager.js]
-    L --> API[http/client.js]
+    I[index.ts] --> A[app.ts]
+    A --> ID[shared/index_data.ts]
+    A --> D[shared/dom.ts]
+    A --> P[shared/path.ts]
+    A --> L[listing/controller.ts]
+    A --> OD[operations/dialogs.ts]
+    A --> OF[operations/file_operations.ts]
+    A --> U[upload/manager.ts]
+    L --> API[http/client.ts]
     L --> D
     L --> P
-    L --> M[shared/mutation_effect.js]
+    L --> M[shared/mutation_effect.ts]
     OF --> API
     OF --> D
     OF --> P
     OF --> M
-    OF --> PR[upload/protocol.js]
+    OF --> PR[upload/protocol.ts]
     U --> API
     U --> D
     U --> P
     U --> M
     U --> UH[upload/preflight、queue、selection、transport、view]
-    API --> RP[http/response_buffer.js]
+    API --> RP[http/response_buffer.ts]
     API --> PR
-    RP --> HH[http/headers.js]
+    RP --> HH[http/headers.ts]
     PR --> HH
 ```
 
@@ -226,22 +226,22 @@ flowchart TD
 
 | 模块 | 负责 | 不负责 |
 | --- | --- | --- |
-| `app.js` | 启动、查找 DOM、连接模块、绑定顶栏 | 具体列表和写操作协议 |
-| `shared/dom.js` | 创建安全 DOM、SVG 图标、格式化文件大小 | 业务状态 |
-| `shared/index_data.js` | 严格校验并冻结页面启动数据 | 页面业务编排 |
-| `shared/path.js` | 验证逻辑路径、编码浏览器 URL | 访问文件系统 |
-| `shared/mutation_effect.js` | 定义列表可见内容变更后的四值失效契约 | 执行网络请求 |
-| `listing/controller.js` | 列表、分页、窗口、排序、行内编辑 | 真正执行重命名和删除 |
-| `operations/file_operations.js` | 新建、移动、重命名、删除、注销 | 列表分页和上传正文 |
-| `operations/dialogs.js` | 应用内确认、输入和焦点恢复 | 发起文件操作 |
-| `http/client.js` | 请求、超时、错误、结果对账 | 具体界面 DOM |
-| `http/headers.js` | 规范非负整数 HTTP 头的共享解析 | 业务状态判断 |
-| `upload/manager.js` | 上传编排和状态机 | 通用文件列表渲染 |
+| `app.ts` | 启动、查找 DOM、连接模块、绑定顶栏 | 具体列表和写操作协议 |
+| `shared/dom.ts` | 创建安全 DOM、SVG 图标、格式化文件大小 | 业务状态 |
+| `shared/index_data.ts` | 严格校验并冻结页面启动数据 | 页面业务编排 |
+| `shared/path.ts` | 验证逻辑路径、编码浏览器 URL | 访问文件系统 |
+| `shared/mutation_effect.ts` | 定义列表可见内容变更后的四值失效契约 | 执行网络请求 |
+| `listing/controller.ts` | 列表、分页、窗口、排序、行内编辑 | 真正执行重命名和删除 |
+| `operations/file_operations.ts` | 新建、移动、重命名、删除、注销 | 列表分页和上传正文 |
+| `operations/dialogs.ts` | 应用内确认、输入和焦点恢复 | 发起文件操作 |
+| `http/client.ts` | 请求、超时、错误、结果对账 | 具体界面 DOM |
+| `http/headers.ts` | 规范非负整数 HTTP 头的共享解析 | 业务状态判断 |
+| `upload/manager.ts` | 上传编排和状态机 | 通用文件列表渲染 |
 | `upload/{preflight,protocol,queue,selection,transport,view}.js` | 预检解析、协议、队列、选择预算、XHR 和进度视图 | 页面级装配 |
 
 目录页当前由 `index.js` 加 18 个 ES modules 构成；后端资源注册表与 `web/modules/` 文件集合由静态门双向核对，新增模块不能只写 import 而漏掉二进制嵌入。
 
-`app.js` 通过回调连接这些模块。例如：
+`app.ts` 通过回调连接这些模块。例如：
 
 - 列表的 Move 点击回调调用 `fileOperations.movePath(index)`；
 - 列表提交名称时调用 `fileOperations.renamePath(...)`；
@@ -259,7 +259,7 @@ flowchart TD
 /photos/猫.png
 ```
 
-它既不是 Linux 真实绝对路径，也不能直接拼接为 URL。`shared/path.js` 会：
+它既不是 Linux 真实绝对路径，也不能直接拼接为 URL。`shared/path.ts` 会：
 
 - 拒绝空名称；
 - 拒绝以 `/` 开头的相对子路径；
@@ -276,7 +276,7 @@ reports/A B#1.txt
 
 ### 6.6.2 不用字符串拼 HTML
 
-`shared/dom.js` 的 `createElement()` 使用：
+`shared/dom.ts` 的 `createElement()` 使用：
 
 ```js
 element.textContent = String(value);
@@ -295,17 +295,17 @@ element.setAttribute(name, value);
 
 ## 6.7 登录页和注销
 
-登录页与文件页是两套页面，见 [web/login.html](../../web/login.html) 和 [web/login.css](../../web/login.css)。登录采用 Foundation 当前 JSON 协议：
+登录页与文件页是两套页面，见 [web/login.html](../../web/login.html) 和 [web/login.css](../../web/login.css)。登录采用 xcss 当前 JSON 协议：
 
 1. 浏览器 `GET /__xczs__/login` 取得页面；
 2. 用户填写管理员 username candidate 和密码；candidate 必须是 1～64 bytes 且每字节 `0x20`～`0x7e`，允许外层 ASCII space 和大写字母；
 3. React 登录表单阻止默认 form navigation，经 `login.js` 注入的共享客户端回调以 Fetch 向 `POST /api/v1/auth/login` 发送恰好 `username/password` 的 JSON；
 4. 浏览器自动附带同源安全上下文，服务端还要求唯一且一致的 Origin、effective Host 与 `Sec-Fetch-Site: same-origin`；
-5. 服务端验证 Foundation 当前 Argon2id PHC，设置 `__Host-xcss-xczs-session` Secure Cookie，并返回恰好五字段的 `AdministratorSession`；
+5. 服务端验证 xcss 当前 Argon2id PHC，设置 `__Host-admin-xczs-session` Secure Cookie，并返回恰好五字段的 `AdministratorSession`；
 6. 客户端严格验证 session 的字段集合、canonical 管理员 username、`role=admin` 与 token 规范，成功才 `location.replace("/")`；
-7. `400/401/429` 等错误直接解析 Foundation `ErrorEnvelope` 并在原页面安全显示，不使用 PRG、查询字符串 token 或旧表单 alias。
+7. `400/401/429` 等错误直接解析 xcss `ErrorEnvelope` 并在原页面安全显示，不使用 PRG、查询字符串 token 或旧表单 alias。
 
-登录脚本直接使用 Foundation `isAdministratorLoginRequest` 与 `isAdministratorPassword`，不复制 username/token 正则或密码字节策略：
+登录脚本直接使用 xcss `isAdministratorLoginRequest` 与 `isAdministratorPassword`，不复制 username/token 正则或密码字节策略：
 
 - username candidate 必须为 1～64 bytes 且每字节 `0x20`～`0x7e`；客户端和服务端均执行 ASCII trim/lowercase，结果必须为 3～64 字节、首尾 alnum、字符仅 `[a-z0-9._-]` 的 canonical username；`@`、Unicode、控制字符和首尾分隔符拒绝，相邻分隔符允许；
 - 密码必须为 12～1024 个 UTF-8 字节且没有 ASCII 控制字符。
@@ -354,7 +354,7 @@ GET /__xczs__/api/list
     &cursor=可选下一页游标
 ```
 
-三个关键限制定义在 [web/modules/listing/controller.js](../../web/modules/listing/controller.js)：
+三个关键限制定义在 [web/modules/listing/controller.ts](../../web/modules/listing/controller.ts)：
 
 | 常量 | 值 | 保护对象 |
 | --- | ---: | --- |
@@ -442,45 +442,21 @@ SymlinkFile
 
 当前项目没有在线预览、在线编辑和目录 ZIP。文件夹 Size 单元格留空，文件 Size 通过 `formatFileSize()` 显示为 B、KB、MB 等单位。
 
-### 6.9.2 固定四操作槽
+### 6.9.2 二级菜单操作模式
 
-每行严格按照以下顺序建立四个槽：
+目录表仅展示名称、标签、修改时间和大小。移动、下载、删除和重命名集中在二级菜单，旁边增加标签图标。
 
-```text
-Move | Download | Delete | Rename
-```
+`listing/action-mode.ts` 保存当前模式并通知 React 菜单与原生目录控制器。点击操作图标后，该图标的 `aria-pressed` 变为 `true`，页面提示选择文件；再次点击同一图标、按 Escape、点击取消或切换主菜单会退出模式。
 
-```mermaid
-flowchart LR
-    M[24px<br/>Move] --- W[24px<br/>Download] --- D[24px<br/>Delete] --- R[24px<br/>Rename]
-```
+选择移动、删除或重命名后，点击文件行会进入对应对话框或行内编辑器，并退出选择模式。下载只接受文件，标签只接受普通文件；不支持的目录选择会显示提示，不进入目录。未选择操作时，名称链接仍按原来的目录导航或文件下载规则工作。
 
-对应代码是 `createActionSlot()` 和 `createPathRow()`。CSS 使用：
+标签模式保持选中，先点击文件，再在菜单下方的标签行连续点击标签。已添加的标签以 `aria-pressed="true"` 标记，点击它会移除关联。选择其他文件会切换标签目标，目录表同步刷新。已有标签和可选标签都保留有界分页。
 
-```css
-grid-template-columns: repeat(4, 24px);
-```
+### 6.9.3 文件行事件使用委托
 
-文件夹没有单文件下载能力，但仍创建一个空 Download `<span>`：
+`setupActions()` 在 `<tbody>` 上监听 click，根据当前模式与 `target.closest("tr[data-index]")` 找到目标。执行前先结束已有行内编辑，再按文件名称重新寻找最新 index，避免列表刷新后误操作旧行号。键盘可以用 Enter 或 Space 选择名称链接，退出操作模式后恢复正常导航。
 
-```text
-文件：   Move | Download | Delete | Rename
-文件夹： Move |   空槽   | Delete | Rename
-```
-
-空槽带 `aria-hidden="true"` 且不可点击。它的作用不是提供空按钮，而是保留几何位置，让用户的肌肉记忆稳定。
-
-### 6.9.3 操作事件使用委托
-
-列表没有为每一行单独注册 Move/Delete/Rename 监听器。`setupActions()` 在 `<tbody>` 上注册一次 click，然后通过：
-
-```js
-target.closest("button[data-action][data-index]")
-```
-
-找到实际按钮。
-
-这种事件委托适合分页和整表重绘：替换一行或整个 `<tbody>` 后不需要重新给每个按钮绑定事件。
+这种事件委托适合分页和整表重绘：替换一行或整个 `<tbody>` 后不需要重新绑定每行事件。
 
 ## 6.10 行内新建与重命名
 
@@ -491,9 +467,9 @@ target.closest("button[data-action][data-index]")
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant O as operations/file_operations.js
+    participant O as operations/file_operations.ts
     participant S as 服务器
-    participant L as listing/controller.js
+    participant L as listing/controller.ts
     U->>O: 点击 New folder
     O->>S: 创建 newfolder
     alt 明确重名
@@ -631,7 +607,7 @@ Rename 接受单段名称并保留原父目录；Move 接受目标路径。两�
 
 ### 6.11.2 Rename 请求
 
-行内名称校验通过后，`operations/file_operations.js` 发送：
+行内名称校验通过后，`operations/file_operations.ts` 发送：
 
 ```http
 POST /__xczs__/api/rename
@@ -712,7 +688,7 @@ Delete "name"? This action cannot be undone.
 
 ### 6.11.6 pending Map 防止快速重复写
 
-`operations/file_operations.js` 使用一个 Map 记录正在进行的操作：
+`operations/file_operations.ts` 使用一个 Map 记录正在进行的操作：
 
 ```text
 path:/docs/a.txt  → 正在移动、重命名或删除
@@ -759,7 +735,7 @@ flowchart TD
 
 ## 6.13 统一列表失效协议
 
-所有可能改变目录可见内容的前端模块只能向列表报告四种效果，定义在 [web/modules/shared/mutation_effect.js](../../web/modules/shared/mutation_effect.js)：
+所有可能改变目录可见内容的前端模块只能向列表报告四种效果，定义在 [web/modules/shared/mutation_effect.ts](../../web/modules/shared/mutation_effect.ts)：
 
 ```js
 MUTATION_EFFECT.COMMITTED
@@ -841,52 +817,31 @@ MUTATION_EFFECT.NOT_COMMITTED
 
 Move 使用 `requestText()`，打开时会调用 `input.select()`，方便整段替换目标目录。因此 Move 对话框中的蓝色选择块是当前设计；行内文件名编辑器则不会自动选择文字。
 
-## 6.15 JSDoc 类型、TypeScript 检查和运行时校验
+## 6.15 TypeScript 类型、TypeScript 检查和运行时校验
 
-### 6.15.1 当前源码仍然是 JavaScript
+### 6.15.1 浏览器源码统一使用 TypeScript
 
-代码中的：
+页面与文件业务模块使用 `.ts`/`.tsx`，类型直接写在源码中：
 
-```js
-/** @typedef {{ name: string, size: number }} ListingItem */
+```ts
+type ListingItem = { name: string; size: number };
+const table = element as HTMLTableElement;
 ```
 
-和：
-
-```js
-const table = /** @type {HTMLTableElement} */ (element);
-```
-
-是 JSDoc，不会生成新的 JavaScript，也不会在浏览器里自动检查对象。
-
-开发阶段执行：
+`web/tsconfig.json` 继承 `@xcss/web/web-toolchain/tsconfig.json` 的严格配置，覆盖登录、文件工作区、标签页和全部业务模块。开发阶段执行：
 
 ```sh
 npm run check:types
 ```
 
-实际调用 TypeScript：
-
-```text
-tsc --noEmit --allowJs --checkJs --strict ...
-```
-
-含义是：
-
-- `allowJs`：允许读取 JavaScript；
-- `checkJs`：检查 JavaScript 中的类型；
-- `strict`：开启严格规则；
-- `noEmit`：只检查，不输出编译文件。
-
-所以项目有静态类型检查，但生产仍执行原始 JavaScript。
+`strict` 开启严格检查，`noEmit` 表示该命令只检查类型。`npm run build:platform` 先运行同一检查，再用 xcss React Vite 配置编译所有浏览器模块，生成 `web/dist` 和供 Rust 内嵌的 `web/runtime-dist`。生产浏览器执行编译后的 JavaScript；服务端不需要运行 Node.js。
 
 ### 6.15.2 静态类型无法证明网络数据
 
 下面的标注只能告诉编辑器“我们希望 payload 长这样”：
 
-```js
-/** @type {ListingItem} */
-const item = payload;
+```ts
+const item = payload as ListingItem;
 ```
 
 它不能阻止服务器实际返回：
@@ -898,7 +853,7 @@ const item = payload;
 因此外部边界仍然需要运行时解析器：
 
 - `validateListingPage()` 校验目录页；
-- `parseIndexData(raw, session)` 校验 HTML 两个业务字段，再用 Foundation guard 校验独立恢复的会话。
+- `parseIndexData(raw, session)` 校验 HTML 两个业务字段，再用 xcss guard 校验独立恢复的会话。
 - `parseUploadPreflight()` 校验预检顺序和 revision；
 - `classifyUploadResponse()` 校验上传状态矩阵；
 - `parseErrorPayload()` 只从 `application/problem+json` 中容错读取有界、规范命名的顶层字段；
@@ -906,21 +861,21 @@ const item = payload;
 
 `parseErrorPayload()` 也不是完整 Problem Details schema validator：只要 media type 正确，它会尝试读取受支持的有界字段，缺失或非法字段会回落为空值/默认值；只有调用方需要的 HTTP status、协议头和业务组合另行做权威校验。
 
-服务端 HTML 的 IndexData 只含 `href` 与 `dir_exists` 两个字段，不嵌入身份或 CSRF。页面经共享 Admin Client 调用 `GET /api/v1/auth/session` 恢复会话，再把结果交给 `parseIndexData(raw, session)`；它严格验证两个业务字段，并使用 Foundation `isAdministratorSession` 验证独立的五字段会话合同，复制并冻结结果后才启动文件业务界面。
+服务端 HTML 的 IndexData 只含 `href` 与 `dir_exists` 两个字段，不嵌入身份或 CSRF。页面经共享 Admin Client 调用 `GET /api/v1/auth/session` 恢复会话，再把结果交给 `parseIndexData(raw, session)`；它严格验证两个业务字段，并使用 xcss `isAdministratorSession` 验证独立的五字段会话合同，复制并冻结结果后才启动文件业务界面。
 
 一个实用原则是：
 
 ```text
-JSDoc 保护开发者写代码时不自相矛盾；
+TypeScript 保护开发者写代码时不自相矛盾；
 运行时校验保护程序不相信浏览器外部输入。
 ```
 
 ### 6.15.3 `RequestError` 保存结构化事实
 
-[web/modules/http/client.js](../../web/modules/http/client.js) 中的 `RequestError` 不只有 message，还保存：
+[web/modules/http/client.ts](../../web/modules/http/client.ts) 中的 `RequestError` 不只有 message，还保存：
 
 - HTTP status；
-- Problem code、type、title、detail；
+- Problem 字段：`code`、`type`、`title`、`detail`；
 - recovery 建议；
 - Retry-After；
 - 是否 outcome unknown；
@@ -943,7 +898,7 @@ JSDoc 保护开发者写代码时不自相矛盾；
 
 ### 6.15.5 响应正文也有上限
 
-`http/response_buffer.js` 限制：
+`http/response_buffer.ts` 限制：
 
 - 普通错误正文最多 16 KiB；
 - 默认成功正文最多 16 MiB。
@@ -962,7 +917,7 @@ JSDoc 保护开发者写代码时不自相矛盾；
 
 ## 6.16 上传在前端架构中的位置
 
-上传入口仍由 `app.js` 装配：
+上传入口仍由 `app.ts` 装配：
 
 - Upload files 打开 `multiple` 文件选择器；
 - Upload folder 打开 `webkitdirectory multiple` 选择器；
@@ -991,7 +946,7 @@ JSDoc 保护开发者写代码时不自相矛盾；
 
 完整状态、请求头、覆盖确认、空 PATCH、断点恢复和刷新限制见[第 7 章](07-upload-protocol.md)。
 
-discard 不复用普通 operation 的 `succeeded` 解析。`http/client.js` 的 `assertDiscardUploadResponse()` 只接受严格绑定同一 ID、声明长度、满 offset 的 `204 + rejected`；普通上传的跳过路径和新建空文件候选清理都使用这一分类器，单元测试与 Playwright mock 也携带真实协议头。网络结果歧义时可由 HEAD 的严格 `rejected` 终态确认“未发布”，但不能把它表述成 stage 路径已经物理消失。
+discard 不复用普通 operation 的 `succeeded` 解析。`http/client.ts` 的 `assertDiscardUploadResponse()` 只接受严格绑定同一 ID、声明长度、满 offset 的 `204 + rejected`；普通上传的跳过路径和新建空文件候选清理都使用这一分类器，单元测试与 Playwright mock 也携带真实协议头。网络结果歧义时可由 HEAD 的严格 `rejected` 终态确认“未发布”，但不能把它表述成 stage 路径已经物理消失。
 
 ## 6.17 无障碍、主题和小视口回流
 
@@ -1005,7 +960,7 @@ discard 不复用普通 operation 的 `succeeded` 解析。`http/client.js` 的 
 - `<dialog>` 表达模态交互；
 - `<form>` 表达登录和搜索提交。
 
-纯装饰 SVG 使用 `aria-hidden="true"`。只有图标没有可见文字的按钮，提供具体 `aria-label`，例如 `Rename report.txt`，而不只是含糊的 `Rename`。
+纯装饰 SVG 使用 `aria-hidden="true"`。只有图标没有可见文字的按钮，提供具体 `aria-label`，例如二级菜单的 `Rename`；选择模式的提示关联到文件名称链接，当前目标由文件名和对话框说明提供。
 
 ### 6.17.2 状态区域
 
@@ -1039,7 +994,7 @@ discard 不复用普通 operation 的 `succeeded` 解析。`http/client.js` 的 
 
 在 537px 以下，文件表从普通 table 布局转换为网格：
 
-- 第一行显示图标、名称、四操作槽；
+- 第一行显示图标和名称，操作集中在二级菜单；
 - 第二行显示修改时间和大小；
 - 搜索框占整行；
 - 管理员 username 空间不足时可截断并显示省略号；
@@ -1056,7 +1011,7 @@ discard 不复用普通 operation 的 `succeeded` 解析。`http/client.js` 的 
 - SVG 使用 `currentcolor`，不会在高对比度模式中消失；
 - 焦点轮廓使用当前主题或系统 Highlight。
 
-行内名称输入框按当前产品要求没有装饰边框，其主要视觉焦点提示是原生文本插入光标。修改这部分时需要同时在普通、暗色和 forced-colors 中验证。
+行内名称输入框仅在文字下方显示虚线下划线，聚焦时使用主题链接色，不显示矩形焦点轮廓。forced-colors 使用系统 Highlight 色的加粗虚线下划线。修改这部分时需要同时在普通、暗色和 forced-colors 中验证。
 
 ### 6.17.6 自动测试覆盖
 
@@ -1117,26 +1072,15 @@ axe 测试覆盖登录页、文件页、行内编辑器和操作对话框的 WCA
 
 ### 6.18.4 第四步：检查 Elements 和无障碍树
 
-固定操作列问题应检查：
-
-```text
-.cell-actions
-└── .action-slots
-    ├── [data-action-slot=move]
-    ├── [data-action-slot=download]
-    ├── [data-action-slot=delete]
-    └── [data-action-slot=rename]
-```
-
-文件夹的 Download 槽应存在但为空。若槽根本不存在，是 JavaScript 行构造问题；若存在但按钮仍错位，是 CSS Grid 或缓存问题。
+二级菜单操作应检查 `[data-file-action]` 的 `aria-pressed`、当前提示 `#file-action-hint` 和文件行的 `data-index`。目录表不应再生成 `.cell-actions` 或行内操作按钮。标签模式下，`.file-tag-target` 应显示当前文件名，标签按钮的 `aria-pressed` 与实际关联一致。
 
 无障碍面板可检查：
 
 - 房子链接是否名为 Root；
-- 图标按钮是否包含具体文件名；
+- 操作图标是否有名称，文件链接是否关联选择提示；
 - 对话框标题与描述关联；
 - 排序列的 `aria-sort`；
-- 空操作槽是否没有进入无障碍树。
+- 未激活操作模式时，文件链接是否恢复正常导航。
 
 ### 6.18.5 建议断点位置
 
@@ -1145,7 +1089,7 @@ axe 测试覆盖登录页、文件页、行内编辑器和操作对话框的 WCA
 | 页面启动失败 | `initialize()` |
 | 列表不加载 | `loadNextPage()` |
 | 分页重复或消失 | `validateListingPage()`、`invalidate()` |
-| 操作按钮错行 | `createPathRow()`、`dispatchActionAfterEditor()` |
+| 操作按钮错行 | `createPathRow()`、`chooseTarget()` |
 | 重命名发两次 | `commitInlineRename()` |
 | 新建默认名异常 | `createDefaultFolder()` 或 `createDefaultFile()` |
 | Move/Rename 覆盖异常 | `relocatePath()` |
@@ -1180,7 +1124,7 @@ git diff --check
 作用：
 
 - `check:js` 检查 JavaScript 语法和项目约束；
-- `check:types` 用严格 JSDoc 类型规则检查模块；
+- `check:types` 用严格 TypeScript 类型规则检查模块；
 - `git diff --check` 检查空白错误和冲突标记。
 
 ### 6.19.2 纯前端单元测试
@@ -1233,7 +1177,7 @@ npm run test:frontend
 
 ```sh
 rg "loadNextPage|validateListingPage|MAX_RENDERED_ITEMS" \
-  web/modules/listing/controller.js tests/frontend
+  web/modules/listing/controller.ts tests/frontend
 ```
 
 尝试回答：
@@ -1253,23 +1197,23 @@ rg "startInlineRename|commitInlineRename|renamePath|relocatePath" \
 
 按顺序找出：
 
-1. Rename 按钮如何通过事件委托进入编辑器；
+1. 二级菜单的 Rename 模式如何在选择文件后进入编辑器；
 2. 输入怎样按 UTF-8 字节校验；
 3. 如何防止 blur 重复请求；
 4. 后端明确重名后怎样显示覆盖确认；
 5. committed、unknown 或 refresh-required 怎样使列表失效。
 
-### 练习三：证明文件夹的按钮不会移动
+### 练习三：证明选择操作不会误导航
 
-在浏览器 Elements 中同时选中一个文件行和文件夹行，比较四个 `data-action-slot`。然后阅读：
+先选择 Download 或 Tags，再点击文件夹，观察地址应保持不变且显示提示。按 Escape 退出模式后，再点击该文件夹应正常进入。然后阅读：
 
 ```sh
-rg "createActionSlot|action-slots|data-action-slot" \
-  web/modules/listing/controller.js web/index.css \
-  tests/frontend/accessibility.spec.js
+rg "chooseTarget|fileActionState|data-file-action" \
+  web/modules/listing web/react/application.tsx \
+  tests/frontend/toolbar.spec.js
 ```
 
-思考：如果直接不生成文件夹 Download 元素，视觉、键盘顺序和用户肌肉记忆会发生什么变化？
+思考：模式切换、列表刷新和行内改名同时发生时，为什么需要重新按名称寻找目标？
 
 ## 6.21 本章小结
 
@@ -1277,12 +1221,12 @@ rg "createActionSlot|action-slots|data-action-slot" \
 
 - Rust 二进制拥有并返回一组白名单嵌入资源；
 - 内容哈希资源长期缓存，用户页面和会话数据不缓存；
-- `app.js` 只装配模块，不承包全部业务；
-- `listing/controller.js` 把网络分页、DOM 窗口、行内编辑和焦点恢复放在同一列表边界内；
-- 四个固定 action slot 保证能力缺失时按钮仍不移位；
+- `app.ts` 只装配模块，不承包全部业务；
+- `listing/controller.ts` 把网络分页、DOM 窗口、行内编辑和焦点恢复放在同一列表边界内；
+- 操作模式由二级菜单统一选择，文件行只负责提供目标；
 - Move 和 Rename 共享可靠性代码，但对用户和后端保持独立语义；
 - 所有可能改变目录可见内容的前端模块通过四值 mutation effect 统一处理列表和 cursor 失效；
-- JSDoc 静态检查与运行时不可信数据校验缺一不可；
+- TypeScript 静态检查与运行时不可信数据校验缺一不可；
 - 原生语义、live region、焦点恢复、缩放回流和 forced-colors 共同构成无障碍实现；
 - 调试前端时首先确认新源码已经进入新二进制；只对哈希白名单资源核对新摘要 URL，页面骨架和内联登录脚本要核对新 document/CSP。
 

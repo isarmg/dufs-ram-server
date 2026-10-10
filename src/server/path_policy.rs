@@ -172,7 +172,7 @@ impl PathPolicy {
         {
             return true;
         }
-        xcss_server_runtime::PLATFORM_RESERVED_PATHS
+        xcss::server_runtime::PLATFORM_RESERVED_PATHS
             .iter()
             .any(|root| {
                 let root = root.trim_start_matches('/');
@@ -188,7 +188,7 @@ impl PathPolicy {
             && (TAG_API_PATH
                 .strip_prefix(relative)
                 .is_some_and(|tail| tail.starts_with('/'))
-                || xcss_server_runtime::PLATFORM_RESERVED_PATHS
+                || xcss::server_runtime::PLATFORM_RESERVED_PATHS
                     .iter()
                     .any(|root| {
                         root.trim_start_matches('/')

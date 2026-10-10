@@ -179,8 +179,8 @@ fn verify_embedded_assets(server: &TestServer) -> Result<(), Error> {
         .ok_or("Embedded asset prefix has an unexpected form")?;
 
     let manifest = xczs::server::web_assets_manifest()?;
-    xcss_web_assets::verify_manifest(manifest, advertised_digest)?;
-    let inventory: xcss_web_assets::AssetManifest = serde_json::from_str(manifest)?;
+    xcss::web_assets::verify_manifest(manifest, advertised_digest)?;
+    let inventory: xcss::web_assets::AssetManifest = serde_json::from_str(manifest)?;
     assert!(inventory.files.iter().any(|file| file.path == "index.js"));
     assert!(
         inventory

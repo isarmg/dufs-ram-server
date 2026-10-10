@@ -473,7 +473,7 @@ EOF
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     '[[ "$1" == "web-assets" ]] || exit 1' \
-    'printf '\''{"format":"xcss-web-assets-v1","files":[]}'\''' \
+    'printf '\''{"format":"web-assets-v1","files":[]}'\''' \
     > "$web_manifest_source"
   chmod 0755 "$web_manifest_source"
   install -m 0755 "$web_manifest_source" "$documentation_package/xczs"

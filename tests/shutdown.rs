@@ -22,7 +22,7 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
-use xcss_contracts::AdministratorSession;
+use xcss::contracts::AdministratorSession;
 
 use fixtures::{
     TEST_ACCOUNT, TEST_PASSWORD, TEST_USER, UPLOAD_STAGE_DIRECTORY, initialize_test_instance,
@@ -238,7 +238,7 @@ fn shutdown_deadline_checkpoints_a_stalled_upload_before_exit() -> Result<(), Bo
     assert!(!temp.path().join("forced-upload.bin").exists());
     let stage = staged_upload_path(temp.path())?;
     assert_eq!(std::fs::metadata(stage)?.len(), SENT_SIZE as u64);
-    let durable_offset: i64 = xcss_sqlite::block_on_sqlite_connection(async {
+    let durable_offset: i64 = xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = sqlx::SqliteConnection::connect_with(
             &sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(state_db)

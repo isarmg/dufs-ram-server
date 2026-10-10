@@ -26,12 +26,12 @@ use request::RequestProfile;
 impl Server {
     pub fn http_service(
         self: Arc<Self>,
-        handle: xcss_server_runtime::RuntimeHandle,
+        handle: xcss::server_runtime::RuntimeHandle,
     ) -> anyhow::Result<tower::util::BoxCloneSyncService<Request, Response, Infallible>> {
         let router =
             routes::assemble(self.clone(), handle)?.layer(axum::middleware::from_fn_with_state(
                 "xczs".to_owned(),
-                xcss_server_cli::service_identity_middleware,
+                xcss::server_cli::service_identity_middleware,
             ));
         let service = tower::service_fn(move |request| {
             let server = self.clone();
@@ -42,7 +42,7 @@ impl Server {
             axum::Router::new()
                 .fallback_service(service)
                 .layer(axum::middleware::from_fn(
-                    xcss_server_cli::request_context_middleware,
+                    xcss::server_cli::request_context_middleware,
                 ));
         Ok(tower::util::BoxCloneSyncService::new(correlated))
     }
@@ -261,7 +261,7 @@ impl Server {
             Ok(mut res) => {
                 if let Some(identity) = res
                     .extensions()
-                    .get::<xcss_admin_axum::VerifiedAdministrator>()
+                    .get::<xcss::admin_axum::VerifiedAdministrator>()
                 {
                     self.content
                         .args

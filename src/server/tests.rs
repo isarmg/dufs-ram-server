@@ -707,7 +707,7 @@ async fn servers_from_the_same_auth_config_have_isolated_sessions() {
         .login(
             "user",
             "test-password",
-            &xcss_admin_core::LoginContext {
+            &xcss::admin_core::LoginContext {
                 source: "127.0.0.1".into(),
                 request_id: None,
                 now_micros: 1,

@@ -3,8 +3,8 @@ import test from "node:test";
 
 import {
   prepareUploadSelection,
-} from "../../../web/modules/upload/selection.js";
-import { isValidAbsoluteLogicalPath, logicalChildPath } from "../../../web/modules/shared/path.js";
+} from "../../../web/dist/modules/upload/selection.js";
+import { isValidAbsoluteLogicalPath, logicalChildPath } from "../../../web/dist/modules/shared/path.js";
 
 test("upload selection enforces file-count and UTF-8 path budgets", () => {
   const OriginalFile = globalThis.File;

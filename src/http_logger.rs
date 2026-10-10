@@ -101,7 +101,7 @@ impl LogNeeds {
 impl HttpLogger {
     pub fn data<B>(&self, req: &Request<B>) -> HashMap<String, String> {
         let mut data = HashMap::default();
-        if let Some(id) = req.extensions().get::<xcss_contracts::RequestId>() {
+        if let Some(id) = req.extensions().get::<xcss::contracts::RequestId>() {
             data.insert("request_id".to_owned(), id.to_string());
         }
         if self.needs.contains(LogNeeds::REQUEST) || self.needs.contains(LogNeeds::REQUEST_URI) {
@@ -453,7 +453,7 @@ fn is_sensitive_header(name: &HeaderName) -> bool {
         return true;
     }
     let mut value = serde_json::json!({name.as_str():"present"});
-    xcss_log::redact(&mut value);
+    xcss::log::redact(&mut value);
     value[name.as_str()].is_object()
 }
 

@@ -1,10 +1,10 @@
-//! Product configuration syntax only; all runtime authentication belongs to Foundation.
+//! Product configuration syntax only; all runtime authentication belongs to xcss.
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::HashMap, fmt, sync::Arc};
-use xcss_admin_auth::require_canonical_administrator_username;
-use xcss_admin_core::{AdministratorRecord, AdministratorService, Identifier};
-use xcss_admin_static::StaticAdministratorStore;
+use xcss::admin_auth::require_canonical_administrator_username;
+use xcss::admin_core::{AdministratorRecord, AdministratorService, Identifier};
+use xcss::admin_static::StaticAdministratorStore;
 
 /// File operations retain the immutable administrator ID as their business owner key.
 /// The field name is retained for compatibility with existing durable upload records.
@@ -17,7 +17,7 @@ pub struct FilePrincipal {
 ///
 /// Password hashes stay private and custom `Debug` output only exposes the
 /// configured administrator usernames. Cloning this value never clones or
-/// shares runtime sessions; each server constructs its own Foundation service.
+/// shares runtime sessions; each server constructs its own xcss service.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct AuthConfig {
     users: HashMap<String, String>,
@@ -25,7 +25,7 @@ pub struct AuthConfig {
 
 impl AuthConfig {
     pub fn new(raw_accounts: &[&str]) -> Result<Self> {
-        if raw_accounts.len() > xcss_admin_core::STATIC_ADMINISTRATORS_MAX {
+        if raw_accounts.len() > xcss::admin_core::STATIC_ADMINISTRATORS_MAX {
             bail!("This system allows only one administrator");
         }
         let mut users = HashMap::new();
@@ -49,7 +49,7 @@ impl AuthConfig {
                 bail!("Invalid auth account #{account_number}: duplicate administrator username");
             }
 
-            xcss_admin_auth::require_current_password_hash(password).with_context(|| {
+            xcss::admin_auth::require_current_password_hash(password).with_context(|| {
                 format!("Invalid Argon2id PHC in auth account #{account_number}")
             })?;
 
@@ -111,14 +111,14 @@ impl AuthConfig {
 
     pub(crate) fn administrator_service_with_directory(
         &self,
-        directory: xcss_fs_safety::PrivateDirectory,
+        directory: xcss::fs_safety::PrivateDirectory,
     ) -> Result<Arc<AdministratorService<StaticAdministratorStore>>> {
         self.service(Some(directory))
     }
 
     fn service(
         &self,
-        directory: Option<xcss_fs_safety::PrivateDirectory>,
+        directory: Option<xcss::fs_safety::PrivateDirectory>,
     ) -> Result<Arc<AdministratorService<StaticAdministratorStore>>> {
         let records = self
             .users
@@ -146,7 +146,7 @@ impl AuthConfig {
 }
 
 pub fn hash_password(password: &str) -> Result<String> {
-    xcss_admin_auth::hash_password(password).context("Failed to hash administrator password")
+    xcss::admin_auth::hash_password(password).context("Failed to hash administrator password")
 }
 
 #[cfg(test)]

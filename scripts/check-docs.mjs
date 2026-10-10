@@ -149,7 +149,7 @@ process.stdout.write(
 function walk(root, walkFailures) {
   const output = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (ignoredGeneratedDirectories.has(entry.name)) continue;
+    if (ignoredGeneratedDirectories.has(entry.name) || /^\..*-data$/u.test(entry.name)) continue;
     const path = join(root, entry.name);
     const metadata = lstatSync(path);
     if (metadata.isSymbolicLink()) {

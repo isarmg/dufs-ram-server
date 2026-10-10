@@ -120,10 +120,10 @@ fn unknown_json_log_variable_is_rejected(tmpdir: TempDir) -> Result<(), Error> {
 
     let error = Args::parse(matches).expect_err("unknown JSON log variable was accepted");
     let violation = error
-        .downcast_ref::<xcss_config::ConfigError>()
+        .downcast_ref::<xcss::config::ConfigError>()
         .expect("malformed file log format must use the configuration contract");
-    assert_eq!(violation.reason, xcss_config::Reason::InvalidValue);
-    assert_eq!(violation.source, xcss_config::ConfigSource::File);
+    assert_eq!(violation.reason, xcss::config::Reason::InvalidValue);
+    assert_eq!(violation.source, xcss::config::ConfigSource::File);
     assert_eq!(violation.path, "/log_format");
     assert!(!error.to_string().contains("$stauts"));
     Ok(())
@@ -149,10 +149,10 @@ fn duplicate_json_bind_address_is_rejected(tmpdir: TempDir) -> Result<(), Error>
 
     let error = Args::parse(matches).expect_err("duplicate JSON bind address was accepted");
     let violation = error
-        .downcast_ref::<xcss_config::ConfigError>()
+        .downcast_ref::<xcss::config::ConfigError>()
         .expect("duplicate file bind must use the configuration contract");
-    assert_eq!(violation.reason, xcss_config::Reason::InvalidValue);
-    assert_eq!(violation.source, xcss_config::ConfigSource::File);
+    assert_eq!(violation.reason, xcss::config::Reason::InvalidValue);
+    assert_eq!(violation.source, xcss::config::ConfigSource::File);
     assert_eq!(violation.path, "/bind");
     assert!(!error.to_string().contains("127.0.0.1"));
     Ok(())

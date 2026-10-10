@@ -15,12 +15,14 @@ fn configuration_is_strict_and_does_not_disclose_password_hashes() {
     for account in ["admin:plaintext-secret", "admin:", "missing-separator"] {
         assert!(AuthConfig::new(&[account]).is_err());
     }
-    assert!(AuthConfig::new(&[&*account; xcss_admin_core::STATIC_ADMINISTRATORS_MAX + 1]).is_err());
+    assert!(
+        AuthConfig::new(&[&*account; xcss::admin_core::STATIC_ADMINISTRATORS_MAX + 1]).is_err()
+    );
 }
 
 #[tokio::test]
 async fn independent_static_services_drop_sessions_and_disallow_configuration_mutation() {
-    use xcss_admin_core::{AdministratorStore, LoginContext};
+    use xcss::admin_core::{AdministratorStore, LoginContext};
     let hash = hash_password("test-password").unwrap();
     let config = AuthConfig::new(&[&format!("admin:{hash}")]).unwrap();
     let first = config.administrator_service().unwrap();

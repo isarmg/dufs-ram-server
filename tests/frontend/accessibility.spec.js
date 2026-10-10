@@ -3,6 +3,7 @@ const { join, resolve } = require("node:path");
 const AxeBuilder = require("@axe-core/playwright").default;
 const {
   actionDialog,
+  chooseFileAction,
   expect,
   login,
   rowByName,
@@ -26,69 +27,8 @@ function walkJavaScript(root) {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
     const path = join(root, entry.name);
     if (entry.isDirectory()) return walkJavaScript(path);
-    return entry.isFile() && entry.name.endsWith(".js") ? [path] : [];
+    return entry.isFile() && /\.tsx?$/u.test(entry.name) ? [path] : [];
   });
-}
-
-async function describeActionSlots(slots) {
-  return slots.evaluateAll(elements => elements.map(slot => {
-    const control = slot.querySelector("a, button");
-    return {
-      slot: slot.getAttribute("data-action-slot"),
-      tag: control?.tagName || null,
-      action: control?.getAttribute("data-action") || null,
-      label: control?.getAttribute("aria-label") || null,
-    };
-  }));
-}
-
-async function readActionLayout(row) {
-  return row.locator(".action-slots").evaluate(grid => {
-    const gridRect = grid.getBoundingClientRect();
-    return {
-      gridLeft: gridRect.left,
-      gridRight: gridRect.right,
-      slots: [...grid.querySelectorAll(":scope > .action-slot")].map(slot => {
-        const rect = slot.getBoundingClientRect();
-        return {
-          left: rect.left,
-          right: rect.right,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height,
-        };
-      }),
-    };
-  });
-}
-
-async function assertFixedActionColumns(fileRow, directoryRow) {
-  const file = await readActionLayout(fileRow);
-  const directory = await readActionLayout(directoryRow);
-
-  for (const layout of [file, directory]) {
-    expect(layout.slots).toHaveLength(4);
-    const firstTop = layout.slots[0].top;
-    for (const [index, slot] of layout.slots.entries()) {
-      expect(slot.width).toBeGreaterThan(0);
-      expect(slot.height).toBeGreaterThan(0);
-      expect(Math.abs(slot.top - firstTop)).toBeLessThan(0.5);
-      expect(slot.left).toBeGreaterThanOrEqual(layout.gridLeft - 0.5);
-      expect(slot.right).toBeLessThanOrEqual(layout.gridRight + 0.5);
-      if (index > 0) {
-        expect(slot.left).toBeGreaterThan(layout.slots[index - 1].left);
-      }
-    }
-  }
-
-  for (let index = 0; index < 4; index++) {
-    expect(
-      Math.abs(file.slots[index].left - directory.slots[index].left),
-    ).toBeLessThan(0.5);
-    expect(
-      Math.abs(file.slots[index].width - directory.slots[index].width),
-    ).toBeLessThan(0.5);
-  }
 }
 
 test("主要文件管理控件使用原生语义和键盘操作", async ({ appPage: page }) => {
@@ -155,13 +95,15 @@ test("主要文件管理控件使用原生语义和键盘操作", async ({ appPa
   await expect(newFile).toBeFocused();
 
   const row = rowByName(page, "download-me.txt");
-  const rename = row.getByRole("button", { name: "Rename download-me.txt" });
-  const move = row.getByRole("button", { name: "Move download-me.txt" });
-  const remove = row.getByRole("button", { name: "Delete download-me.txt" });
+  const rename = page.locator('[data-file-action="rename"]');
+  const move = page.locator('[data-file-action="move"]');
+  const remove = page.locator('[data-file-action="delete"]');
   expect(await rename.evaluate(element => element.tagName)).toBe("BUTTON");
   expect(await move.evaluate(element => element.tagName)).toBe("BUTTON");
   expect(await remove.evaluate(element => element.tagName)).toBe("BUTTON");
   await rename.focus();
+  await page.keyboard.press("Enter");
+  await row.locator(".cell-name a").focus();
   await page.keyboard.press("Enter");
   const renameInput = page.locator(".inline-name-input");
   await expect(renameInput).toBeFocused();
@@ -172,6 +114,8 @@ test("主要文件管理控件使用原生语义和键盘操作", async ({ appPa
   await expect(rename).toBeFocused();
   await remove.focus();
   await page.keyboard.press("Enter");
+  await row.locator(".cell-name a").focus();
+  await page.keyboard.press("Space");
   const deleteDialog = actionDialog(page, "Delete item");
   await expect(deleteDialog).toContainText(
     'Delete "download-me.txt"? This action cannot be undone.',
@@ -216,112 +160,21 @@ test("主要文件管理控件使用原生语义和键盘操作", async ({ appPa
   }
 });
 
-test("操作区固定为 Move、Download、Delete、Rename 四列", async ({
-  appPage: page,
-}) => {
-  const fileRow = rowByName(page, "download-me.txt");
-  const directoryRow = rowByName(page, "existing-folder");
-  const fileSlots = fileRow.locator(".action-slots > .action-slot");
-  const directorySlots = directoryRow.locator(
-    ".action-slots > .action-slot",
-  );
-  const expectedOrder = ["move", "download", "delete", "rename"];
-
-  await expect(fileSlots).toHaveCount(4);
-  await expect(directorySlots).toHaveCount(4);
-  expect(
-    await fileSlots.evaluateAll(slots =>
-      slots.map(slot => slot.getAttribute("data-action-slot"))
-    ),
-  ).toEqual(expectedOrder);
-  expect(
-    await directorySlots.evaluateAll(slots =>
-      slots.map(slot => slot.getAttribute("data-action-slot"))
-    ),
-  ).toEqual(expectedOrder);
-
-  expect(await describeActionSlots(fileSlots)).toEqual([
-    {
-      slot: "move",
-      tag: "BUTTON",
-      action: "move",
-      label: "Move download-me.txt",
-    },
-    {
-      slot: "download",
-      tag: "A",
-      action: null,
-      label: "Download file download-me.txt",
-    },
-    {
-      slot: "delete",
-      tag: "BUTTON",
-      action: "delete",
-      label: "Delete download-me.txt",
-    },
-    {
-      slot: "rename",
-      tag: "BUTTON",
-      action: "rename",
-      label: "Rename download-me.txt",
-    },
-  ]);
-  expect(await describeActionSlots(directorySlots)).toEqual([
-    {
-      slot: "move",
-      tag: "BUTTON",
-      action: "move",
-      label: "Move existing-folder",
-    },
-    {
-      slot: "download",
-      tag: null,
-      action: null,
-      label: null,
-    },
-    {
-      slot: "delete",
-      tag: "BUTTON",
-      action: "delete",
-      label: "Delete existing-folder",
-    },
-    {
-      slot: "rename",
-      tag: "BUTTON",
-      action: "rename",
-      label: "Rename existing-folder",
-    },
-  ]);
-
-  const directoryDownloadSlot = directorySlots.nth(1);
-  expect(
-    await directoryDownloadSlot.evaluate(slot => {
-      const interactiveSelector =
-        "a, button, input, select, textarea, [tabindex], [role]";
-      return {
-        ariaHidden: slot.getAttribute("aria-hidden"),
-        ariaLabel: slot.getAttribute("aria-label"),
-        role: slot.getAttribute("role"),
-        tabIndexAttribute: slot.getAttribute("tabindex"),
-        tabIndex: slot.tabIndex,
-        text: slot.textContent?.trim() || "",
-        hasInteractiveNode: slot.matches(interactiveSelector) ||
-          slot.querySelector(interactiveSelector) !== null,
-      };
-    }),
-  ).toEqual({
-    ariaHidden: "true",
-    ariaLabel: null,
-    role: null,
-    tabIndexAttribute: null,
-    tabIndex: -1,
-    text: "",
-    hasInteractiveNode: false,
-  });
-
-  await assertFixedActionColumns(fileRow, directoryRow);
-  await page.setViewportSize({ width: 320, height: 800 });
-  await assertFixedActionColumns(fileRow, directoryRow);
+test("二级菜单包含五个模式按钮，目录表不再包含操作列", async ({ appPage: page }) => {
+  await expect(page.locator(".paths-table .cell-actions")).toHaveCount(0);
+  const actions = page.locator(".xczs-file-actions [data-file-action]");
+  await expect(actions).toHaveCount(5);
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const button of await actions.all()) {
+      await expect(button).toBeVisible();
+      await expect(button).toHaveAttribute("aria-pressed", "false");
+      const box = await button.boundingBox();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
 });
 
 test("1280px 桌面在 400% 缩放时可在 320 CSS 像素内回流", async ({
@@ -335,19 +188,9 @@ test("1280px 桌面在 400% 缩放时可在 320 CSS 像素内回流", async ({
   const row = rowByName(page, "download-me.txt");
   await expect(row.locator(".cell-mtime")).toBeVisible();
   await expect(row.locator(".cell-size")).toBeVisible();
-  await expect(row.getByRole("button", {
-    name: "Rename download-me.txt",
-  })).toBeVisible();
-  await expect(row.getByRole("button", {
-    name: "Move download-me.txt",
-  })).toBeVisible();
-  await expect(row.getByRole("button", {
-    name: "Delete download-me.txt",
-  })).toBeVisible();
-
-  await row.getByRole("button", {
-    name: "Rename download-me.txt",
-  }).click();
+  for (const action of ["rename", "move", "delete"])
+    await expect(page.locator(`[data-file-action="${action}"]`)).toBeVisible();
+  await chooseFileAction(page, "rename", "download-me.txt");
   const inlineEditor = page.locator(".inline-name-input");
   await expect(inlineEditor).toBeFocused();
   await expect(page.locator(".inline-name-marker")).toHaveCount(0);
@@ -366,9 +209,9 @@ test("1280px 桌面在 400% 缩放时可在 320 CSS 像素内回流", async ({
         Number.parseFloat(style.borderTopWidth) === 0 &&
         Number.parseFloat(style.borderRightWidth) === 0 &&
         Number.parseFloat(style.borderLeftWidth) === 0 &&
-        Number.parseFloat(style.borderBottomWidth) === 0 &&
+        style.borderBottomStyle === "dashed" && Number.parseFloat(style.borderBottomWidth) >= 1 &&
         style.borderRadius === "0px" &&
-        style.outlineStyle !== "none" && Number.parseFloat(style.outlineWidth) >= 2 &&
+        style.outlineStyle === "none" &&
         style.boxShadow === "none",
     };
   });
@@ -380,7 +223,7 @@ test("1280px 桌面在 400% 缩放时可在 320 CSS 像素内回流", async ({
   await inlineEditor.press("Escape");
 
   const layout = await page.evaluate(() => {
-    const actionCell = document.querySelector(".paths-table .cell-actions");
+    const actionCell = document.querySelector(".xczs-file-actions");
     const rect = actionCell.getBoundingClientRect();
     return {
       clientWidth: document.documentElement.clientWidth,
@@ -414,8 +257,8 @@ test("强制颜色模式保留行内编辑器焦点与对话框语义", async ({
       return style.borderTopStyle === "none" &&
         style.borderRightStyle === "none" &&
         style.borderLeftStyle === "none" &&
-        style.borderBottomStyle === "none" &&
-        style.outlineStyle !== "none" && Number.parseFloat(style.outlineWidth) >= 2 &&
+        style.borderBottomStyle === "dashed" && Number.parseFloat(style.borderBottomWidth) >= 2 &&
+        style.outlineStyle === "none" &&
         style.boxShadow === "none" &&
         style.caretColor !== "rgba(0, 0, 0, 0)";
     }),
@@ -450,9 +293,7 @@ test("文件页、行内编辑器和操作对话框通过 axe WCAG A/AA 自动�
   expect(editorResults.violations).toEqual([]);
   await page.keyboard.press("Escape");
 
-  await rowByName(page, "download-me.txt")
-    .getByRole("button", { name: "Delete download-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "download-me.txt");
   const dialog = actionDialog(page, "Delete item");
   await expect(dialog).toBeVisible();
   // The page itself was scanned above. Scope the modal-state scan to the open
@@ -465,8 +306,10 @@ test("文件页、行内编辑器和操作对话框通过 axe WCAG A/AA 自动�
 test("生产前端源码不包含动态 HTML 注入接口或浏览器原生模态调用", async () => {
   const modulesDir = resolve(__dirname, "../../web/modules");
   const files = [
-    resolve(__dirname, "../../web/index.js"),
-    resolve(__dirname, "../../web/login.js"),
+    resolve(__dirname, "../../web/index.ts"),
+    resolve(__dirname, "../../web/login.ts"),
+    resolve(__dirname, "../../web/platform.ts"),
+    ...walkJavaScript(resolve(__dirname, "../../web/react")),
     ...walkJavaScript(modulesDir),
   ];
   const forbidden = /\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write|DOMParser)\b/;

@@ -8,7 +8,7 @@ mod scan;
 use anyhow::{Result, bail};
 use db::Database;
 use std::{path::PathBuf, sync::Arc};
-use xcss_fs_safety::linux::{FileIdentity, MountPolicy, OpenAt2Root};
+use xcss::fs_safety::linux::{FileIdentity, MountPolicy, OpenAt2Root};
 
 pub(super) struct Tagging {
     pub(super) db: Arc<Database>,

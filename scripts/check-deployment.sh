@@ -703,7 +703,7 @@ node -e '
   }
 ' "$validation_dir/upstream.json"
 
-# The public Foundation probe paths must reach the upstream unchanged, without
+# The public xcss probe paths must reach the upstream unchanged, without
 # credentials or an obsolete path alias. The real response contract is tested
 # separately against Xczs in tests/health.rs.
 for health_path in /healthz /readyz; do
@@ -715,7 +715,7 @@ for health_path in /healthz /readyz; do
   node -e '
     const result = JSON.parse(require("fs").readFileSync(process.argv[1]));
     if (result.url !== process.argv[2] || result.host !== "files.example.com") {
-      throw new Error("Foundation probe path or canonical Host was rewritten");
+      throw new Error("xcss probe path or canonical Host was rewritten");
     }
   ' "$validation_dir/health-path.json" "$health_path"
 done

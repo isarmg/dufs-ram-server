@@ -49,14 +49,14 @@ Xczs 因此把控制面和数据面分开：
 
 | 文件 | 负责什么 |
 | --- | --- |
-| [upload/manager.js](../../web/modules/upload/manager.js) | 预检、队列、任务状态机、重试与冲突编排 |
-| [upload/selection.js](../../web/modules/upload/selection.js) | 文件选择、批量路径预算与重复目标校验 |
-| [upload/preflight.js](../../web/modules/upload/preflight.js) | 严格验证 preflight JSON |
-| [upload/protocol.js](../../web/modules/upload/protocol.js) | 校验 HTTP status 与上传头部状态矩阵 |
-| [http/headers.js](../../web/modules/http/headers.js) | 供上传、传输和正文预算共用的规范非负整数头解析 |
-| [upload/transport.js](../../web/modules/upload/transport.js) | XHR 正文、进度、abort 和 timeout |
-| [upload/queue.js](../../web/modules/upload/queue.js) | FIFO、取消和有界终态历史 |
-| [upload/view.js](../../web/modules/upload/view.js) | DOM 行、速度、进度、ETA、按钮和 live status |
+| [upload/manager.ts](../../web/modules/upload/manager.ts) | 预检、队列、任务状态机、重试与冲突编排 |
+| [upload/selection.ts](../../web/modules/upload/selection.ts) | 文件选择、批量路径预算与重复目标校验 |
+| [upload/preflight.ts](../../web/modules/upload/preflight.ts) | 严格验证 preflight JSON |
+| [upload/protocol.ts](../../web/modules/upload/protocol.ts) | 校验 HTTP status 与上传头部状态矩阵 |
+| [http/headers.ts](../../web/modules/http/headers.ts) | 供上传、传输和正文预算共用的规范非负整数头解析 |
+| [upload/transport.ts](../../web/modules/upload/transport.ts) | XHR 正文、进度、abort 和 timeout |
+| [upload/queue.ts](../../web/modules/upload/queue.ts) | FIFO、取消和有界终态历史 |
+| [upload/view.ts](../../web/modules/upload/view.ts) | DOM 行、速度、进度、ETA、按钮和 live status |
 
 ### 服务端
 
@@ -99,7 +99,7 @@ stage 的 device/inode 与 SQLite 记录绑定。仅仅猜中隐藏文件名或 
 
 | 头部 | 方向 | 含义 |
 | --- | --- | --- |
-| `X-CSRF-Token` | 请求 | Foundation 当前会话的写请求证明 |
+| `X-CSRF-Token` | 请求 | xcss 当前会话的写请求证明 |
 | `X-Xczs-Upload-Id` | 双向 | 上传会话 UUID |
 | `X-Xczs-Upload-Length` | 双向 | 文件完整字节长度 |
 | `X-Xczs-Upload-Offset` | 双向 | 本次续写起点或服务端可靠检查点 |
@@ -152,7 +152,7 @@ stateDiagram-v2
 | DOM 入队分片 | 每 50 项让出一帧 | 大批选择时卡死主线程 |
 | 客户端实际默认并发 | 1 | 控制浏览器和网络压力 |
 
-`upload/manager.js` 支持外部注入最多 8 并发，但当前页面数据没有传入后端并发配置，因此实际走默认单并发。不要把“代码允许最大 8”误写成“页面自动并发 8 个”。
+`upload/manager.ts` 支持外部注入最多 8 并发，但当前页面数据没有传入后端并发配置，因此实际走默认单并发。不要把“代码允许最大 8”误写成“页面自动并发 8 个”。
 
 前端还会：
 
@@ -377,7 +377,7 @@ HEAD 没有响应正文，也不复用标准 `Content-Length` 表示检查点，
 
 前端使用的 status/state 矩阵是：
 
-| upload state | fresh PUT | resume PATCH | checkpoint HEAD |
+| 上传状态 | 首次上传 PUT | 续传 PATCH | 查询检查点 HEAD |
 | --- | --- | --- | --- |
 | `running` | 408、409 | 408、409、413、500、507 | 200 |
 | `awaiting-confirmation` | 409 | 408、409、413、500、507 | 409 |
@@ -389,7 +389,7 @@ HEAD 没有响应正文，也不复用标准 `Content-Length` 表示检查点，
 
 `401` authentication 和带明确 auth error 的 `403` CSRF 会先于该矩阵分类。绑定字段也有状态规则：
 
-| upload state | `X-Xczs-Upload-Length` | `X-Xczs-Upload-Offset` |
+| 上传状态 | `X-Xczs-Upload-Length` | `X-Xczs-Upload-Offset` |
 | --- | --- | --- |
 | `running`、`awaiting-confirmation`、`committed` | 必须存在且等于所选文件长度 | 必须存在；committed 还必须等于完整长度 |
 | `rejected`、`not-started` | 必须存在 | 可选；若存在必须是范围内规范整数 |
@@ -567,7 +567,7 @@ XHR abort 只停止浏览器继续等待或发送，不能撤销服务器已经�
 
 例如收到 `204` 但 `X-Xczs-Upload-Id` 变成另一个 UUID，可能表示代理、服务器 bug 或响应错配。前端不能仅看 2xx 就把任务标绿。
 
-[upload/protocol.js](../../web/modules/upload/protocol.js) 会联合验证：
+[upload/protocol.ts](../../web/modules/upload/protocol.ts) 会联合验证：
 
 - 当前请求是 fresh、resume 还是 checkpoint；
 - HTTP status；
@@ -576,7 +576,7 @@ XHR abort 只停止浏览器继续等待或发送，不能撤销服务器已经�
 - length；
 - offset。
 
-该模块还提供 revision/replaceable 的严格解析器；它们与 `awaiting-confirmation` 等状态的组合关系由 `upload/manager.js` 的目标变化和 checkpoint 处理继续验证。两层合在一起，才构成完整响应校验。
+该模块还提供 revision/replaceable 的严格解析器；它们与 `awaiting-confirmation` 等状态的组合关系由 `upload/manager.ts` 的目标变化和 checkpoint 处理继续验证。两层合在一起，才构成完整响应校验。
 
 Problem Details 只在正确 `Content-Type` 下按有界大小解析。正文 `status` 与真实 HTTP 状态冲突会视为协议错误；若 Problem Details 的 operation/upload extension 与已验证协议头冲突，当前实现以响应头为权威并覆盖正文 extension，而不是把两者不一致本身判成失败。安全决策仍不能从英文 detail 推断。
 

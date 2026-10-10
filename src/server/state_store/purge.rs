@@ -3,7 +3,7 @@ use super::*;
 
 impl StoreWorker {
     pub(super) fn prepare_purge_job(&mut self, proposed: &StoredPurgeJob) -> Result<StorePurgeJob> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;
@@ -72,7 +72,7 @@ impl StoreWorker {
     }
 
     pub(super) fn prepared_purge_jobs(&mut self, limit: i64) -> Result<Vec<StoredPurgeJob>> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             query_purge_jobs(
                 &mut self.connection,
@@ -90,7 +90,7 @@ impl StoreWorker {
     }
 
     pub(super) fn purge_jobs(&mut self, limit: i64) -> Result<Vec<StoredPurgeJob>> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             query_purge_jobs(
                 &mut self.connection,
@@ -107,7 +107,7 @@ impl StoreWorker {
     }
 
     pub(super) fn state_path_is_bound(&mut self, path: &Path) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             sqlx::query(
                 "SELECT EXISTS(
@@ -134,7 +134,7 @@ impl StoreWorker {
         after: Option<StatePathCursor>,
         limit: i64,
     ) -> Result<StatePathPage> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             query_state_blocking_paths(&mut self.connection, after, limit).await
         })
@@ -145,7 +145,7 @@ impl StoreWorker {
         key: PurgeJobKey,
         trash_revision: [u8; 32],
     ) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let changed = sqlx::query(
@@ -176,7 +176,7 @@ impl StoreWorker {
     }
 
     pub(super) fn claim_due_purge_job(&mut self) -> Result<Option<StoredPurgeJob>> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;
@@ -220,7 +220,7 @@ impl StoreWorker {
     }
 
     pub(super) fn retry_purge_job(&mut self, key: PurgeJobKey, delay_ms: i64) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let next_attempt = expiration_time(now, delay_ms)?;
@@ -246,7 +246,7 @@ impl StoreWorker {
     }
 
     pub(super) fn complete_purge_job(&mut self, key: PurgeJobKey) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             Ok(sqlx::query(
                 "DELETE FROM purge_jobs
@@ -263,7 +263,7 @@ impl StoreWorker {
     }
 
     pub(super) fn remove_purge_job(&mut self, key: PurgeJobKey) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             Ok(
                 sqlx::query("DELETE FROM purge_jobs WHERE owner_digest = ?1 AND job_id = ?2")

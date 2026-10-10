@@ -98,7 +98,7 @@ run cargo test --locked --target x86_64-unknown-linux-gnu --all-targets --all-fe
 run ./scripts/check-coverage.sh
 run cargo build --locked --release --target x86_64-unknown-linux-gnu
 release_binary="${CARGO_TARGET_DIR:-$project_dir/target}/x86_64-unknown-linux-gnu/release/xczs"
-run node node_modules/@xcss/web-toolchain/dist/server-cli.js \
+run node node_modules/@xcss/web/dist/web-toolchain/server-cli.js \
   --verify-only --binary "$release_binary" --dist "$project_dir/web/runtime-dist"
 run bash scripts/check-release-runtime.sh "$release_binary"
 

@@ -113,11 +113,11 @@ fn builder_without_tokio_runtime_returns_an_error() {
     assert!(error.to_string().contains("active Tokio runtime"));
 }
 
-fn platform_handle() -> xcss_server_runtime::RuntimeHandle {
-    xcss_server_runtime::platform_handle(xcss_server_runtime::ProductDescriptor {
+fn platform_handle() -> xcss::server_runtime::RuntimeHandle {
+    xcss::server_runtime::platform_handle(xcss::server_runtime::ProductDescriptor {
         id: "xczs".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        foundation_revision: env!("XCSS_FOUNDATION_REVISION").into(),
+        common_revision: env!("XCSS_REVISION").into(),
         profile: "server-filesystem".into(),
         capabilities: vec!["server-runtime".into()],
     })
@@ -133,7 +133,7 @@ async fn http_boundary_requires_a_real_socket_peer() {
     let runtime = Server::builder(authenticated_args(root.path(), state.path()))
         .build()
         .unwrap();
-    let service = xcss_server_runtime::request_service(
+    let service = xcss::server_runtime::request_service(
         runtime
             .server()
             .clone()
@@ -167,7 +167,7 @@ async fn retained_service_cannot_register_work_after_state_close() {
     let runtime = Server::builder(authenticated_args(root.path(), state.path()))
         .build()
         .unwrap();
-    let service = xcss_server_runtime::request_service(
+    let service = xcss::server_runtime::request_service(
         runtime
             .server()
             .clone()

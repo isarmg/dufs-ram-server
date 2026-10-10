@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RequestError } from "../../../web/modules/http/client.js";
+import { RequestError } from "../../../web/dist/modules/http/client.js";
 import {
   trackedMutationEffect,
   uploadMutationEffect,
-} from "../../../web/modules/operations/file_operations.js";
+} from "../../../web/dist/modules/operations/file_operations.js";
 import {
   MUTATION_EFFECT,
-} from "../../../web/modules/shared/mutation_effect.js";
+} from "../../../web/dist/modules/shared/mutation_effect.js";
 
 const uploadId = "00000000-0000-4000-8000-000000000001";
 

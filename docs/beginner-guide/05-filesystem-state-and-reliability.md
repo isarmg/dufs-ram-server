@@ -291,11 +291,11 @@ actor 循环必须在**每条命令内部**处理 `Result`，把错误只回复�
 - 状态目录 owner 和精确 `0700` 权限；
 - DB 是 no-follow 普通文件、单硬链接；
 - DB mode 为 `0600`；
-- SQLite defensive mode；
+- SQLite 防御模式（defensive mode）；
 - `trusted_schema` 与 mmap 关闭；
 - 外键开启；
 - busy timeout；
-- rollback journal `DELETE`；
+- 回滚日志模式为 `DELETE`；
 - `synchronous=EXTRA`；
 - 五列 `product_metadata`、当前应用/版本/revision、统一 schema SHA-256、精确对象身份与 quick check；
 - 数据库绑定的共享根 device/inode。
@@ -382,7 +382,7 @@ worker 还持有 trash 根的 `O_PATH` 锚点，并在每个最终 unlink/rmdir 
 
 公开 `/healthz` 只证明 HTTP 进程能响应。
 
-公开 `/readyz` 返回最近一次有界探针的最小结果，不要求会话，也不会为每个 HTTP 请求重复探测。Foundation 在启动时以及每 5 秒刷新一次；探针会实际：
+公开 `/readyz` 返回最近一次有界探针的最小结果，不要求会话，也不会为每个 HTTP 请求重复探测。xcss 在启动时以及每 5 秒刷新一次；探针会实际：
 
 1. 并行发起共享根、磁盘空间和 StateStore 三个实时探针；
 2. 复核开始监听前创建并固定打开的私有隐藏探针仍绑定共享根中的同一 inode；

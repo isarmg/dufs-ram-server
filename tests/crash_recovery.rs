@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 // Run this same real-process contract against the extracted release binary
 // using XCZS_TEST_BINARY. SIGABRT exercises process death without unwind;
-// this does not claim Foundation catch_unwind can isolate release panic.
+// this does not claim xcss catch_unwind can isolate release panic.
 #[test]
 fn abnormal_exit_preserves_current_upload_checkpoint_and_committed_result() -> Result<(), Error> {
     let mut server = server(&[] as &[&str], &[TEST_ACCOUNT]);

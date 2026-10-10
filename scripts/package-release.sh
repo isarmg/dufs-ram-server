@@ -2929,7 +2929,7 @@ run_node_entrypoint \
   # The signed source archive and offline graph were verified above. Use the
   # same actual executable acceptance as the shared build entry, before signing.
   "${release_web_environment[@]}" "$node_command" \
-    "$release_build_source/node_modules/@xcss/web-toolchain/dist/server-cli.js" \
+    "$release_build_source/node_modules/@xcss/web/dist/web-toolchain/server-cli.js" \
     --verify-only --binary "$release_target_dir/$host_target/release/xczs" \
     --dist "$release_build_source/web/runtime-dist"
   "${isolated_build_environment[@]}" \

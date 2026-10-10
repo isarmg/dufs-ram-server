@@ -4,7 +4,7 @@
 
 ## 10.1 不推荐从最大的文件开始硬读
 
-直接打开 [upload.rs](../../src/server/upload.rs) 或 [upload/manager.js](../../web/modules/upload/manager.js) 从第一行读到最后，通常会同时遇到路径、状态、协议、DOM、取消和恢复，难以建立主线。
+直接打开 [upload.rs](../../src/server/upload.rs) 或 [upload/manager.ts](../../web/modules/upload/manager.ts) 从第一行读到最后，通常会同时遇到路径、状态、协议、DOM、取消和恢复，难以建立主线。
 
 更有效的方法是：
 
@@ -57,15 +57,15 @@
 阅读：
 
 - [src/auth.rs](../../src/auth.rs)；
-- [src/server/administrator_web.rs](../../src/server/administrator_web.rs)：Foundation HTTP 响应与产品页面的适配；
-- [web/modules/platform-session.js](../../web/modules/platform-session.js)：每文档唯一的 Foundation 浏览器客户端；
+- [src/server/administrator_web.rs](../../src/server/administrator_web.rs)：xcss HTTP 响应与产品页面的适配；
+- [web/modules/platform-session.ts](../../web/modules/platform-session.ts)：每文档唯一的 xcss 浏览器客户端；
 - [web/login.html](../../web/login.html)；
-- [web/login.js](../../web/login.js)；
+- [web/login.ts](../../web/login.ts)；
 - [tests/auth.rs](../../tests/auth.rs) 与 [tests/frontend/auth.spec.js](../../tests/frontend/auth.spec.js)。
 
 回答：
 
-- 登录为何使用 Foundation JSON Fetch，而不使用表单提交或 PRG？
+- 登录为何使用 xcss JSON Fetch，而不使用表单提交或 PRG？
 - Cookie 认证与 CSRF 各解决什么？
 - 为什么修改 `login.js` 可能还要更新 CSP 哈希？
 - 应用和 nginx 的登录限流如何叠加？
@@ -78,8 +78,8 @@
 - [src/server/listing/snapshot.rs](../../src/server/listing/snapshot.rs)；
 - [src/server/listing/walk.rs](../../src/server/listing/walk.rs)；
 - [web/index.html](../../web/index.html)；
-- [web/modules/app.js](../../web/modules/app.js)；
-- [web/modules/listing/controller.js](../../web/modules/listing/controller.js)。
+- [web/modules/app.ts](../../web/modules/app.ts)；
+- [web/modules/listing/controller.ts](../../web/modules/listing/controller.ts)。
 
 回答：
 
@@ -129,8 +129,8 @@ URI → RoutePath → RootedPath → 根 FD 相对打开 → fstat identity
 
 推荐先读重命名：
 
-- [web/modules/operations/file_operations.js](../../web/modules/operations/file_operations.js)；
-- [web/modules/http/client.js](../../web/modules/http/client.js)；
+- [web/modules/operations/file_operations.ts](../../web/modules/operations/file_operations.ts)；
+- [web/modules/http/client.ts](../../web/modules/http/client.ts)；
 - [src/server/browser_api.rs](../../src/server/browser_api.rs)；
 - [src/server/operation_registry.rs](../../src/server/operation_registry.rs)；
 - [src/server/problem.rs](../../src/server/problem.rs)；
@@ -188,17 +188,17 @@ URI → RoutePath → RootedPath → 根 FD 相对打开 → fstat identity
 | 用户动作/现象 | 前端起点 | 后端起点 | 先看测试 |
 | --- | --- | --- | --- |
 | 登录 | `login.html/js` | `administrator_web.rs` | `tests/auth.rs`、`auth.spec.js` |
-| 打开目录 | `app.js`、`listing/controller.js` | `listing.rs` | `tests/pagination.rs`、`browse.spec.js` |
-| 点击文件下载 | `listing/controller.js` | `download.rs` | `tests/range.rs` |
-| 点击房子回根目录 | `app.js` | 普通目录 GET | `browse.spec.js` |
-| 新建文件夹 | `operations/file_operations.js` | `browser_api.rs` mkdir | `browser_api.rs` 测试、`operations.spec.js` |
-| 新建空文件 | `operations/file_operations.js` | `upload.rs` PUT | upload 测试 |
-| 行内重命名 | `listing/controller.js`、`operations/file_operations.js` | `browser_api.rs` rename | `operations.spec.js` |
-| 移动 | `operations/file_operations.js` | `browser_api.rs` move | `browser_api.rs`、`operations.spec.js` |
-| 删除 | `operations/file_operations.js` | `delete.rs`、`purge.rs` | delete/purge 集成测试 |
-| 上传重名确认 | `upload/manager.js` | `browser_api.rs` preflight、`upload.rs` | `upload.spec.js` |
+| 打开目录 | `app.ts`、`listing/controller.ts` | `listing.rs` | `tests/pagination.rs`、`browse.spec.js` |
+| 点击文件下载 | `listing/controller.ts` | `download.rs` | `tests/range.rs` |
+| 点击房子回根目录 | `app.ts` | 普通目录 GET | `browse.spec.js` |
+| 新建文件夹 | `operations/file_operations.ts` | `browser_api.rs` mkdir | `browser_api.rs` 测试、`operations.spec.js` |
+| 新建空文件 | `operations/file_operations.ts` | `upload.rs` PUT | upload 测试 |
+| 行内重命名 | `listing/controller.ts`、`operations/file_operations.ts` | `browser_api.rs` rename | `operations.spec.js` |
+| 移动 | `operations/file_operations.ts` | `browser_api.rs` move | `browser_api.rs`、`operations.spec.js` |
+| 删除 | `operations/file_operations.ts` | `delete.rs`、`purge.rs` | delete/purge 集成测试 |
+| 上传重名确认 | `upload/manager.ts` | `browser_api.rs` preflight、`upload.rs` | `upload.spec.js` |
 | 页面仍显示旧界面 | asset URL/cache | `assets.rs` | `tests/assets.rs` |
-| 操作 unknown | `http/client.js` | router/protocol/operation registry | browser API 与前端 unknown 测试 |
+| 操作 unknown | `http/client.ts` | router/protocol/operation registry | browser API 与前端 unknown 测试 |
 | ready 503 | 页面/探针客户端 | `server.rs`、RootedFs、StateStore | `tests/health.rs` |
 
 ## 10.4 从错误关键词反查
@@ -292,7 +292,7 @@ rg "X-Xczs-Upload-Offset" src assets tests
 
 1. 定义独立路由与请求 schema；
 2. 路径策略和输入预算；
-3. Operation ID + fingerprint；
+3. 操作 ID 与指纹（fingerprint）；
 4. 路径租约与 StateStore 冲突；
 5. detached commit 和 unknown；
 6. 原子文件系统操作与 fsync；
@@ -447,8 +447,8 @@ Rust 中表示将来可能完成的异步计算。丢弃 Future 不会撤销已�
 
 ### J
 
-**JSDoc checkJs**
-在 `.js` 注释中声明类型，再由 TypeScript 静态检查。它不生成代码，也不能代替网络输入运行时校验。
+**JavaScript 编译产物**
+TypeScript/TSX 源码通过 Vite 编译为浏览器执行的 JavaScript，源码类型由严格 TypeScript 配置检查。静态类型不能代替网络输入运行时校验。
 
 ### L
 
@@ -477,7 +477,7 @@ Rust 中表示将来可能完成的异步计算。丢弃 Future 不会撤销已�
 先持久记录待执行副作用，再由 worker 可靠消费的模式。删除 purge job 是文件系统与 SQLite 之间的 durable outbox。
 
 **owner digest**
-按具体用途从 Foundation 管理员身份生成的假名化 `OwnerId`。operation/upload/purge 的持久记录使用当前 `OwnerId::persistent` 合同；列表快照和登录限流使用各自 domain-separated 摘要。它们避免在这些边界直接保存或比较管理员 username，但都只是未加密盐的 SHA-256；低熵 username 可被字典枚举，不能视为匿名化或保密边界，也不能混成一个全局通用摘要。源码里的 data-plane `user`/owner 命名描述文件操作归属，不表示另有普通用户角色。
+按具体用途从 xcss 管理员身份生成的假名化 `OwnerId`。operation/upload/purge 的持久记录使用当前 `OwnerId::persistent` 合同；列表快照和登录限流使用各自 domain-separated 摘要。它们避免在这些边界直接保存或比较管理员 username，但都只是未加密盐的 SHA-256；低熵 username 可被字典枚举，不能视为匿名化或保密边界，也不能混成一个全局通用摘要。源码里的 data-plane `user`/owner 命名描述文件操作归属，不表示另有普通用户角色。
 
 ### P
 
@@ -569,7 +569,7 @@ Extended Attribute，Linux 文件扩展属性。覆盖重放时必须限制特�
 
 ### Xczs 如何使用统一的 React/Vite？
 
-Xczs 使用 Foundation React Profile 和共享组件，React 负责登录、导航与文件页结构。已有文件列表、操作和上传控制器保留自己的 DOM 区域和恢复语义；React 状态更新不能重建正在工作的行或编辑器。构建产物仍编译进单个 Rust 二进制，不需要生产 Node 服务，管理员身份仍完全采用 Foundation current 合同。
+Xczs 使用 xcss React Profile 和共享组件，React 负责登录、导航与文件页结构。已有文件列表、操作和上传控制器保留自己的 DOM 区域和恢复语义；React 状态更新不能重建正在工作的行或编辑器。构建产物仍编译进单个 Rust 二进制，不需要生产 Node 服务，管理员身份仍完全采用 xcss current 合同。
 
 ### SQLite 是文件索引数据库吗？
 

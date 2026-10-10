@@ -14,8 +14,8 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use xcss_fs_safety::{PrivateDirectory, RelativePath};
-use xcss_server_cli::{ContractJson, ContractPath, ContractQuery};
+use xcss::fs_safety::{PrivateDirectory, RelativePath};
+use xcss::server_cli::{ContractJson, ContractPath, ContractQuery};
 
 pub(in crate::server) fn routes() -> Router<Arc<Server>> {
     Router::new()
@@ -23,6 +23,7 @@ pub(in crate::server) fn routes() -> Router<Arc<Server>> {
         .route("/scan", post(scan))
         .route("/backup", post(backup))
         .route("/files", get(files))
+        .route("/file", get(file))
         .route("/folders", get(folders))
         .route("/files/{id}/tags", get(file_tags))
         .route("/files/{id}/confirm", post(confirm))
@@ -236,6 +237,25 @@ fn parse_ids(value: &str) -> Result<Vec<i64>, ApiError> {
 }
 fn valid_directory(value: &str) -> bool {
     value.is_empty() || RelativePath::new(FsPath::new(value)).is_ok()
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FilePathQuery {
+    path: String,
+}
+async fn file(
+    State(server): State<Arc<Server>>,
+    ContractQuery(q): ContractQuery<FilePathQuery>,
+) -> Result<Json<super::db::ListedTags>, ApiError> {
+    if q.path.is_empty() || q.path.len() > 4096 || !valid_directory(&q.path) {
+        return Err(ApiError::bad());
+    }
+    server
+        .tags_for_file(&q.path)
+        .await
+        .map(Json)
+        .map_err(database_error)
 }
 async fn files(
     State(server): State<Arc<Server>>,

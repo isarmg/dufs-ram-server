@@ -5,7 +5,7 @@
 ## 当前规范
 
 - [项目工作流程与流程树](project-workflow.md)：启动、认证、路由、文件操作、上传和停机流程。
-- [HTTP 与运行时合同](http-runtime-contract.md)：路由、安全预算、Foundation 边界与验证入口。
+- [HTTP 与运行时合同](http-runtime-contract.md)：路由、安全预算、xcss 边界与验证入口。
 - [完整功能与取舍清单](feature-inventory-and-tradeoffs.md)：功能边界、依赖关系和删除成本。
 - [开发者决策矩阵](feature-decision-matrix.md)：逐项唯一 ID、代码锚点、分类、复杂度、删除后果与验证边界。
 - [生产部署与运行诊断](operations.md)：生产环境的权威操作说明。
@@ -20,3 +20,5 @@
 安全模型、漏洞报告、备份恢复和事件响应统一归入[运维文档](operations.md)，避免并行文档产生事实漂移。
 
 当前发行说明：[版本 1.0.0](releases/1.0.0.md)。
+
+公共支撑的职责、单体依赖、平台边界与验证方法见[公共支撑说明](common-support.md)。

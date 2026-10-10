@@ -261,10 +261,10 @@ npm run check:types
 该脚本使用 TypeScript 的：
 
 ```text
-allowJs + checkJs + strict + noEmit
+strict + noEmit + isolatedModules + verbatimModuleSyntax
 ```
 
-检查 [web/index.js](../../web/index.js)、[web/login.js](../../web/login.js) 和 [web/modules](../../web/modules) 下的生产 JavaScript。它不会生成任何文件。外部数据应该先保持为 `unknown`，经类型守卫验证后再使用；用 `any` 绕开问题会破坏这一层的意义。
+检查 [web/index.ts](../../web/index.ts)、[web/login.ts](../../web/login.ts) 、[web/react](../../web/react) 和 [web/modules](../../web/modules) 下的生产 TypeScript/TSX。它不会生成任何文件。外部数据应该先保持为 `unknown`，经类型守卫验证后再使用；用 `any` 绕开问题会破坏这一层的意义。
 
 类型通过只证明静态模型一致，不证明服务器实际按该协议返回。协议关键路径还需要 Node 单测、Rust测试和浏览器测试交叉覆盖。
 
@@ -446,8 +446,8 @@ Network 重点看：
 | 测试提示端口占用 | 手工服务占端口，或残留进程 | 普通 fixture 应用动态端口；检查是否硬编码了 5000 |
 | data_dir 权限错误 | 手写测试目录不是当前用户所有或不是 0700 | 优先复用 fixture，不要在测试中共享固定 data_dir |
 | `npm ci` 报 lockfile 不一致 | `package.json` 与 `package-lock.json` 漂移 | 有意识更新并审查 lockfile，不要直接删除它 |
-| `check:types` 大量连锁错误 | 某个 JSDoc 类型或守卫首先失效 | 从第一处 `unknown` 未收窄或返回类型变化开始 |
-| `check:js` 报危险入口 | 使用了项目禁止的 DOM、网络或模态 API | 使用现有 `shared/dom.js`、`http/client.js` 或批准的 transport 边界 |
+| `check:types` 大量连锁错误 | 某个 TypeScript 类型或守卫首先失效 | 从第一处 `unknown` 未收窄或返回类型变化开始 |
+| `check:js` 报危险入口 | 使用了项目禁止的 DOM、网络或模态 API | 使用现有 `shared/dom.ts`、`http/client.ts` 或批准的 transport 边界 |
 | `check:docs` 报链接不存在 | 文件改名、相对层级错误或目标章节尚未创建 | 从报错文档所在目录重新计算相对路径 |
 | Playwright 找不到浏览器 | 浏览器二进制尚未安装 | `npm run test:frontend:install` |
 | Playwright 启动即失败 | 缺系统库、测试 HTTPS 端口失败或 debug 二进制未构建 | 查看 webServer 输出，再单独运行相关准备命令 |

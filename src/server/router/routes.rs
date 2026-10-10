@@ -39,7 +39,7 @@ pub(super) struct BusinessError(pub Arc<Mutex<Option<anyhow::Error>>>);
 
 pub(super) fn assemble(
     server: Arc<Server>,
-    handle: xcss_server_runtime::RuntimeHandle,
+    handle: xcss::server_runtime::RuntimeHandle,
 ) -> anyhow::Result<Router> {
     let file_methods = on(MethodFilter::GET, file_get)
         .on(MethodFilter::HEAD, file_head)
@@ -107,7 +107,7 @@ pub(super) fn assemble(
         .route("/api/v1/auth", any(unknown_platform))
         .route("/api/v1/auth/{*path}", any(unknown_platform))
         .with_state(server.clone());
-    let platform = xcss_server_runtime::platform_router(
+    let platform = xcss::server_runtime::platform_router(
         handle,
         "xczs",
         server.content.administrator_origin,
@@ -126,7 +126,7 @@ async fn authenticate(
     mut request: Request,
     next: Next,
 ) -> Response {
-    match xcss_admin_axum::authenticate_request(
+    match xcss::admin_axum::authenticate_request(
         &server.content.administrator,
         request.headers(),
         request.uri(),
@@ -400,8 +400,8 @@ fn platform_error(status: http::StatusCode, code: &'static str) -> Response {
     use axum::response::IntoResponse;
     (
         status,
-        axum::Json(xcss_contracts::ErrorEnvelope::with_code(
-            xcss_contracts::ErrorCode::new(code).expect("fixed platform error code"),
+        axum::Json(xcss::contracts::ErrorEnvelope::with_code(
+            xcss::contracts::ErrorCode::new(code).expect("fixed platform error code"),
             status.canonical_reason().unwrap_or("Request failed"),
         )),
     )

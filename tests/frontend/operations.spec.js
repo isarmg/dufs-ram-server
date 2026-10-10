@@ -1,6 +1,7 @@
 const { randomUUID } = require("node:crypto");
 const {
   actionDialog,
+  chooseFileAction,
   currentDirectoryPath,
   currentLogicalChild,
   currentUrl,
@@ -321,9 +322,7 @@ test("新建完成时清除并发启动的旧行编辑器", async ({ appPage: pa
 
   await page.getByRole("button", { name: "New empty file" }).click();
   await preflightStarted;
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Rename rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   await expect(inlineNameInput(page)).toHaveValue("rename-me.txt");
 
   releasePreflight();
@@ -851,9 +850,7 @@ test("使用独立重命名接口并刷新当前目录", async ({ appPage: page 
       response.request().method() === "POST" &&
       new URL(response.url()).pathname.endsWith("/__xczs__/api/rename"),
   );
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Rename rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   const input = inlineNameInput(page);
   await expect(input).toBeFocused();
   await expect(input).toHaveValue("rename-me.txt");
@@ -900,9 +897,7 @@ test("慢重命名进入 busy 时同步 blur 不会重复提交", async ({
     await route.continue();
   });
 
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Rename rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   const input = inlineNameInput(page);
   await input.fill("slow-renamed.txt");
   await input.press("Enter");
@@ -938,42 +933,33 @@ test("行内重命名支持 Tab、失焦提交和 Escape 取消且全局只有�
     }
   });
 
-  const firstRename = rowByName(page, "rename-me.txt").getByRole("button", {
-    name: "Rename rename-me.txt",
-  });
-  await firstRename.click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   const firstInput = inlineNameInput(page);
   await expect(firstInput).toBeFocused();
   await expectSelection(firstInput, "rename-me".length, "rename-me".length);
 
-  const secondRename = rowByName(page, "download-me.txt").getByRole(
-    "button",
-    { name: "Rename download-me.txt" },
-  );
-  await secondRename.click();
+  await chooseFileAction(page, "rename", "download-me.txt");
   await expect(inlineNameInput(page)).toHaveCount(1);
   await expect(inlineNameInput(page)).toHaveValue("download-me.txt");
   await expect(inlineNameInput(page)).toBeFocused();
   expect(requests).toHaveLength(0);
 
+  const nextName = await page.locator(".is-renaming")
+    .locator("xpath=following-sibling::tr[1]").locator(".cell-name a").innerText();
   await inlineNameInput(page).fill("tab-renamed.txt");
   await inlineNameInput(page).press("Tab");
   await expect(rowByName(page, "tab-renamed.txt")).toBeVisible();
-  await expect(rowByName(page, "tab-renamed.txt").getByRole("button", {
-    name: "Move tab-renamed.txt",
-  })).toBeFocused();
+  await expect(rowByName(page, nextName).locator(".cell-name a")).toBeFocused();
   await expect(inlineNameInput(page)).toHaveCount(0);
 
-  const escapeRename = rowByName(page, "rename-me.txt").getByRole("button", {
-    name: "Rename rename-me.txt",
-  });
-  await escapeRename.click();
+  const escapeRename = page.locator('[data-file-action="rename"]');
+  await chooseFileAction(page, "rename", "rename-me.txt");
   await inlineNameInput(page).fill("must-not-commit.txt");
   await inlineNameInput(page).press("Escape");
   await expect(rowByName(page, "rename-me.txt")).toBeVisible();
   await expect(escapeRename).toBeFocused();
 
-  await escapeRename.click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   await inlineNameInput(page).fill("blur-renamed.txt");
   await page.getByRole("button", { name: "New folder" }).focus();
   await expect(rowByName(page, "blur-renamed.txt")).toBeVisible();
@@ -986,9 +972,7 @@ test("行内重命名支持 Tab、失焦提交和 Escape 取消且全局只有�
 test("进入原位编辑时不自动选中文本并将光标放在名称编辑位置", async ({
   appPage: page,
 }) => {
-  await rowByName(page, "existing-folder")
-    .getByRole("button", { name: "Rename existing-folder" })
-    .click();
+  await chooseFileAction(page, "rename", "existing-folder");
   await expectSelection(
     inlineNameInput(page),
     "existing-folder".length,
@@ -996,9 +980,7 @@ test("进入原位编辑时不自动选中文本并将光标放在名称编辑�
   );
   await inlineNameInput(page).press("Escape");
 
-  await rowByName(page, "special & # + 中文.txt")
-    .getByRole("button", { name: "Rename special & # + 中文.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "special & # + 中文.txt");
   await expectSelection(
     inlineNameInput(page),
     "special & # + 中文".length,
@@ -1019,9 +1001,7 @@ test("IME 组合输入中的 Escape 不取消编辑，普通 Escape 才取消", 
       renameRequests++;
     }
   });
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Rename rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   const input = inlineNameInput(page);
   await input.fill("组合输入.txt");
   await input.dispatchEvent("keydown", {
@@ -1078,9 +1058,7 @@ test("使用独立移动接口保留名称并进入目标目录", async ({
       response.request().method() === "POST" &&
       new URL(response.url()).pathname.endsWith("/__xczs__/api/move"),
   );
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Move rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "move", "rename-me.txt");
   await submitActionDialog(page, {
     title: "Move item",
     label: "Destination folder",
@@ -1135,9 +1113,7 @@ test("重命名目标存在时只有确认后才显式覆盖", async ({
       responses.push(response);
     }
   });
-  await rowByName(page, "overwrite-source.txt")
-    .getByRole("button", { name: "Rename overwrite-source.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "overwrite-source.txt");
   const input = inlineNameInput(page);
   await input.fill("overwrite-target.txt");
   await input.press("Enter");
@@ -1195,9 +1171,7 @@ test("重命名冲突缺少目标 revision 时拒绝覆盖确认", async ({
     });
   });
 
-  await rowByName(page, "overwrite-source.txt")
-    .getByRole("button", { name: "Rename overwrite-source.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "overwrite-source.txt");
   const input = inlineNameInput(page);
   await input.fill("overwrite-target.txt");
   await input.press("Enter");
@@ -1234,9 +1208,7 @@ test("HTTP 500 的 destination_exists 不得授权重命名覆盖", async ({
     });
   });
 
-  await rowByName(page, "overwrite-source.txt")
-    .getByRole("button", { name: "Rename overwrite-source.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "overwrite-source.txt");
   const input = inlineNameInput(page);
   await input.fill("overwrite-target.txt");
   await input.press("Enter");
@@ -1269,9 +1241,7 @@ test("重命名源 revision 过期时关闭编辑器并刷新列表", async ({
     );
   });
 
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Rename rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   const input = inlineNameInput(page);
   await input.fill("stale-source.txt");
   await input.press("Enter");
@@ -1318,9 +1288,7 @@ test("覆盖确认后目标 revision 过期时不重试并刷新列表", async (
     );
   });
 
-  await rowByName(page, "overwrite-source.txt")
-    .getByRole("button", { name: "Rename overwrite-source.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "overwrite-source.txt");
   const input = inlineNameInput(page);
   await input.fill("overwrite-target.txt");
   await input.press("Enter");
@@ -1386,9 +1354,7 @@ test("重命名结果 unknown 时不采纳正文冲突码发起覆盖", async ({
     });
   });
 
-  await rowByName(page, "overwrite-source.txt")
-    .getByRole("button", { name: "Rename overwrite-source.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "overwrite-source.txt");
   const input = inlineNameInput(page);
   await input.fill("overwrite-target.txt");
   await input.press("Enter");
@@ -1427,9 +1393,7 @@ test("删除失败时显示错误并保留目录行", async ({ appPage: page }) 
       await route.continue();
     }
   });
-  await rowByName(page, "delete-me.txt")
-    .getByRole("button", { name: "Delete delete-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "delete-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();
@@ -1466,9 +1430,7 @@ test("删除目标 revision 过期时不删除并刷新列表", async ({
     );
   });
 
-  await rowByName(page, "delete-me.txt")
-    .getByRole("button", { name: "Delete delete-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "delete-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();
@@ -1494,9 +1456,7 @@ test("会话轮换后的 CSRF 响应直接刷新且不查询未登记操作", as
   });
   await rotateSession(page);
 
-  await rowByName(page, "delete-me.txt")
-    .getByRole("button", { name: "Delete delete-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "delete-me.txt");
   const reloaded = page.waitForEvent("framenavigated", frame =>
     frame === page.mainFrame()
   );
@@ -1624,9 +1584,7 @@ test("提交结果不确定时只查询一次且不盲目重试", async ({ appPa
       }),
     });
   });
-  await rowByName(page, "delete-me.txt")
-    .getByRole("button", { name: "Delete delete-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "delete-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();
@@ -1677,9 +1635,7 @@ test("状态查询确认成功后安全更新页面", async ({ appPage: page }) 
       jobResponses.push(response);
     }
   });
-  await rowByName(page, "delete-me.txt")
-    .getByRole("button", { name: "Delete delete-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "delete-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();
@@ -1752,9 +1708,7 @@ test("删除成功后更新已加载数量并移动焦点", async ({ appPage: pa
       response.request().method() === "DELETE" &&
       new URL(response.url()).pathname.endsWith("/delete-me.txt"),
   );
-  await rowByName(page, "delete-me.txt")
-    .getByRole("button", { name: "Delete delete-me.txt" })
-    .click();
+  await chooseFileAction(page, "delete", "delete-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();
@@ -1813,12 +1767,8 @@ test("写入挂起期间新建置顶不会让旧 index 删除错误行", async (
     }
   });
 
-  const originalDelete = rowByName(page, "delete-me.txt").getByRole(
-    "button",
-    { name: "Delete delete-me.txt" },
-  );
-  const originalIndex = await originalDelete.getAttribute("data-index");
-  await originalDelete.click();
+  const originalIndex = await rowByName(page, "delete-me.txt").getAttribute("data-index");
+  await chooseFileAction(page, "delete", "delete-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();
@@ -1830,11 +1780,7 @@ test("写入挂起期间新建置顶不会让旧 index 删除错误行", async (
   const newItemEditor = inlineNameInput(page);
   await expect(newItemEditor).toHaveValue("newfolder");
   await newItemEditor.fill("unsaved-newfolder");
-  const reindexedDelete = rowByName(page, "delete-me.txt").getByRole(
-    "button",
-    { name: "Delete delete-me.txt" },
-  );
-  await expect(reindexedDelete).not.toHaveAttribute("data-index", originalIndex);
+  await expect(rowByName(page, "delete-me.txt")).not.toHaveAttribute("data-index", originalIndex);
   await expect(newItemEditor).toBeFocused();
   expect(renameRequests).toBe(0);
 
@@ -1863,9 +1809,7 @@ test("非法行内名称就地标错且不产生重命名请求", async ({ appPa
       renameRequests++;
     }
   });
-  await rowByName(page, "rename-me.txt")
-    .getByRole("button", { name: "Rename rename-me.txt" })
-    .click();
+  await chooseFileAction(page, "rename", "rename-me.txt");
   const input = inlineNameInput(page);
   await input.fill("..");
   await input.press("Enter");
@@ -1916,10 +1860,8 @@ test("长时间操作暴露忙碌状态且保留触发控件焦点能力", async
       body: "",
     });
   });
-  const remove = rowByName(page, "download-me.txt").getByRole("button", {
-    name: "Delete download-me.txt",
-  });
-  await remove.click();
+  const remove = page.locator('[data-file-action="delete"]');
+  await chooseFileAction(page, "delete", "download-me.txt");
   await actionDialog(page, "Delete item")
     .getByRole("button", { name: "Delete" })
     .click();

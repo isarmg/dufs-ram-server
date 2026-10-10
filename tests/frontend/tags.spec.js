@@ -1,134 +1,275 @@
-const { test, expect } = require("./fixtures.js");
+const { test, expect, sameOriginRequestHeaders } = require("./fixtures.js");
 const { randomUUID } = require("node:crypto");
 
 test.beforeEach(async ({ appPage: page }) => {
-  await page.evaluate(() => localStorage.setItem("sarmg.admin.language", "zh-CN"));
+  await page.evaluate(() =>
+    localStorage.setItem("sarmg.admin.language", "zh-CN"),
+  );
+  await page.reload();
+  await expect(page.locator(".paths-table tbody tr").first()).toBeVisible();
 });
+
+async function observeJsonResponses(page) {
+  const payloads = new WeakMap();
+  // Forward each request once to the real server and retain its exact body.
+  // Chromium may discard no-store bodies from its DevTools response cache.
+  await page.route("**/api/v1/file-tags/**", async (route) => {
+    const headers = await route.request().allHeaders();
+    const proof = sameOriginRequestHeaders(page);
+    headers.origin = proof.Origin;
+    headers["sec-fetch-site"] = proof["Sec-Fetch-Site"];
+    const upstream = await route.fetch({
+      maxRedirects: 0,
+      headers,
+    });
+    const body = await upstream.body();
+    payloads.set(
+      route.request(),
+      body.length ? JSON.parse(body.toString("utf8")) : undefined,
+    );
+    await route.fulfill({ response: upstream, body });
+    await upstream.dispose();
+  });
+  return async (predicate) => {
+    const response = await page.waitForResponse(predicate);
+    return { response, payload: payloads.get(response.request()) };
+  };
+}
 
 async function expectSharedNavigation(page) {
   const links = page.locator(".xcss-header-navigation a");
-  await expect(links).toHaveCount(4);
-  expect(await links.evaluateAll(nodes => nodes.map(node => {
-    const url = new URL(node.href);
-    return url.pathname + url.hash;
-  }))).toEqual([
-    "/",
-    "/__xczs__/tags#files",
-    "/__xczs__/tags#tags",
-    "/__xczs__/tags#status",
-  ]);
+  await expect(links).toHaveCount(3);
+  expect(
+    await links.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("href")),
+    ),
+  ).toEqual(["#files", "#tags", "#status"]);
 }
 
-test("文件与标签页面使用一致的顶部和内容间距", async ({ appPage: page }) => {
-  await page.evaluate(() => document.fonts.ready);
-  const fileHeaderStyle = await page.locator(".xcss-page-header").evaluate(element => {
-    const style = getComputedStyle(element);
-    return { paddingTop: style.paddingTop, gap: style.gap, position: style.position };
-  });
-  expect(await page.locator(".xcss-page-header").evaluate(element => getComputedStyle(element).paddingBottom)).toBe("0px");
-  const filePanelStyle = await page.locator(".index-page").evaluate(element => {
-    const style = getComputedStyle(element);
-    return { padding: style.paddingTop, radius: style.borderTopLeftRadius, border: style.borderTopWidth };
-  });
+test("目录表直接显示标签列，搜索内的标签条件在窄屏也不溢出", async ({
+  appPage: page,
+}, testInfo) => {
+  await expectSharedNavigation(page);
+  await expect(
+    page.getByRole("columnheader", { name: "标签", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".file-view-controls")).toHaveCount(0);
+  await expect(page.locator(".library-page")).toBeHidden();
   for (const width of [1838, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/__xczs__/tags#files");
-    await expect(page.getByRole("heading", { name: "文件浏览" })).toBeVisible();
-    await expect(page.locator('section[aria-label="文件列表"]')).toHaveAttribute("aria-busy", "false");
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    await page.evaluate(() => document.fonts.ready);
-    await expect(page.getByText("字体许可：", { exact: false })).toHaveCount(0);
-    const layout = await page.evaluate(() => {
-      const header = document.querySelector(".xcss-page-header").getBoundingClientRect();
-      const main = document.querySelector(".xcss-shell-main").getBoundingClientRect();
-      const heading = document.querySelector(".library-heading").getBoundingClientRect();
-      const panel = document.querySelector(".library-panel").getBoundingClientRect();
-      const style = getComputedStyle(document.querySelector(".library-panel"));
-      const headerStyle = getComputedStyle(document.querySelector(".xcss-page-header"));
-      return {
-        headingTop: heading.top - header.bottom,
-        panelGap: panel.top - heading.bottom,
-        panelInset: panel.left - main.left,
-        panelWidth: panel.width,
-        overflow: document.documentElement.scrollWidth > innerWidth,
-        headerStyle: { paddingTop: headerStyle.paddingTop, gap: headerStyle.gap, position: headerStyle.position },
-        headerBottomPadding: headerStyle.paddingBottom,
-        panelStyle: { padding: style.paddingTop, radius: style.borderTopLeftRadius, border: style.borderTopWidth },
-      };
+    await page.locator(".search-tags summary").click();
+    await expect(
+      page.getByRole("listbox", { name: "全部标签", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("listbox", { name: "任一标签", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("listbox", { name: "排除标签", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".paths-table")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`directory-tags-${width}.png`),
     });
-    expect(Math.abs(layout.headingTop)).toBeLessThan(2);
-    expect(Math.abs(layout.panelGap - 16)).toBeLessThan(2);
-    expect(Math.abs(layout.panelInset - 16)).toBeLessThan(2);
-    expect(layout.overflow).toBe(false);
-    expect(layout.headerStyle).toEqual(fileHeaderStyle);
-    expect(layout.headerBottomPadding).toBe("6px");
-    expect(layout.panelStyle).toEqual(filePanelStyle);
-    expect(Math.abs(layout.panelWidth - (width - 32))).toBeLessThan(2);
+    await page.locator(".search-tags summary").click();
   }
 });
 
-test("标签页面通过 Xczs 会话扫描、筛选并批量打标签", async ({ appPage: page }) => {
-  const tagName = `回归标签-${randomUUID().slice(0, 8)}`;
-  await expectSharedNavigation(page);
-  await page.locator('.xcss-header-navigation a[href="/__xczs__/tags#status"]').click();
-  await expectSharedNavigation(page);
-  await expect(page.locator('.xcss-header-navigation a[aria-current="page"]')).toHaveAttribute("href", "#status");
-  const [scan] = await Promise.all([
-    page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/file-tags/scan"),
-    page.getByRole("button", { name: "重新扫描" }).click(),
-  ]);
-  expect(scan.status()).toBe(200);
-  expect((await scan.json()).scanned).toBeGreaterThan(0);
-  await expect(page.getByText("扫描完成", { exact: false })).toBeVisible();
-
+test("文件行编辑标签、组合搜索与历史导航使用同一目录表", async ({
+  appPage: page,
+}, testInfo) => {
+  const tagName = `目录标签-${randomUUID().slice(0, 8)}`;
+  const waitForJsonResponse = await observeJsonResponses(page);
   await page.locator('.xcss-header-navigation a[href="#tags"]').click();
-  await page.getByRole("textbox", { name: "标签名称" }).fill(tagName);
-  const [created] = await Promise.all([
-    page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/file-tags/tags"),
-    page.getByRole("button", { name: "创建标签" }).click(),
+  await page
+    .getByRole("textbox", { name: "标签名称", exact: true })
+    .fill(tagName);
+  const [{ payload: created }] = await Promise.all([
+    waitForJsonResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/v1/file-tags/tags",
+    ),
+    page.getByRole("button", { name: "创建标签", exact: true }).click(),
   ]);
-  expect(created.status()).toBe(201);
-  const tagId = (await created.json()).id;
-  expect(Number.isSafeInteger(tagId) && tagId > 0).toBe(true);
-  expect(created.request().postDataJSON()).toEqual({ name: tagName, color: "#3b82f6" });
-  await expect(page.getByRole("table", { name: "标签列表" })).toContainText(tagName);
-
+  await expect(
+    page.getByRole("table", { name: "标签列表", exact: true }),
+  ).toContainText(tagName);
   await page.locator('.xcss-header-navigation a[href="#files"]').click();
-  await expect(page.getByRole("heading", { name: "文件浏览" })).toBeVisible();
-  const fileList = page.locator('section[aria-label="文件列表"]');
-  await expect(fileList).toHaveAttribute("aria-busy", "false");
-  await page.getByRole("searchbox", { name: "文件名" }).fill("download-me.txt");
-  await page.getByLabel("范围").selectOption("all");
-  const filteredFiles = response => {
-    const url = new URL(response.url());
-    return response.request().method() === "GET" && url.pathname === "/api/v1/file-tags/files" && url.searchParams.get("search") === "download-me.txt" && url.searchParams.get("scope") === "all";
-  };
-  const [filtered] = await Promise.all([
-    page.waitForResponse(filteredFiles),
-    page.getByRole("button", { name: "筛选", exact: true }).click(),
-  ]);
-  expect(filtered.status()).toBe(200);
-  const file = (await filtered.json()).files.find(file => file.path === "download-me.txt");
-  expect(file).toBeDefined();
-  await expect(fileList).toHaveAttribute("aria-busy", "false");
-  const row = page.getByRole("row").filter({ has: page.getByRole("checkbox", { name: "选择 download-me.txt", exact: true }) });
-  await expect(row).toBeVisible();
-  await row.getByRole("checkbox").check();
-  await page.getByLabel("批量操作的标签").selectOption({ label: tagName });
-  const [saved, refreshed] = await Promise.all([
-    page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/file-tags/file-tags"),
-    page.waitForResponse(filteredFiles),
-    page.getByRole("button", { name: "添加标签" }).click(),
+  const row = page.locator(".paths-table tbody tr").filter({
+    has: page.locator(".cell-name a").filter({ hasText: /^download-me\.txt$/ }),
+  });
+  await page.locator('[data-file-action="tags"]').click();
+  await row.locator(".cell-name a").click();
+  const dialog = page.getByRole("region", { name: "文件标签", exact: true });
+  await expect(dialog.locator(".file-tag-target")).toHaveText("download-me.txt");
+  const [saved] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/v1/file-tags/file-tags",
+    ),
+    dialog.getByRole("button", { name: `添加标签 ${tagName}`, exact: true }).click(),
   ]);
   expect(saved.status()).toBe(204);
-  expect(saved.request().postDataJSON()).toEqual({ file_ids: [file.id], tag_ids: [tagId], action: "add" });
-  expect(refreshed.status()).toBe(200);
-  expect((await refreshed.json()).files.find(value => value.id === file.id).tag_ids).toContain(tagId);
-  await expect(fileList).toHaveAttribute("aria-busy", "false");
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(row).toContainText(tagName);
-  await expect(row.getByRole("link", { name: "下载" })).toHaveAttribute("href", "/download-me.txt");
-  await page.locator('.xcss-header-navigation a[href="/"]').click();
-  await expect(page.locator(".index-page")).toBeVisible();
-  await expectSharedNavigation(page);
+  expect(saved.request().postDataJSON().tag_ids).toEqual([created.id]);
+  await expect(dialog).toContainText(tagName);
+  await page.locator('[data-file-action="tags"]').click();
+  await expect(row.locator(".cell-tags .file-tag-label")).toHaveText(tagName);
+  await expect(row.locator(".cell-actions")).toHaveCount(0);
+  const marker = randomUUID(),
+    documents = [];
+  await page.evaluate((value) => {
+    window.xczsSearchMarker = value;
+  }, marker);
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame())
+      documents.push(request.url());
+  });
+  await page
+    .getByRole("textbox", { name: "搜索文件或文件夹", exact: true })
+    .fill("download-me.txt");
+  await page.locator(".search-tags summary").click();
+  await page
+    .getByRole("listbox", { name: "全部标签", exact: true })
+    .selectOption(String(created.id));
+  const listed = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/__xczs__/api/list" &&
+      url.searchParams.get("q") === "download-me.txt" &&
+      url.searchParams.get("all") === String(created.id)
+    );
+  });
+  await page
+    .locator(".search-tag-options")
+    .getByRole("button", { name: "搜索", exact: true })
+    .click();
+  expect((await listed).status()).toBe(200);
+  await expect(row).toBeVisible();
+  await expect(page.locator(".paths-table tbody tr")).toHaveCount(1);
+  await expect(row.locator(".cell-tags")).toContainText(tagName);
+  await page.screenshot({
+    path: testInfo.outputPath("filtered-directory-with-tags.png"),
+  });
+  await page.locator(".search-tags summary").click();
+  await page
+    .getByRole("listbox", { name: "全部标签", exact: true })
+    .selectOption([]);
+  await page
+    .getByRole("listbox", { name: "任一标签", exact: true })
+    .selectOption(String(created.id));
+  await page
+    .locator(".search-tag-options")
+    .getByRole("button", { name: "搜索", exact: true })
+    .click();
+  await expect(page).toHaveURL(/any=/);
+  await expect(row).toBeVisible();
+  await page.locator(".search-tags summary").click();
+  await page
+    .getByRole("listbox", { name: "任一标签", exact: true })
+    .selectOption([]);
+  await page
+    .getByRole("listbox", { name: "排除标签", exact: true })
+    .selectOption(String(created.id));
+  await page
+    .locator(".search-tag-options")
+    .getByRole("button", { name: "搜索", exact: true })
+    .click();
+  await expect(page.locator(".empty-folder")).toHaveText("没有搜索结果");
+  await page.goBack();
+  await expect(page).toHaveURL(/any=/);
+  await expect(row).toBeVisible();
+  await page.goForward();
+  await expect(page.locator(".empty-folder")).toHaveText("没有搜索结果");
+  await page.locator(".search-tags summary").click();
+  await page.getByRole("button", { name: "清除标签筛选", exact: true }).click();
+  await expect(row).toBeVisible();
+  expect(await page.evaluate(() => window.xczsSearchMarker)).toBe(marker);
+  expect(documents).toEqual([]);
+  await page.locator('[data-file-action="tags"]').click();
+  await row.locator(".cell-name a").click();
+  await dialog
+    .getByRole("button", { name: `移除标签 ${tagName}`, exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: `移除标签 ${tagName}`, exact: true }),
+  ).toHaveCount(0);
+  await page.locator('[data-file-action="tags"]').click();
+  await expect(row.locator(".cell-tags .file-tag-label")).toHaveCount(0);
+  const downloaded = page.waitForEvent("download");
+  await page.locator('[data-file-action="download"]').click();
+  await row.locator(".cell-name a").click();
+  expect((await downloaded).suggestedFilename()).toBe("download-me.txt");
+});
+
+test("标签行连续添加多个标签，切换文件后仅修改当前文件", async ({ appPage: page }) => {
+  const names = ["多个标签甲-", "多个标签乙-"].map(prefix => prefix + randomUUID().slice(0, 8));
+  await page.locator('.xcss-header-navigation a[href="#tags"]').click();
+  for (const name of names) {
+    await page.getByRole("textbox", { name: "标签名称", exact: true }).fill(name);
+    await page.getByRole("button", { name: "创建标签", exact: true }).click();
+    await expect(page.getByRole("table", { name: "标签列表", exact: true })).toContainText(name);
+  }
+  await page.locator('.xcss-header-navigation a[href="#files"]').click();
+  await page.locator('[data-file-action="tags"]').click();
+  const first = page.getByRole("link", { name: "download-me.txt", exact: true });
+  await first.click();
+  const bar = page.getByRole("region", { name: "文件标签", exact: true });
+  for (const name of names) {
+    await bar.getByRole("button", { name: `添加标签 ${name}`, exact: true }).click();
+    await expect(bar.getByRole("button", { name: `移除标签 ${name}`, exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
+  const firstRow = first.locator("xpath=ancestor::tr");
+  for (const name of names) await expect(firstRow.locator(".cell-tags")).toContainText(name);
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.getByRole("link", { name: "rename-me.txt", exact: true }).click();
+  await expect(bar.locator(".file-tag-target")).toHaveText("rename-me.txt");
+  const add = bar.getByRole("button", { name: `添加标签 ${names[0]}`, exact: true });
+  await expect(add).toHaveAttribute("aria-pressed", "false");
+  await add.click();
+  const remove = bar.getByRole("button", { name: `移除标签 ${names[0]}`, exact: true });
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  await expect(remove).toHaveCount(0);
+  const secondRow = page.getByRole("link", { name: "rename-me.txt", exact: true }).locator("xpath=ancestor::tr");
+  await expect(secondRow.locator(".file-tag-label")).toHaveCount(0);
+  for (const name of names) await expect(firstRow.locator(".cell-tags")).toContainText(name);
+  await page.keyboard.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator(".is-tag-selected")).toHaveCount(0);
+});
+
+test("子目录及特殊文件名的标签行仍指向当前目录的原文件", async ({ appPage: page }) => {
+  const directory = new URL(page.url()).pathname;
+  const special = "special & # + 中文.txt";
+  await page.locator('[data-file-action="tags"]').click();
+  await page.getByRole("link", { name: "existing-folder", exact: true }).click();
+  expect(new URL(page.url()).pathname).toBe(directory);
+  await expect(page.locator("#file-action-hint")).toContainText("文件夹不支持标签");
+  await page.getByRole("link", { name: special, exact: true }).click();
+  const bar = page.getByRole("region", { name: "文件标签", exact: true });
+  await expect(bar.locator(".file-tag-target")).toHaveText(special);
+  await expect(bar.locator(".file-tag-options")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await page.getByRole("link", { name: "existing-folder", exact: true }).click();
+  await expect(page.getByRole("link", { name: "nested.txt", exact: true })).toBeVisible();
+  await page.locator('[data-file-action="tags"]').click();
+  const request = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/v1/file-tags/file" && url.searchParams.get("path")?.endsWith("/existing-folder/nested.txt");
+  });
+  await page.getByRole("link", { name: "nested.txt", exact: true }).click();
+  expect((await request).status()).toBe(200);
+  await expect(bar.locator(".file-tag-target")).toHaveText("nested.txt");
+  expect(new URL(page.url()).pathname).toBe(directory + "existing-folder/");
 });

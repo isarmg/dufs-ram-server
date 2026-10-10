@@ -8,14 +8,14 @@ export function releaseVersion(version, sourceRevision, lock) {
     throw new Error("Invalid release source identity");
   }
   const sources = [...lock.matchAll(/^source = "(git\+https:\/\/github\.com\/isarmg\/xcss\.git[^"]*)"$/gm)];
-  if (sources.length === 0) throw new Error("Missing locked Foundation identity");
+  if (sources.length === 0) throw new Error("Missing locked xcss identity");
   const revisions = new Set(sources.map(([, source]) => {
     const match = /^git\+https:\/\/github\.com\/isarmg\/xcss\.git\?rev=([0-9a-f]{40})#([0-9a-f]{40})$/.exec(source);
-    if (!match || match[1] !== match[2]) throw new Error("Invalid locked Foundation identity");
+    if (!match || match[1] !== match[2]) throw new Error("Invalid locked xcss identity");
     return match[1];
   }));
-  if (revisions.size !== 1) throw new Error("Mixed locked Foundation identities");
-  return `xczs ${version} (git ${sourceRevision}) foundation=${[...revisions][0]}`;
+  if (revisions.size !== 1) throw new Error("Mixed locked xcss identities");
+  return `xczs ${version} (git ${sourceRevision}) xcss=${[...revisions][0]}`;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

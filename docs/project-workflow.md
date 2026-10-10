@@ -7,25 +7,25 @@
 - 部署约定为每个共享根仅运行一个 Xczs 实例；进程会在长期持有的共享根目录 fd 上取得非阻塞独占 `flock`，同机第二实例若指向同一根会在启动时失败；advisory lock 不阻止其他程序写入，一致性保证要求共享根由 Xczs 独占写入，人工修改只能停服执行；
 - `build.rs` 只接受 `x86_64-unknown-linux-gnu`；其他架构、操作系统、ABI 或指针宽度在应用编译前失败，运行内核还必须提供 `openat2`；
 - 本地构建使用 `rust-toolchain.toml` 精确固定的 Rust/rustc/Cargo 1.99.0，源码采用 Rust 2024 edition；
-- Foundation Core/Static/Axum 与 Runtime 为唯一上游；Rust 依赖固定完整 revision 和精确版本，Web 包使用正式发行 tarball 与完整性锁文件；
-- 必须通过 Foundation 管理员 username 和密码认证，不存在匿名业务访问；
+- xcss Core/Static/Axum 与 Runtime 为唯一上游；Rust 依赖固定完整 revision 和精确版本，Web 包使用正式发行 tarball 与完整性锁文件；
+- 必须通过 xcss 管理员 username 和密码认证，不存在匿名业务访问；
 - 唯一角色是 `admin`；每个有效管理员拥有整个共享目录的浏览和文件管理能力；
 - 服务只通过内网 HTTP/TCP 地址监听，HTTPS 统一由网关终止；
 - TCP 接收错误使用分类日志和有界退避；SIGINT/SIGTERM 触发分阶段优雅停机；
-- 目录页使用编译进程序的 React 页面、Foundation CSS、文件业务 ES modules、Maple 字体和图标；采用 Foundation React Vite Profile；
+- 目录页使用编译进程序的 React 页面、xcss CSS、Vite 编译的 TypeScript 文件业务模块、Maple 字体和图标；采用 xcss React Vite Profile；
 - 浏览器通过 HTTPS 网关使用会话 Cookie 进行下载、持久化上传、删除和同源 JSON POST 操作；
 
 ## 1. 总体流程树
 
 ```text
-配置验证 → Foundation 安装信号、绑定全部端口（失败不改状态）
+配置验证 → xcss 安装信号、绑定全部端口（失败不改状态）
  → 保留路径只读检查 → 根锁/openat2/严格当前状态恢复
- → Foundation 受限 HTTP/1 → 真实 socket peer、一次 request ID
+ → xcss 受限 HTTP/1 → 真实 socket peer、一次 request ID
  → 原始 PathPolicy → 请求许可 → Axum Router
-    ├─ Foundation 认证与公开最小 healthz/readyz
+    ├─ xcss 认证与公开最小 healthz/readyz
     ├─ 公共登录 HTML 和摘要资源
-    ├─ Foundation 认证后的列表、操作查询和 JSON 修改
-    └─ Foundation 认证后的 GET/HEAD/PUT/PATCH/DELETE 文件动作
+    ├─ xcss 认证后的列表、操作查询和 JSON 修改
+    └─ xcss 认证后的 GET/HEAD/PUT/PATCH/DELETE 文件动作
  → 流式 Body、协议错误、完成/失败访问日志
 ```
 
@@ -33,11 +33,11 @@
 
 ## 2. 启动与监听流程
 
-[main.rs](../src/main.rs) 只组装产品和 Foundation 的唯一 `serve` 入口，不含产品自建 accept、HTTP 连接或全局信号实现。先绑定全部端口，再构造持久状态；冲突不会修改旧数据。平台认证、健康检查与文件命名空间统一保留 `/healthz`、`/readyz` 和精确 `/api/v1/auth` 子树，但不整体封禁 `/api`。
+[main.rs](../src/main.rs) 只组装产品和 xcss 的唯一 `serve` 入口，不含产品自建 accept、HTTP 连接或全局信号实现。先绑定全部端口，再构造持久状态；冲突不会修改旧数据。平台认证、健康检查与文件命名空间统一保留 `/healthz`、`/readyz` 和精确 `/api/v1/auth` 子树，但不整体封禁 `/api`。
 
-Foundation 的连接许可全地址共享，先等 listener 可读再取许可再 accept；默认连接数来自 Xczs 配置。HTTP/1 请求头 10 秒、缓冲 64 KiB、socket 写入空闲 30 秒。真实对端来自 `ConnectInfo`，缺失时明确失败，不能信任 X-Forwarded-For 代替。流式响应和实际 socket 结束前不会释放连接资源。
+xcss 的连接许可全地址共享，先等 listener 可读再取许可再 accept；默认连接数来自 Xczs 配置。HTTP/1 请求头 10 秒、缓冲 64 KiB、socket 写入空闲 30 秒。真实对端来自 `ConnectInfo`，缺失时明确失败，不能信任 X-Forwarded-For 代替。流式响应和实际 socket 结束前不会释放连接资源。
 
-## 3. Foundation 管理员认证模型
+## 3. xcss 管理员认证模型
 
 ### 3.1 启动时管理员解析
 
@@ -51,24 +51,24 @@ flowchart TD
     DUP -- 否 --> PHC{"精确当前 Argon2id：<br/>v19/m19456/t2/p1/salt16/output32？"}
     PHC -- 否 --> ERROR3["启动失败<br/>不回显完整 PHC"]
     PHC -- 是 --> STORE["保存 canonical username 与 PHC；不保存 role 字段"]
-    STORE --> FULL["Foundation session 固定 role=admin<br/>拥有整个共享根完整能力"]
+    STORE --> FULL["xcss session 固定 role=admin<br/>拥有整个共享根完整能力"]
 ```
 
-配置格式固定为 `canonical-admin:$argon2id$...`。canonical username 是 3～64 个小写 ASCII 字节，首尾必须为字母或数字，中间只允许 `[a-z0-9._-]`；`@`、Unicode、ASCII whitespace、控制字符和首尾分隔符均拒绝，相邻分隔符允许。先运行交互式 `xczs hash-password`，再把完整 PHC 写入受保护 JSON；CLI 不定义管理员参数。密码必须为 12–1024 个 UTF-8 字节且不含 ASCII 控制字符。`AuthConfig` 最多接受 1024 个管理员，至少一个是启动条件。Xczs 不读取普通用户、role、path rule 或权限位；所有通过认证的身份都由 Foundation session 明确返回 `role: "admin"`。
+配置格式固定为 `canonical-admin:$argon2id$...`。canonical username 是 3～64 个小写 ASCII 字节，首尾必须为字母或数字，中间只允许 `[a-z0-9._-]`；`@`、Unicode、ASCII whitespace、控制字符和首尾分隔符均拒绝，相邻分隔符允许。先运行交互式 `xczs hash-password`，再把完整 PHC 写入受保护 JSON；CLI 不定义管理员参数。密码必须为 12–1024 个 UTF-8 字节且不含 ASCII 控制字符。`AuthConfig` 最多接受 1024 个管理员，至少一个是启动条件。Xczs 不读取普通用户、role、path rule 或权限位；所有通过认证的身份都由 xcss session 明确返回 `role: "admin"`。
 
 ### 3.2 登录与单次请求认证
 
-Xczs 的认证唯一所有者是 Foundation：受保护 JSON 经 `AuthConfig` 验证后映射为 Static Administrator Store，Hyper Router 接收真实 TCP peer 并处理三个当前认证 API。产品只拥有登录 HTML、响应正文类型适配、HTML 导航重定向和已认证的文件操作归属键，不实现 Session/Cookie/CSRF/密码哈希/登录限流。静态管理员不开放网页新增、改密或停用，配置变化必须重启。
+Xczs 的认证唯一所有者是 xcss：受保护 JSON 经 `AuthConfig` 验证后映射为 Static Administrator Store，Hyper Router 接收真实 TCP peer 并处理三个当前认证 API。产品只拥有登录 HTML、响应正文类型适配、HTML 导航重定向和已认证的文件操作归属键，不实现 Session/Cookie/CSRF/密码哈希/登录限流。静态管理员不开放网页新增、改密或停用，配置变化必须重启。
 
-三个唯一端点是 POST /api/v1/auth/login、GET /api/v1/auth/session、POST /api/v1/auth/logout。登录只接受恰好 username/password 的 JSON；wire 形状错误为 400，错误凭据为 401。成功返回 authenticated、user_id、username、role=admin、csrf_token 五字段合同。认证和 CSRF 失败统一为 Foundation ErrorEnvelope，不按产品路由改写成 Problem Details。
+三个唯一端点是 POST /api/v1/auth/login、GET /api/v1/auth/session、POST /api/v1/auth/logout。登录只接受恰好 username/password 的 JSON；wire 形状错误为 400，错误凭据为 401。成功返回 authenticated、user_id、username、role=admin、csrf_token 五字段合同。认证和 CSRF 失败统一为 xcss ErrorEnvelope，不按产品路由改写成 Problem Details。
 
-Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
+xcss 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
 
-Foundation Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
+xcss Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
 
-生产 Cookie 为 `__Host-xcss-xczs-session; Path=/; HttpOnly; Secure; SameSite=Strict`；显式 loopback 开发模式使用 `xcss-xczs-session` 且不带 Secure。重复 Cookie field line、重复当前名称和畸形 token 失败关闭。登录生成独立的新会话，其他有效会话仍受共享容量和过期规则管理；退出撤销当前会话并清除 Cookie。
+生产 Cookie 为 `__Host-admin-xczs-session; Path=/; HttpOnly; Secure; SameSite=Strict`；显式 loopback 开发模式使用 `admin-xczs-session` 且不带 Secure。重复 Cookie field line、重复当前名称和畸形 token 失败关闭。登录生成独立的新会话，其他有效会话仍受共享容量和过期规则管理；退出撤销当前会话并清除 Cookie。
 
-业务请求先经 Foundation authenticate_request。安全方法不要求 CSRF；不安全方法必须同时满足严格同源和唯一有效 X-CSRF-Token。未认证 HTML GET/HEAD 导航可 303 到登录页，其他请求保留平台 JSON 401。
+业务请求先经 xcss authenticate_request。安全方法不要求 CSRF；不安全方法必须同时满足严格同源和唯一有效 X-CSRF-Token。未认证 HTML GET/HEAD 导航可 303 到登录页，其他请求保留平台 JSON 401。
 
 ## 4. 英文登录、目录页与会话 CSRF
 
@@ -88,9 +88,9 @@ sequenceDiagram
     S-->>B: 3:2 六行圆角登录卡 + no-store
     U->>B: 输入管理员 username 和密码
     B->>S: POST /api/v1/auth/login（JSON）
-    S->>S: Foundation 严格同源、正文预算、失败预算、Argon2id
+    S->>S: xcss 严格同源、正文预算、失败预算、Argon2id
     alt 登录失败
-        S-->>B: 400/401/429 Foundation ErrorEnvelope JSON
+        S-->>B: 400/401/429 xcss ErrorEnvelope JSON
         B->>B: 显示固定安全错误与 Request ID，清空密码并聚焦
     else 登录成功
         S-->>B: Set-Cookie + AdministratorSession JSON
@@ -116,7 +116,7 @@ sequenceDiagram
 
 每个可操作列表项还携带绑定当前 owner、规范路径和完整文件身份的不透明 `revision`。浏览器必须把该 token 随 DELETE、Move 或 Rename 带回，不能从文件名、时间或下载 ETag 自行构造。
 
-服务端 HTML 的 IndexData 只含 `href` 与 `dir_exists` 两个字段，不嵌入身份或 CSRF。页面经共享 Admin Client 调用 `GET /api/v1/auth/session` 恢复会话，再把结果交给 `parseIndexData(raw, session)`；它严格验证两个业务字段，并使用 Foundation `isAdministratorSession` 验证独立的五字段会话合同，复制并冻结结果后才启动文件业务界面。
+服务端 HTML 的 IndexData 只含 `href` 与 `dir_exists` 两个字段，不嵌入身份或 CSRF。页面经共享 Admin Client 调用 `GET /api/v1/auth/session` 恢复会话，再把结果交给 `parseIndexData(raw, session)`；它严格验证两个业务字段，并使用 xcss `isAdministratorSession` 验证独立的五字段会话合同，复制并冻结结果后才启动文件业务界面。
 
 目录项由分页 API 返回 JSON，浏览器负责渲染。分页 API 接受 `path`、`limit`、`sort`、`order`、`q` 和不透明 `cursor`。第一页在受跟踪的阻塞任务中完整物化并排序一次；递归搜索边遍历边转换 `PathItem`，逐项累计结构、路径字符串和 lowercase 排序键的真实容量，达到 32 MiB 结果预算前即停止；递归 DFS 本身另受 1024 层和 32 MiB 工作集限制，不会先在 Tokio runtime worker 上构造超预算向量。稳定索引归并排序在索引构造、每次合并选择和每个最终置换步骤都检查停机标志与总 deadline。如果超过一页，结果存入进程内不可变结果集，后续页只按 offset 切片，共用已排序的结果。
 
@@ -126,7 +126,7 @@ cursor 带服务端随机秘密生成的校验标签，并绑定结果 ID、offs
 
 构造完成后的翻页来自同一不可变内存结果，不会混入后续新项目；但上述复核并非原子文件系统快照。检查间发生又恢复的变化、未更新目录元数据的子文件原地内容/权限变化以及最终复核后的变化仍可能不可见。需要文件系统级强一致读取时，必须从只读存储快照或等价版本化源遍历。浏览器始终只为当前页创建 DOM，不随整个结果规模创建等量节点。
 
-CSRF Token 与会话一起在服务端内存中创建和保存。除尚未建立会话、只执行严格同源检查的 login API 外，所有受保护的 `POST`、`PUT`、`PATCH` 和 `DELETE` 都必须同时携带有效会话 Cookie 与唯一 `X-CSRF-Token`。服务端把全部 Origin、Host、URI authority、Sec-Fetch-Site 和 CSRF field line 原样交给 Foundation；缺失、重复、逗号合并、不可见字节、非规范 authority、非 same-origin Fetch Metadata 或 scheme/authority 不同全部失败关闭。生产模式只允许 HTTPS；HTTP 只允许 localhost、`127.0.0.0/8` 或 `::1` 的开发来源。CSRF 以 token digest 做常量时间比较，另一个管理员或另一次登录的 token 不能交叉使用。
+CSRF Token 与会话一起在服务端内存中创建和保存。除尚未建立会话、只执行严格同源检查的 login API 外，所有受保护的 `POST`、`PUT`、`PATCH` 和 `DELETE` 都必须同时携带有效会话 Cookie 与唯一 `X-CSRF-Token`。服务端把全部 Origin、Host、URI authority、Sec-Fetch-Site 和 CSRF field line 原样交给 xcss；缺失、重复、逗号合并、不可见字节、非规范 authority、非 same-origin Fetch Metadata 或 scheme/authority 不同全部失败关闭。生产模式只允许 HTTPS；HTTP 只允许 localhost、`127.0.0.0/8` 或 `::1` 的开发来源。CSRF 以 token digest 做常量时间比较，另一个管理员或另一次登录的 token 不能交叉使用。
 
 ### 4.2 内置页面资源
 
@@ -141,7 +141,7 @@ flowchart LR
     KNOWN -- 否 --> MISS["404 + private, no-store"]
 ```
 
-Xczs 使用 Foundation React Profile：`platform.js` 公开 React 挂载入口和共享 Admin Client/合同，`react/application.js` 使用共享 React UI 和工作区配置。先执行 `npm ci`、`npm run build:platform`，再编译 Rust。构建输出同源 ESM、CSS、正体非连字字体和许可证，单资源 512 KiB 硬预算、禁止 source map；声明文件只用于开发，不进入运行时资源。文件工作区由共享 React 入口挂载。文件/上传控制器在 React 首次渲染之后初始化，其表格行、对话框和编辑器是独占区域，主题局部更新不重建它们。资源按名称、MIME 和内容摘要后嵌入；登录 CSP 只允许同源脚本、样式、字体和构建 SVG，不允许内联脚本、eval 或 data:。运行时没有资源覆盖，也不需要 Node 服务。
+Xczs 使用 xcss React Profile：`platform.js` 公开 React 挂载入口和共享 Admin Client/合同，`react/application.js` 使用共享 React UI 和工作区配置。先执行 `npm ci`、`npm run build:platform`，再编译 Rust。构建输出同源 ESM、CSS、正体非连字字体和许可证，单资源 512 KiB 硬预算、禁止 source map；声明文件只用于开发，不进入运行时资源。文件工作区由共享 React 入口挂载。文件/上传控制器在 React 首次渲染之后初始化，其表格行、对话框和编辑器是独占区域，主题局部更新不重建它们。资源按名称、MIME 和内容摘要后嵌入；登录 CSP 只允许同源脚本、样式、字体和构建 SVG，不允许内联脚本、eval 或 data:。运行时没有资源覆盖，也不需要 Node 服务。
 
 ## 5. 公共路由
 
@@ -154,7 +154,7 @@ flowchart TD
     LIVE -- 否 --> PAGE{"GET /__xczs__/login？"}
     PAGE -- 是 --> LOGIN_PAGE["返回英文登录页"]
     PAGE -- 否 --> LOGIN_API{"POST /api/v1/auth/login？"}
-    LOGIN_API -- 是 --> LOGIN_HANDLER["严格同源、JSON、限流、Argon2id<br/>返回 Foundation session/error"]
+    LOGIN_API -- 是 --> LOGIN_HANDLER["严格同源、JSON、限流、Argon2id<br/>返回 xcss session/error"]
     LOGIN_API -- 否 --> SESSION{"会话 Cookie 唯一、规范且有效？"}
     SESSION -- 否 --> UNAUTH["HTML 导航 303；其他请求 401"]
     SESSION -- 是 --> UNSAFE{"POST、PUT、PATCH、DELETE？"}
@@ -189,11 +189,11 @@ flowchart TD
 
 | 方法 | 路径或用途 | 当前行为 |
 |---|---|---|
-| GET | `/__xczs__/login` | 公开返回英文登录 HTML；页面用 Fetch 调用唯一当前 Foundation login API |
-| POST | `/api/v1/auth/login` | 无会话；严格同源、严格 `username/password` JSON、Foundation username normalization、登录 admission；成功返回 AdministratorSession 并 Set-Cookie，失败返回统一 ErrorEnvelope |
+| GET | `/__xczs__/login` | 公开返回英文登录 HTML；页面用 Fetch 调用唯一当前 xcss login API |
+| POST | `/api/v1/auth/login` | 无会话；严格同源、严格 `username/password` JSON、xcss username normalization、登录 admission；成功返回 AdministratorSession 并 Set-Cookie，失败返回统一 ErrorEnvelope |
 | GET | `/api/v1/auth/session` | 要求会话；返回唯一当前 AdministratorSession，role 固定 `admin` |
 | GET/HEAD | `/healthz` | 公开 liveness；只表明 HTTP 处理仍存活，不读取文件内容或泄露账号/路径 |
-| POST | `/api/v1/auth/logout` | 要求会话、唯一 `X-CSRF-Token` 和 Foundation 严格同源；撤销会话并清除 Cookie |
+| POST | `/api/v1/auth/logout` | 要求会话、唯一 `X-CSRF-Token` 和 xcss 严格同源；撤销会话并清除 Cookie |
 | GET/HEAD | 目录 | 要求会话；普通目录/搜索返回页面骨架，未识别的查询参数不选择其他输出格式 |
 | GET | `/__xczs__/api/list` | 要求会话；fd 根锚定的目录/搜索快照分页 JSON |
 | GET/HEAD | `/readyz` | 公开、禁止缓存；返回启动时及每 5 秒刷新的共享根、SQLite 回滚写事务和空间探针汇总；仅包含 `ready`，未就绪返回 `503`，停机立即未就绪 |
@@ -260,7 +260,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CLICK["用户点击文件下载"] --> GET["GET + __Host-xcss-xczs-session Cookie"]
+    CLICK["用户点击文件下载"] --> GET["GET + __Host-admin-xczs-session Cookie"]
     GET --> SESSION{"会话有效？"}
     SESSION -- 否 --> UNAUTH["HTML 导航 303；其他请求 401"]
     SESSION -- 是 --> OPEN["从根 fd 用 openat2 打开一次<br/>同一句柄读取 metadata 与正文"]
@@ -295,7 +295,7 @@ HEAD 始终忽略 `Range` 并返回完整表示的 `200` metadata。对于 GET�
 flowchart TD
     UI["内置目录页"] --> WRITE["POST / PUT / PATCH / DELETE"]
     WRITE --> COOKIE["浏览器自动附带会话 Cookie"]
-    COOKIE --> HEADER["前端附带 Foundation X-CSRF-Token"]
+    COOKIE --> HEADER["前端附带 xcss X-CSRF-Token"]
     HEADER --> SESSION["验证服务端内存会话"]
     SESSION --> SOURCE["拒绝 Sec-Fetch-Site: cross-site<br/>存在 Origin 时 scheme + authority 必须匹配请求"]
     SOURCE --> VERIFY["恒定时间比较当前会话 CSRF"]
@@ -307,7 +307,7 @@ flowchart TD
     JSON --> API_HANDLER["进入 mkdir、move 或 rename handler"]
 ```
 
-会话验证、来源检查和 CSRF 比较位于具体写操作之前。缺失、伪造或来自另一个会话的 `X-CSRF-Token` 返回 `403`，不会创建、追加、移动或删除磁盘对象。服务把每条原始 `Origin`、`Host`、URI authority、`Sec-Fetch-Site` 和 CSRF header 交给 Foundation：任何 singleton 缺失/重复/逗号拼接、非规范 scheme/authority、生产 HTTP、非 same-origin 或彼此不一致都失败关闭。外部 scheme 只从匹配显式受信代理的唯一 `X-Forwarded-Proto` 取得。Login API 尚未建立会话，因此不要求 CSRF，但仍要求同一套严格同源、正文前 admission、10 秒时限和严格 JSON；应用上限 16 KiB，生产 nginx 的 exact location 进一步限制为 4 KiB。
+会话验证、来源检查和 CSRF 比较位于具体写操作之前。缺失、伪造或来自另一个会话的 `X-CSRF-Token` 返回 `403`，不会创建、追加、移动或删除磁盘对象。服务把每条原始 `Origin`、`Host`、URI authority、`Sec-Fetch-Site` 和 CSRF header 交给 xcss：任何 singleton 缺失/重复/逗号拼接、非规范 scheme/authority、生产 HTTP、非 same-origin 或彼此不一致都失败关闭。外部 scheme 只从匹配显式受信代理的唯一 `X-Forwarded-Proto` 取得。Login API 尚未建立会话，因此不要求 CSRF，但仍要求同一套严格同源、正文前 admission、10 秒时限和严格 JSON；应用上限 16 KiB，生产 nginx 的 exact location 进一步限制为 4 KiB。
 
 ### 8.2 新建目录
 
@@ -365,7 +365,7 @@ flowchart TD
     SYNC --> OK["204 No Content"]
 ```
 
-浏览器为每一项分别显示 Rename 和 Move 按钮。Rename 直接把名称单元格切换为只接受单段新名称的行内输入，Move 对话框只接受目标目录；前端不能借 Move 改名，也不能借 Rename 跨目录。第一次收到可信终态的稳定 `destination_exists` 和 `409` 后，才打开具有可访问标题的页面内原生 `<dialog>` 询问用户是否覆盖；Escape 取消覆盖后回到行内名称输入或对应的 Move 按钮，用户确认后才重新发送 `overwrite: true`。传输结果未知时绝不自动发起覆盖请求。
+浏览器在二级菜单提供 Rename 和 Move 图标，先选择操作，再点击目标文件或文件夹。Rename 直接把名称单元格切换为只接受单段新名称的行内输入，Move 对话框只接受目标目录；前端不能借 Move 改名，也不能借 Rename 跨目录。第一次收到可信终态的稳定 `destination_exists` 和 `409` 后，才打开具有可访问标题的页面内原生 `<dialog>` 询问用户是否覆盖；Escape 取消覆盖后回到行内名称输入或对应的 Move 按钮，用户确认后才重新发送 `overwrite: true`。传输结果未知时绝不自动发起覆盖请求。
 
 两种 relocation 都要求列表提供的 `source_revision`；token 绑定 owner、源路径和完整源 identity。`overwrite: false` 通过 rustix 调用 Linux `renameat2(RENAME_NOREPLACE)`，即使目标随后出现，最终原子调用也会保留目标并返回 `409`；Linux 文件系统不支持该原语时失败关闭，不降级为普通 rename。成功后服务还比较目的名称与提交前打开的 source anchor；若外部 writer 在微窗中换掉源名称，不能证明移动了原对象时返回 unknown，而不误报成功。`overwrite: true` 还要求绑定最终目标路径和完整目标 identity 的 `destination_revision`，RootedFs 在紧邻系统调用时复核 source/destination 后使用父目录 fd 上的普通 Linux `renameat` 原子替换；这不是对外部 writer 的目录项 compare-and-replace。若不同名称其实是同一 dev/inode 的硬链接，返回稳定的 `409 source_equals_destination`，不会误报 `204`。因此共享根必须排除外部 writer。
 
@@ -405,11 +405,11 @@ SQLite transaction 和文件系统 transaction 不是同一个原子提交域。
 
 外层响应超时或连接断开不会取消已开始的提交。前端遇到传输层结果未知时只进行一次状态 GET：`succeeded` 才按成功更新页面，`failed` 显示服务端确定结果，`running` 要求稍后刷新，`unknown`、查询失败或记录不存在都要求刷新检查目标；任何一种情况都不会自动重放写请求。正常响应、重放响应和默认访问日志携带 operation ID 与 operation state，便于关联诊断。
 
-浏览器普通 `fetch` 统一经过 `modules/http/client.js` 编排，默认 30 秒 deadline 同时覆盖取得响应头和读取正文；实际的有界读取由 `modules/http/response_buffer.js` 实现，并复用 `modules/http/headers.js` 的严格无符号头解析。调用时若调用方 signal 已经取消，`client.js` 会在分发前明确返回 `client_cancelled`，不会调用 `fetch`；进入 `fetch` 后的取消、deadline 或网络中断无法证明服务端未收到写请求，带 `outcomeUnknown` 的 mutation 仍保守归为 unknown。客户端先拒绝超过上限的严格 `Content-Length`，再逐块累计；错误/成功响应上限分别为 16 KiB/16 MiB，越界立即 cancel。允许范围内以已校验分块构造重放流，正文在解析期间保持为一组有界分块。Problem Details 的 `detail`/`title` 最多接受 1024 个 JavaScript UTF-16 code units。
+浏览器普通 `fetch` 统一经过 `modules/http/client.ts` 编排，默认 30 秒 deadline 同时覆盖取得响应头和读取正文；实际的有界读取由 `modules/http/response_buffer.ts` 实现，并复用 `modules/http/headers.ts` 的严格无符号头解析。调用时若调用方 signal 已经取消，`client.js` 会在分发前明确返回 `client_cancelled`，不会调用 `fetch`；进入 `fetch` 后的取消、deadline 或网络中断无法证明服务端未收到写请求，带 `outcomeUnknown` 的 mutation 仍保守归为 unknown。客户端先拒绝超过上限的严格 `Content-Length`，再逐块累计；错误/成功响应上限分别为 16 KiB/16 MiB，越界立即 cancel。允许范围内以已校验分块构造重放流，正文在解析期间保持为一组有界分块。Problem Details 的 `detail`/`title` 最多接受 1024 个 JavaScript UTF-16 code units。
 
 上传正文专用 XHR 会在响应头、下载 progress 和最终 UTF-8 长度三层拒绝超过 16 KiB 的响应。携带 operation ID 的成功响应必须回显同一 ID 和 `succeeded`；普通 operation 响应接受 `running/succeeded/failed/rejected/unknown`，job 状态端点记录本身仍为 `running/succeeded/failed/unknown`。状态缺失、矛盾、越界或状态查询发生认证/协议/网络错误都保守归为 unknown，不自动重放。
 
-普通上传使用 `modules/upload/protocol.js` 集中定义的 `running/awaiting-confirmation/committed/rejected/not-seen/not-started/unknown` 词汇并绑定同一 ID：只有 fresh PUT 为 `200/201` 或 PATCH 为 `200/204`、状态为 `committed` 且长度/满 offset 精确匹配时才成功。`running/rejected/not-started` 提供人工 Retry，严格长度/offset 校验推迟到 Retry 后的 HEAD；`awaiting-confirmation` 只在严格冲突响应或 HEAD 检查点中接受，不归为普通可重试失败。直接 `not-seen`、显式 `unknown`、缺失/非法状态或 committed 不匹配都归为 unknown 并暂停队列；`not-started` 只用于 PUT/PATCH 响应，不是 HEAD 可返回的持久状态。
+普通上传使用 `modules/upload/protocol.ts` 集中定义的 `running/awaiting-confirmation/committed/rejected/not-seen/not-started/unknown` 词汇并绑定同一 ID：只有 fresh PUT 为 `200/201` 或 PATCH 为 `200/204`、状态为 `committed` 且长度/满 offset 精确匹配时才成功。`running/rejected/not-started` 提供人工 Retry，严格长度/offset 校验推迟到 Retry 后的 HEAD；`awaiting-confirmation` 只在严格冲突响应或 HEAD 检查点中接受，不归为普通可重试失败。直接 `not-seen`、显式 `unknown`、缺失/非法状态或 committed 不匹配都归为 unknown 并暂停队列；`not-started` 只用于 PUT/PATCH 响应，不是 HEAD 可返回的持久状态。
 
 `RootedFs` 固定使用 `RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS`，因此通过它完成的最终文件打开和写变更不能越过启动时持有的共享根 fd；解析后仍在根内的相对符号链接可以使用，绝对链接和根外目标会被这些调用拒绝。悬空或成环的根内相对链接只以 nofollow metadata 列出，可由 DELETE 删除或 PUT 原子替换；普通 GET 仍返回 `404`。`openat2` 是强制 Linux 运行要求，不支持时服务启动失败。
 
@@ -695,12 +695,12 @@ flowchart TD
 ```text
 现代桌面浏览器加载目录页
 ├─ 无有效会话：303 到英文登录页
-│  └─ POST `/api/v1/auth/login` JSON → Foundation 同源 + Argon2id → Set-Cookie + session JSON
-├─ 携带 __Host-xcss-xczs-session Cookie
+│  └─ POST `/api/v1/auth/login` JSON → xcss 同源 + Argon2id → Set-Cookie + session JSON
+├─ 携带 __Host-admin-xczs-session Cookie
 ├─ 解码 IndexData → JSON.parse 为 unknown → parseIndexData 严格校验并冻结
 ├─ 分页 list API → 每页最多 500 项 → DocumentFragment 批量渲染
 ├─ 使用编译期内置 ES modules/CSS/图标
-├─ 显示当前管理员 username 与 Foundation POST logout 入口
+├─ 显示当前管理员 username 与 xcss POST logout 入口
 └─ 用户操作
    ├─ 进入目录：GET /目录/
    ├─ 搜索：GET ?q=关键词
@@ -755,7 +755,7 @@ flowchart TD
 
 operation 错误体可附加平铺的 `operation_id`/`state`/`http_status`，但客户端以 `X-Xczs-Operation-Id` 和 `X-Xczs-Operation-State` 为权威值。上传错误体可附加平铺的 `upload_id`/`upload_state`/`upload_length`/`upload_offset`，但客户端以 `X-Xczs-Upload-Id`、`X-Xczs-Operation-State`、`X-Xczs-Upload-Length` 和 `X-Xczs-Upload-Offset` 为权威值；只有严格绑定的 `409`、精确 upload 状态/长度/偏移和合法 `X-Xczs-Target-Revision`/`X-Xczs-Target-Replaceable` 才能触发覆盖选择。前端不解析旧 `message`、纯文本、vendor JSON 或嵌套/驼峰扩展。详细字段和恢复枚举见 [README 的统一错误反馈](../README.md#统一错误反馈)。
 
-Problem Details 只表示 Xczs 业务 API 失败，不改变成功资源表示；认证/CSRF 失败始终使用 Foundation ErrorEnvelope。客户端按 HTTP 状态和经过共享合同验证的 auth.session_required/auth.csrf_rejected 分类，不使用私有认证响应头。HEAD 不发送正文，204 不增加 JSON。
+Problem Details 只表示 Xczs 业务 API 失败，不改变成功资源表示；认证/CSRF 失败始终使用 xcss ErrorEnvelope。客户端按 HTTP 状态和经过共享合同验证的 auth.session_required/auth.csrf_rejected 分类，不使用私有认证响应头。HEAD 不发送正文，204 不增加 JSON。
 
 页面资源与文件接口只按同源方式工作，不生成 `Access-Control-Allow-*` 响应头。只有管理员 JSON 密码校验成功或会话验证成功的请求才把已验证 canonical username 写入 `remote_user`，认证失败或未认证请求在日志中显示 `-`。自定义 `$http_...` 变量中位于固定 `$http_` 前缀后的请求头名称会先统一为 ASCII 小写，再把下划线转换为连字符；因此 Authorization、Proxy-Authorization、Cookie 和 CSRF 的名称部分使用全小写、全大写或混合大小写时都会输出 `[REDACTED]`，普通请求头仍按 HTTP 的大小写不敏感语义记录。
 
@@ -765,13 +765,13 @@ Problem Details 只表示 Xczs 业务 API 失败，不改变成功资源表示�
 
 访问日志只跳过同时满足三个条件的请求：方法是 `GET`、规范化后的路径精确匹配已知内置 JavaScript/CSS/图标、响应状态是 `200`。内置资源的 `HEAD`、未知资源、资源错误，以及页面、健康检查、登录、下载和 API 请求仍照常记录；处理器返回的内部错误也始终记录。访问日志在响应正文流正常结束、返回读取错误或被提前丢弃时才写出；后两种情况使用 ERROR 级别并保留已经发送的实际 HTTP 状态。socket 写入可能发生在正文生产端已经正常结束之后，无法由访问日志正文包装器证明已送达，仍由独立连接错误记录按错误类型和 TCP peer 地址补充诊断。
 
-HTTP 访问日志从动态字段拼接阶段就使用 16 KiB 有界构造器，重复变量不会先形成巨型临时字符串；请求线程只把已经转义为单个物理行、再次经过 16 KiB 入队硬上限的日志放入容量 4096 的有界 channel，不直接写终端或文件。超长 UTF-8 文本会在字符边界截断并只带一个固定标记；自定义日志格式最多 4096 字节和 128 个解析元素，超限配置会阻止启动。未配置日志文件时，INFO/WARN/ERROR 和访问日志共用 stderr 这一条控制台 sink，stdout 仅在启动后输出监听地址；这样单 writer 不会因为先写或刷新 stdout 而阻止错误日志到达 stderr。`--log-file` 使用 `O_NOFOLLOW|O_APPEND|O_NONBLOCK|O_CLOEXEC` 打开，只接受当前服务用户拥有、仅有一个硬链接的普通文件；新文件原子创建并固定为 `0600`，已有文件必须预先就是精确 `0600`，不安全权限保持不变并阻止启动，避免 chmod 无法撤销的既往泄露或预开 fd 写权限。符号链接、异常文件类型、属主不匹配和多硬链接对象同样都会阻止启动。独立写线程批量写入并每 250 ms 刷新；刷新失败保留 dirty 状态，由下个周期或显式 flush 重试，回退诊断 sink 失败也不会 panic writer。队列满时丢弃最新记录，运行中至多每秒输出一次聚合 `dropped_newest` 告警，显式 flush 和退出仍提交累计数。退出边界调用已有日志刷新队列并最多等待 5 秒，不依赖 Tokio blocking pool；Foundation 内的第二、第三信号只控制尚未结束的停机阶段。请求 URI、请求头、用户名、连接错误和 handler 错误都经过控制字符转义，认证、Cookie 与 CSRF 头继续脱敏。
+HTTP 访问日志从动态字段拼接阶段就使用 16 KiB 有界构造器，重复变量不会先形成巨型临时字符串；请求线程只把已经转义为单个物理行、再次经过 16 KiB 入队硬上限的日志放入容量 4096 的有界 channel，不直接写终端或文件。超长 UTF-8 文本会在字符边界截断并只带一个固定标记；自定义日志格式最多 4096 字节和 128 个解析元素，超限配置会阻止启动。未配置日志文件时，INFO/WARN/ERROR 和访问日志共用 stderr 这一条控制台 sink，stdout 仅在启动后输出监听地址；这样单 writer 不会因为先写或刷新 stdout 而阻止错误日志到达 stderr。`--log-file` 使用 `O_NOFOLLOW|O_APPEND|O_NONBLOCK|O_CLOEXEC` 打开，只接受当前服务用户拥有、仅有一个硬链接的普通文件；新文件原子创建并固定为 `0600`，已有文件必须预先就是精确 `0600`，不安全权限保持不变并阻止启动，避免 chmod 无法撤销的既往泄露或预开 fd 写权限。符号链接、异常文件类型、属主不匹配和多硬链接对象同样都会阻止启动。独立写线程批量写入并每 250 ms 刷新；刷新失败保留 dirty 状态，由下个周期或显式 flush 重试，回退诊断 sink 失败也不会 panic writer。队列满时丢弃最新记录，运行中至多每秒输出一次聚合 `dropped_newest` 告警，显式 flush 和退出仍提交累计数。退出边界调用已有日志刷新队列并最多等待 5 秒，不依赖 Tokio blocking pool；xcss 内的第二、第三信号只控制尚未结束的停机阶段。请求 URI、请求头、用户名、连接错误和 handler 错误都经过控制字符转义，认证、Cookie 与 CSRF 头继续脱敏。
 
 ### 12.2 分阶段优雅停止流程
 
-关闭次序由 Foundation 的有限阶段实现：`Running → Quiescing → DrainingRequests → DrainingCommits → ClosingState → Stopped`。宽限耗尽会先进入 `CancellingOrdinaryWork`；无法完成则返回非成功报告，不越过提交义务关闭状态。
+关闭次序由 xcss 的有限阶段实现：`Running → Quiescing → DrainingRequests → DrainingCommits → ClosingState → Stopped`。宽限耗尽会先进入 `CancellingOrdinaryWork`；无法完成则返回非成功报告，不越过提交义务关闭状态。
 
-Linux 上首次收到 SIGINT 或 SIGTERM 时，Foundation 进入 Quiescing、立即 ready=false、关闭业务准入并通知已有 HTTP/1 连接 graceful shutdown。已有请求和平台探针仍能登记安全收尾工作；二者必须与连接一起排空，才能关闭普通任务登记入口，再排空提交并关闭 StateStore。晚到嵌入式调用立即返回带日志上下文的 `503 server_stopping`。
+Linux 上首次收到 SIGINT 或 SIGTERM 时，xcss 进入 Quiescing、立即 ready=false、关闭业务准入并通知已有 HTTP/1 连接 graceful shutdown。已有请求和平台探针仍能登记安全收尾工作；二者必须与连接一起排空，才能关闭普通任务登记入口，再排空提交并关闭 StateStore。晚到嵌入式调用立即返回带日志上下文的 `503 server_stopping`。
 
 30 秒正常宽限后进入最多 10 秒的取消与收尾窗。第二次信号可提前进入取消阶段，第三次信号或硬期限使未完成关闭返回失败；不保留产品自己的第二套信号引擎。运行中的阻塞工作仍持有许可、租约和状态所有者，不能通过 abort 等待者伪造完成。可执行程序记录未完成计数后非零退出，状态所有者保留到进程边界；日志使用已有最多 5 秒的有界刷新。release 仍为 panic=abort，无法依赖 catch_unwind 隔离故障，必须通过真实进程异常退出验证当前状态恢复。
 
@@ -788,7 +788,7 @@ flowchart TD
     B --> C["3. auth.rs<br/>Argon2id 账号、会话摘要和 CSRF"]
     C --> D["4. server.rs + server/{identity,path_policy,protocol,problem}.rs<br/>内容/状态/准入/生命周期组合，身份与公开协议"]
     D --> R["5. server/router.rs + router/{request,routes,files}.rs + assets.rs<br/>一次请求分类、生命周期/超时策略、端点分发与资源摘要"]
-    R --> G["6. Foundation Admin Axum + administrator_web.rs<br/>登录限流、Cookie、注销与写请求同源防护"]
+    R --> G["6. xcss Admin Axum + administrator_web.rs<br/>登录限流、Cookie、注销与写请求同源防护"]
     G --> OP["7. server/operation_registry.rs + state_store/{actor,database,model,operation,upload,purge}.rs<br/>当前 schema 分域仓储、统一 metadata/指纹、live 探针与恢复"]
     OP --> H["8. server/browser_api.rs<br/>mkdir/move/rename 与 upload preflight/discard JSON API"]
     H --> E["9. server/path_coordinator.rs<br/>同路径与祖先/后代写租约"]
@@ -809,7 +809,7 @@ flowchart TD
     TEST["./scripts/check.sh（日常开发门）"] --> TOOLCHAIN["rustc --version / cargo --version<br/>确认固定的 1.99.0 工具链"]
     TOOLCHAIN --> RUST["cargo fmt --all --check<br/>cargo clippy -D warnings + 全 targets/features 测试"]
     RELEASE["./scripts/check-release.sh（干净提交发行门）"] --> QUALITY["总行覆盖率、依赖审计、部署、浏览器与打包自测"]
-    TEST --> STATIC["ESLint 浏览器安全规则 + TypeScript strict checkJs<br/>Bash 语法/可用时 ShellCheck + Markdown 链接<br/>生产解析器 JSON + systemd/nginx + 发布来源/树自测"]
+    TEST --> STATIC["ESLint 浏览器安全规则 + TypeScript strict<br/>Bash 语法/可用时 ShellCheck + Markdown 链接<br/>生产解析器 JSON + systemd/nginx + 发布来源/树自测"]
     STATIC --> FRONT["npm run test:frontend"]
     RUST --> ROUTES["HTTP/1、Argon2id 限流、会话、CSRF、health/ready、遍历复核、Range 与上传"]
     ROUTES --> MAINTENANCE["过期 upload DB 行/orphan 扫描、purge outbox/切片、元数据保留<br/>operation 重放/冲突/未知结果回归测试"]
@@ -826,7 +826,7 @@ flowchart TD
 
 `build.rs` 在 Cargo 构建脚本阶段同时要求目标架构 `x86_64`、操作系统 `linux`、环境 `gnu` 和 64 位指针；只有精确 `x86_64-unknown-linux-gnu` 进入应用编译。它还把构建所对应的 Git SHA 写入 `xczs --version`；正式发布脚本显式传入完整 commit SHA，普通源码目录构建则读取当前仓库引用，无法确定时显示 `unknown`。`rust-toolchain.toml` 让 rustup 在仓库目录中自动选择 Rust/rustc/Cargo 1.99.0，并提供 Clippy 与 Rustfmt；`Cargo.toml` 用 `edition = "2024"` 和 `rust-version = "1.99"` 声明源码 edition 与最低 Rust 版本。项目不提供内置 TLS，唯一 Rust 服务端构建与网关后的 HTTP 后端部署一致。
 
-JavaScript 安全门固定使用 ESLint 10.11.0 的核心规则和 `eslint-plugin-no-unsanitized` 4.1.5，检查 authored JavaScript 的语法、基础格式、常见动态 HTML 注入、动态执行、原生模态框以及 `fetch`/XHR 模块边界；少量策略单测同时验证常见误用会失败、合法传输模块会通过。规则服务于正常维护中的误用预防，不尝试重建完整跨过程别名和字符串求值器。TypeScript 7.0.2 另以 `allowJs + checkJs + strict + noEmit` 检查 `web/index.js`、`web/login.js` 和全部生产模块；外部/解析输入保持为 `unknown` 并经守卫收窄，生产源码不保留显式或隐式 `any`。这无需迁移 `.ts`，也不等价于运行时守卫或完整污点证明。统一 Shell 入口在 Git 工作区自动发现 `scripts/` 与 `tests/` 中未忽略的 `.sh` 文件，在已验证且不含 Git 元数据的发行归档中扫描同一目录，并逐个执行 `bash -n`；策略单测覆盖无 Git 元数据的成功与失败路径。本地存在 ShellCheck 时运行 warning 门，缺失时明确跳过且不联网，远程 CI 则固定安装并强制使用 0.11.0。部署门禁除 `systemd-analyze verify`、`nginx -t` 外，还会从包含空格、`&`、`#` 与反斜杠的真实 checkout fixture 读取部署文件；执行 `nginx -t` 前，生产 upstream 与全部 IPv4/IPv6 `80/443` 监听会一一改写为私有 Unix socket，并核对替换数量且拒绝任何网络监听残留，因此非 root runner 无需占用生产端口。随后检查启动隔离 nginx 与 mock upstream，分别验证规范重定向、未知 SNI、合法 SNI 下未知 Host、固定回源头、伪造入站 XFF 被 `$remote_addr` 覆盖、登录别名正文上限，以及连接/请求限制产生 `429` 后恢复 `200`。
+JavaScript 安全门固定使用 ESLint 10.11.0 的核心规则和 `eslint-plugin-no-unsanitized` 4.1.5，检查 authored TypeScript/TSX 编译后的 JavaScript 语法、基础格式、常见动态 HTML 注入、动态执行、原生模态框以及 `fetch`/XHR 模块边界；少量策略单测同时验证常见误用会失败、合法传输模块会通过。规则服务于正常维护中的误用预防，不尝试重建完整跨过程别名和字符串求值器。TypeScript 7.0.2 另以 `strict + noEmit + isolatedModules + verbatimModuleSyntax` 检查 `web/index.ts`、`web/login.ts` 和全部生产模块；外部/解析输入保持为 `unknown` 并经守卫收窄，生产源码不保留显式或隐式 `any`。这不等价于运行时守卫或完整污点证明。统一 Shell 入口在 Git 工作区自动发现 `scripts/` 与 `tests/` 中未忽略的 `.sh` 文件，在已验证且不含 Git 元数据的发行归档中扫描同一目录，并逐个执行 `bash -n`；策略单测覆盖无 Git 元数据的成功与失败路径。本地存在 ShellCheck 时运行 warning 门，缺失时明确跳过且不联网，远程 CI 则固定安装并强制使用 0.11.0。部署门禁除 `systemd-analyze verify`、`nginx -t` 外，还会从包含空格、`&`、`#` 与反斜杠的真实 checkout fixture 读取部署文件；执行 `nginx -t` 前，生产 upstream 与全部 IPv4/IPv6 `80/443` 监听会一一改写为私有 Unix socket，并核对替换数量且拒绝任何网络监听残留，因此非 root runner 无需占用生产端口。随后检查启动隔离 nginx 与 mock upstream，分别验证规范重定向、未知 SNI、合法 SNI 下未知 Host、固定回源头、伪造入站 XFF 被 `$remote_addr` 覆盖、登录别名正文上限，以及连接/请求限制产生 `429` 后恢复 `200`。
 
 远程反馈由 `.github/workflows/read-only-ci.yml` 分层执行：静态层运行 Bash/ShellCheck、ESLint、TypeScript 和文档门，Rust 层运行 Rustfmt、Clippy 与全 targets/features 测试，浏览器层分别运行 Chromium 和 Firefox；质量层另跑覆盖率、部署行为、release self-test 与 release binary smoke。主分支推送总是执行质量层；PR 先以完整 base/head 对比分类，普通业务修改保持轻量，部署、打包、工作流或依赖边界变更则执行质量层。质量层的四项检查使用各自的明确前置条件；除运行被取消或自身前置失败外，一项检查失败不会跳过其他独立项。浏览器入口从 Cargo 的结构化构建输出解析本次候选路径，不依赖默认 `target/` 或陈旧二进制。`.github/workflows/dependency-audit.yml` 在依赖清单变更及每周计划任务上运行 RustSec/npm audit，并把 yanked crate 作为失败；`.github/workflows/performance.yml` 仅在人工触发时用 release 构建扫描十万真实目录项，并对首屏 30 秒宽松基线失败关闭；标签工作流先核对精确源码，再由只读任务审计依赖、构建并校验二进制，最后仅由写权限任务复核并发布同次构建的 artifact。`.github/workflows/formal-release-e2e.yml` 可人工触发，以临时 Ed25519 密钥执行完整签名包入口并独立复核；便捷标签发行不等待该扩展验收。这些工作流除最终发布 job 外只有只读权限，checkout 不保留凭据，Action 固定完整 commit SHA；结构化 JSON 策略逐 job 检查权限、依赖和 artifact 来源。所有 Node 任务只接受 26.7.0，仓库的两个权威入口也会在运行时精确验证 `.node-version` 与 `node --version`。Rust 1.99.0、ShellCheck 0.11.0 及下载工具归档摘要也均固定。静态、Rust、浏览器、依赖审计、性能和 release binary 继续使用托管 `ubuntu-24.04`；需要 nginx 1.25.1+ 的质量 job 与正式包 E2E 使用 x64 `ubuntu-26.04`。GitHub 当前把 26.04 标为 preview，调度或镜像回归必须阻断门禁而不能触发旧语法 fallback。各 job 都把实际 `ImageVersion` 和工具版本写入日志。这些矩阵不接触生产签名密钥；正式包 E2E 只在隔离 clone 中创建临时本地 tag，且不能替代发布者对最终远端 tag 的批准。
 

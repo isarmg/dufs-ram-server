@@ -1,31 +1,31 @@
 # 第 4 章：后端请求生命周期
 
-本章对应 Axum 与 Foundation 1.0.0 的唯一服务链路。HTTP 行为和验证入口见[HTTP 与运行时合同](../http-runtime-contract.md)。
+本章对应 Axum 与 xcss 1.0.0 的唯一服务链路。HTTP 行为和验证入口见[HTTP 与运行时合同](../http-runtime-contract.md)。
 
 ## 4.1 总体关系
 
 ```text
-Foundation BoundListeners → 受限 HTTP/1 连接
+xcss BoundListeners → 受限 HTTP/1 连接
   → 真实 ConnectInfo、一次 request ID
   → Xczs 原始 URI PathPolicy、RequestProfile、请求许可
-  → Axum Router → Foundation Axum 认证（受保护路由）
+  → Axum Router → xcss Axum 认证（受保护路由）
   → 具体业务 Handler → RootedFs / 上传 / 操作登记表
   → 流式 Axum Body → 完成、错误或丢弃时记录访问日志
 ```
 
-Hyper 只在 Foundation 内实现 HTTP/1 传输，不承担 Xczs 的路由分派。产品没有第二套 HTTP 服务入口、信号处理或框架切换开关。
+Hyper 只在 xcss 内实现 HTTP/1 传输，不承担 Xczs 的路由分派。产品没有第二套 HTTP 服务入口、信号处理或框架切换开关。
 
 ## 4.2 启动顺序
 
 [main.rs](../../src/main.rs) 解析并验证配置，安装平台信号处理，使用 `BoundListeners` 绑定全部地址。后一个地址失败时释放已绑定地址，尚未打开或修改产品状态。
 
-随后在受控阻塞工作中构建产品：先只读检查平台保留路径冲突，再取得共享根锁、验证 openat2、打开严格当前身份的状态库、恢复操作、启动维护。构建完成才交给 Foundation 的唯一 `serve(HttpServer, service)` 接受请求。状态身份包含持久化结构版本；不修改不匹配的 metadata。
+随后在受控阻塞工作中构建产品：先只读检查平台保留路径冲突，再取得共享根锁、验证 openat2、打开严格当前身份的状态库、恢复操作、启动维护。构建完成才交给 xcss 的唯一 `serve(HttpServer, service)` 接受请求。状态身份包含持久化结构版本；不修改不匹配的 metadata。
 
 ## 4.3 产品与平台的所有权
 
-[server.rs](../../src/server.rs) 的产品 `ServerRuntime` 只持有业务服务、普通任务和提交任务，作为平台 `LifecycleParticipant` 提供排空与状态关闭回调。Foundation `ServerRuntime` 独占连接、信号、健康检查和停机硬期限。
+[server.rs](../../src/server.rs) 的产品 `ServerRuntime` 只持有业务服务、普通任务和提交任务，作为平台 `LifecycleParticipant` 提供排空与状态关闭回调。xcss `ServerRuntime` 独占连接、信号、健康检查和停机硬期限。
 
-静态管理员配置交给 Foundation Static Store；会话仍在内存中。不新增数据库管理员、不改密码模型、不引入上传平台状态机。
+静态管理员配置交给 xcss Static Store；会话仍在内存中。不新增数据库管理员、不改密码模型、不引入上传平台状态机。
 
 ## 4.4 连接边界
 
@@ -37,7 +37,7 @@ Hyper 只在 Foundation 内实现 HTTP/1 传输，不承担 Xczs 的路由分派
 
 [router.rs](../../src/server/router.rs) 的服务包装器在 Axum 匹配前读取原始 URI，调用一次 `PathPolicy`。不重写 URI，也不使用自动解码的 `Path<String>` 作为文件路径。
 
-缺少 `ConnectInfo<SocketAddr>` 是内部错误，不能伪造 localhost。无效原始路径返回 400，且不会进入文件操作。Foundation 在外层只验证或生成一次请求 ID，并写入请求、响应与日志。
+缺少 `ConnectInfo<SocketAddr>` 是内部错误，不能伪造 localhost。无效原始路径返回 400，且不会进入文件操作。xcss 在外层只验证或生成一次请求 ID，并写入请求、响应与日志。
 
 ## 4.6 RequestProfile
 
@@ -52,8 +52,8 @@ Hyper 只在 Foundation 内实现 HTTP/1 传输，不承担 Xczs 的路由分派
 | /healthz、/readyz | GET、HEAD |
 | /__xczs__/login | GET；HEAD 明确拒绝 |
 | 内容寻址静态资源 | GET、HEAD；其他方法 405 |
-| /api/v1/auth/login、logout | Foundation POST |
-| /api/v1/auth/session | Foundation GET |
+| /api/v1/auth/login、logout | xcss POST |
+| /api/v1/auth/session | xcss GET |
 | /__xczs__/api/list、jobs/{id} | GET；HEAD 明确拒绝 |
 | mkdir、move、rename、upload/preflight、upload/discard | POST |
 | 共享文件路径 | GET、HEAD、PUT、PATCH、DELETE |
@@ -62,15 +62,15 @@ Hyper 只在 Foundation 内实现 HTTP/1 传输，不承担 Xczs 的路由分派
 
 `/healthz` 正常返回 204 空响应；`/readyz` 只返回 `{"ready":true}` 或 503 的 `{"ready":false}`。两者都禁止缓存、无需登录、不泄露根路径、账号或错误细节。平台定期刷新真实根可写、空间和 SQLite 探针，不能把在线当成所有业务操作可成功。
 
-登录 HTML 与资源仍由产品嵌入。登录 POST 由 Foundation 严格限制正文、来源、计算并发和失败预算。内容资源保持摘要寻址和 immutable 缓存，失败响应不缓存。
+登录 HTML 与资源仍由产品嵌入。登录 POST 由 xcss 严格限制正文、来源、计算并发和失败预算。内容资源保持摘要寻址和 immutable 缓存，失败响应不缓存。
 
 ## 4.9 认证与页面跳转
 
-受保护路由只调用一次 Foundation Axum Adapter，验证会话后传递 `FilePrincipal`。匿名 API 保留平台 JSON 错误；仅合法 HTML 页面导航可以 303 到登录页。平台认证响应不经过产品重新序列化。
+受保护路由只调用一次 xcss Axum Adapter，验证会话后传递 `FilePrincipal`。匿名 API 保留平台 JSON 错误；仅合法 HTML 页面导航可以 303 到登录页。平台认证响应不经过产品重新序列化。
 
 ## 4.10 CSRF
 
-Foundation 校验写方法的唯一 Origin、Host、Fetch Metadata、Cookie 和 CSRF token。重复、拼接、缺失或非规范安全头均被拒绝。认证失败发生在任何文件修改之前。
+xcss 校验写方法的唯一 Origin、Host、Fetch Metadata、Cookie 和 CSRF token。重复、拼接、缺失或非规范安全头均被拒绝。认证失败发生在任何文件修改之前。
 
 ## 4.11 内部业务 API
 
@@ -84,7 +84,7 @@ JSON 修改仍受 16 KiB 读取预算约束。上传预检独立保留 2 MiB、5
 
 ## 4.13 列表
 
-HTML 目录页和分页列表是两次独立请求。列表快照、owner 隔离、排序、分页预算和递归扫描许可不变。目录页不把会话或 CSRF 嵌入业务模板，会话由 Foundation Web Client 单独恢复。
+HTML 目录页和分页列表是两次独立请求。列表快照、owner 隔离、排序、分页预算和递归扫描许可不变。目录页不把会话或 CSRF 嵌入业务模板，会话由 xcss Web Client 单独恢复。
 
 ## 4.14 流式下载与 HEAD
 
@@ -106,7 +106,7 @@ PUT/PATCH 使用 Axum Body 数据流，按实际字节验证长度、偏移、�
 
 ## 4.17 错误、缓存与访问日志
 
-平台认证和请求 ID 错误保留 Foundation ErrorEnvelope；文件业务错误沿用 Problem Details、操作头和上传恢复字段。默认访问日志增加 request ID，仍对敏感字段脱敏、转义和限长。下载完成状态在 Body 结束、失败或丢弃时确定。
+平台认证和请求 ID 错误保留 xcss ErrorEnvelope；文件业务错误沿用 Problem Details、操作头和上传恢复字段。默认访问日志增加 request ID，仍对敏感字段脱敏、转义和限长。下载完成状态在 Body 结束、失败或丢弃时确定。
 
 ## 4.18 停机顺序
 

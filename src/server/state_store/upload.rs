@@ -6,7 +6,7 @@ impl StoreWorker {
         after: Option<UploadSessionKey>,
         limit: i64,
     ) -> Result<Vec<StoredUploadSession>> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             ensure!(limit > 0, "Upload startup page limit must be positive");
             if after.is_none() {
@@ -55,7 +55,7 @@ impl StoreWorker {
         proposed: &StoredUploadSession,
         ttl_ms: i64,
     ) -> Result<StoreUploadSession> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let expires_at = expiration_time(now, ttl_ms)?;
@@ -175,7 +175,7 @@ impl StoreWorker {
         after: Option<UploadSessionKey>,
         limit: i64,
     ) -> Result<Vec<ExpiredUploadSession>> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             match after {
@@ -223,7 +223,7 @@ impl StoreWorker {
         &mut self,
         expected: &ExpiredUploadSession,
     ) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             if expected.expires_at_ms > now {
@@ -245,7 +245,7 @@ impl StoreWorker {
         stage_path: &Path,
         ttl_ms: i64,
     ) -> Result<RejectUploadSession> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let Some(session) = load_upload_session(&mut self.connection, key).await? else {
                 return Ok(RejectUploadSession::NotFound);
@@ -305,7 +305,7 @@ impl StoreWorker {
         &mut self,
         expected: &StoredUploadSession,
     ) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;
             if load_upload_session(&mut transaction, expected.key)
@@ -334,7 +334,7 @@ impl StoreWorker {
         &mut self,
         expected: &ExpiredUploadSession,
     ) -> Result<bool> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             let now = self.now_ms()?;
             let mut transaction = self.connection.begin_with("BEGIN IMMEDIATE").await?;

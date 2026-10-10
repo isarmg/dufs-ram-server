@@ -128,7 +128,7 @@ systemd 样例通过 `StateDirectory=xczs` 与 `StateDirectoryMode=0700` 创建 
 
 - 服务端内存会话；
 - Cookie 使用 `Secure`、`HttpOnly` 和 `__Host-` 约束；
-- Foundation Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
+- xcss Static Store 持有内存会话，重启全部失效；空闲期限 30 分钟、绝对期限 12 小时，每管理员最多 32 个活动会话、全局最多 1024 个。平台 HTTP Adapter 使用统一的 Unix 微秒时间；访问不延长绝对期限，存储拒绝倒退时间。会话和 CSRF 为 32 字节随机值，服务端只保留其摘要。恢复接口轮换 CSRF；其他页面仍使用旧 CSRF 写入时会失败关闭，客户端刷新并重新恢复，绝不重放未知结果的写入。
 - 进程重启后用户需要重新登录；
 - 写请求还需页面绑定的 CSRF token；
 - 登录入口有应用内速率、并发、正文和密码计算限制。
@@ -315,7 +315,7 @@ curl --noproxy '*' --connect-timeout 2 --max-time 10 --fail \
 )
 ```
 
-第一条命令的 `session.json` 应为 Foundation 五字段 `AdministratorSession` 且 `role` 只能是 `admin`，第二条命令预期输出 `{"ready":true}`。自动探针应从只有探针进程可读的受控凭据源建立或更新会话，并控制登录频率，避免触发 Argon2 和登录限流预算。当前 Xczs 没有 readiness-only 或只读角色，任何管理员凭据都拥有共享根完整权限，因此必须把这项风险纳入设计；无法安全保存时就不要把它塞进通用负载均衡器。独立 ready 任务还必须接入告警或明确的摘流自动化，只记录一次 503 不会自动停止流量。
+第一条命令的 `session.json` 应为 xcss 五字段 `AdministratorSession` 且 `role` 只能是 `admin`，第二条命令预期输出 `{"ready":true}`。自动探针应从只有探针进程可读的受控凭据源建立或更新会话，并控制登录频率，避免触发 Argon2 和登录限流预算。当前 Xczs 没有 readiness-only 或只读角色，任何管理员凭据都拥有共享根完整权限，因此必须把这项风险纳入设计；无法安全保存时就不要把它塞进通用负载均衡器。独立 ready 任务还必须接入告警或明确的摘流自动化，只记录一次 503 不会自动停止流量。
 
 ## 9.11 日志与 Operation ID
 
@@ -332,7 +332,7 @@ Operation ID 是连接“浏览器提示、HTTP 请求、状态库结果和服�
 - 方法和规范路径，但避免泄露敏感文件名时要脱敏；
 - HTTP status；
 - operation/upload ID；
-- operation/upload state；
+- 操作状态和上传状态；
 - 网关与后端两侧是否都收到请求。
 
 不要记录或分享：

@@ -225,7 +225,7 @@ Future 被丢弃通常代表调用者不再等待，但这不等于外部世界�
 ```http
 POST /__xczs__/api/rename HTTP/1.1
 Host: files.example.com
-Cookie: __Host-xcss-xczs-session=...
+Cookie: __Host-admin-xczs-session=...
 Content-Type: application/json
 X-CSRF-Token: ...
 X-Xczs-Operation-Id: 123e4567-e89b-42d3-a456-426614174000
@@ -280,21 +280,21 @@ HTTP 方法只是协议意图，安全性仍取决于后端校验。例如 `HEAD
 
 ### Header
 
-Header 是请求或响应的元数据。Xczs 会对 Operation ID、上传协议头、Cookie、Foundation CSRF/Origin/Host/Fetch Metadata 和受信代理头等安全相关字段拒绝重复、逗号拼接或非规范值，因为代理和服务端可能对歧义字段产生不同解释。普通展示型 header 是否允许重复仍需逐项确认；不能从某一路由的策略外推全部协议。
+Header 是请求或响应的元数据。Xczs 会对 Operation ID、上传协议头、Cookie、xcss CSRF/Origin/Host/Fetch Metadata 和受信代理头等安全相关字段拒绝重复、逗号拼接或非规范值，因为代理和服务端可能对歧义字段产生不同解释。普通展示型 header 是否允许重复仍需逐项确认；不能从某一路由的策略外推全部协议。
 
 ### Cookie
 
-登录成功后，服务端设置 `__Host-xcss-xczs-session` Cookie。`__Host-` 前缀要求更严格的 Cookie 属性，当前会话还使用 `Secure`、`HttpOnly` 等限制。浏览器自动携带 Cookie，JavaScript 不需要也不应该读取会话秘密。
+登录成功后，服务端设置 `__Host-admin-xczs-session` Cookie。`__Host-` 前缀要求更严格的 Cookie 属性，当前会话还使用 `Secure`、`HttpOnly` 等限制。浏览器自动携带 Cookie，JavaScript 不需要也不应该读取会话秘密。
 
 ### CSRF token
 
-Cookie 会被浏览器自动附带，因此恶意站点可能诱导用户浏览器发出写请求。CSRF token 是当前页面从服务端取得、再显式放入 `X-CSRF-Token` 的随机值；服务端以常量时间验证它，并与 Foundation 的严格同源检查共同防护。`Origin`、effective Host（含 URI authority）和 `Sec-Fetch-Site: same-origin` 都必须存在、唯一、规范且互相一致；缺失或歧义不会被兼容放行。
+Cookie 会被浏览器自动附带，因此恶意站点可能诱导用户浏览器发出写请求。CSRF token 是当前页面从服务端取得、再显式放入 `X-CSRF-Token` 的随机值；服务端以常量时间验证它，并与 xcss 的严格同源检查共同防护。`Origin`、effective Host（含 URI authority）和 `Sec-Fetch-Site: same-origin` 都必须存在、唯一、规范且互相一致；缺失或歧义不会被兼容放行。
 
 认证回答“你是谁”，CSRF token 与来源检查共同回答“这个写请求是否具备当前会话页面应持有的证明”；两者不可互相替代。
 
 ### Body
 
-JSON browser API、Foundation 登录 JSON 和大文件正文有不同大小及时间限制。服务端必须在分配内存前限制正文，前端也对响应正文做有界读取，防止异常对端用巨大错误页耗尽内存。
+JSON browser API、xcss 登录 JSON 和大文件正文有不同大小及时间限制。服务端必须在分配内存前限制正文，前端也对响应正文做有界读取，防止异常对端用巨大错误页耗尽内存。
 
 ## 3.13 URL 路径不等于磁盘路径
 
@@ -344,12 +344,12 @@ HTTP URI path
 
 前端以 ES modules 启动 React 页面及文件业务控制器：
 
-```js
-import { start } from "./modules/app.js";
+```ts
+import { start } from "./modules/app.ts";
 start();
 ```
 
-React 19.2.8 和 Foundation UI 由 Vite 编入平台 bundle，文件操作与上传控制器继续作为独立模块嵌入。全部产品 JavaScript（包括 React 组件）通过 JSDoc 声明类型，由 TypeScript `checkJs` 检查：
+React 19.3.0、xcss UI、文件操作与上传控制器统一由 Vite 编译。浏览器源码使用 `.ts`/`.tsx`，继承 xcss 的严格 TypeScript 配置；登录、文件页与标签页都在构建前接受类型检查：
 
 ```sh
 npm run check:types
@@ -361,7 +361,7 @@ npm run check:types
 
 1. 在 [src/main.rs](../../src/main.rs) 中搜索 `Arc::new`、`Semaphore`、`TaskTracker` 和 `CancellationToken`，分别说明它们管理什么资源。
 2. 在 [src/server/protocol.rs](../../src/server/protocol.rs) 中找类型化协议状态，观察它们在哪里才转成字符串。
-3. 在 [web/modules/http/client.js](../../web/modules/http/client.js) 中搜索 `unknown` 或类型守卫，找出网络响应从“不可信值”变成可用对象的位置。
+3. 在 [web/modules/http/client.ts](../../web/modules/http/client.ts) 中搜索 `unknown` 或类型守卫，找出网络响应从“不可信值”变成可用对象的位置。
 4. 思考：如果上传正文已经写完，但浏览器在等待提交响应时断网，为什么页面不能直接显示“上传失败”？
 
 下一章会把这些概念放进真实的后端请求链。

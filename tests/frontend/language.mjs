@@ -10,7 +10,9 @@ const file = { id: 1, name: '中文原文件.txt', path: '中文目录/中文原
 const authored = [file.path, file.name, tag.name, '中文目录', '/文件根目录'];
 const base = 'http://xczs-language.test';
 const root = resolve(import.meta.dirname, '../..');
-const html = (await readFile(resolve(root, 'web/tags.html'), 'utf8')).replaceAll('__ASSETS_PREFIX__', '__xczs__/');
+const html = (await readFile(resolve(root, 'web/index.html'), 'utf8'))
+  .replaceAll('__ASSETS_PREFIX__', '/__xczs__/')
+  .replace('__INDEX_DATA__', Buffer.from(JSON.stringify({ href: '/', dir_exists: true })).toString('base64'));
 
 async function fixture(page) {
   await page.route(base + '/**', async route => {
@@ -19,15 +21,17 @@ async function fixture(page) {
       if (route.request().method() !== 'GET') return route.fulfill({ status: 409, json: { code: 'capacity_exhausted', message: '内部 SECRET', retryable: false, request_id: 'capacity-409' } });
       const payload = path === '/api/v1/auth/session' ? session
         : path.endsWith('/tags') ? tagPage
+        : path.endsWith('/file') ? { file_id: 1, tags: [tag], tags_has_more: false }
         : path.endsWith('/files') ? { files: [file], total: 1, page: 1, page_size: 50 }
         : path.endsWith('/folders') ? { previous_cursor: null, next_cursor: null, folders: ['中文目录'] }
         : { root: '/文件根目录', available: true, last_scan_at: 1791446400, indexed: 1, missing: 0, suspect: 0, last_error: '内部 SECRET' };
       return route.fulfill({ json: payload });
     }
-    if (path.startsWith('/__xczs__/dist/')) {
-      const name = path.slice('/__xczs__/dist/'.length);
+    if (path === '/__xczs__/api/list') return route.fulfill({ json: { paths: [{ path_type: 'File', name: file.name, mtime: 1791446400000, size: 2048, revision: 'a'.repeat(64) }], next_cursor: null, file_tags: [{ file_id: 1, tags: [tag], tags_has_more: false }] } });
+    if (path.startsWith('/__xczs__/') && path !== '/__xczs__/tags') {
+      const name = path.slice('/__xczs__/'.length);
       const type = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.woff2') ? 'font/woff2' : 'image/svg+xml';
-      return route.fulfill({ contentType: type, body: await readFile(resolve(root, 'web/dist', name)) });
+      return route.fulfill({ contentType: type, body: await readFile(resolve(root, 'web/runtime-dist', name)) });
     }
     return route.fulfill({ contentType: 'text/html', body: html });
   });
@@ -50,16 +54,18 @@ for (const engine of [chromium, firefox]) {
       page.on('pageerror', error => errors.push(error.message));
       await fixture(page);
       await page.goto(base + '/__xczs__/tags?lang=zh-CN#files');
-      await expect(page.getByRole('heading', { name: '文件浏览', exact: true })).toBeVisible();
+      await expect(page.getByRole('table', { name: '文件列表', exact: true })).toBeVisible();
       await page.getByRole('button', { name: '切换为英文', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Browse files', exact: true })).toBeVisible();
+      await expect(page.getByRole('table', { name: 'File list', exact: true })).toBeVisible();
       await expect(page.getByRole('row').filter({ hasText: file.name })).toBeVisible();
-      await expect(page).toHaveTitle('Xczs Tag Library');
+      await expect(page).toHaveTitle('/ - xczs File Manager');
       await english(page);
-      await page.getByRole('button', { name: 'View all tags', exact: true }).click();
-      await expect(page.getByRole('dialog', { name: 'File tags: ' + file.name })).toBeVisible();
+      await page.locator('[data-file-action=tags]').click();
+      await page.getByRole('link', { name: file.name, exact: true }).click();
+      await expect(page.getByRole('region', { name: 'File tags', exact: true })).toBeVisible();
+      await expect(page.locator('.file-tag-target')).toHaveText(file.name);
       await english(page);
-      await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+      await page.locator('[data-file-action=tags]').click();
       await page.getByRole('link', { name: 'Manage tags', exact: true }).click();
       await expect(page.getByRole('table', { name: 'Tag list', exact: true })).toContainText(tag.name);
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -76,7 +82,7 @@ for (const engine of [chromium, firefox]) {
       await expect(page.getByText('The scan could not complete. Scan again.', { exact: true })).toBeVisible();
       await english(page);
       await page.getByRole('button', { name: 'Switch to Chinese', exact: true }).click();
-      await expect(page.getByRole('heading', { name: '服务状态与设置', exact: true })).toBeVisible();
+      await expect(page.getByText('原文件根目录', { exact: true })).toBeVisible();
       assert.deepEqual(errors, []);
       await context.close();
     }

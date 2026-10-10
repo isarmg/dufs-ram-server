@@ -3,7 +3,7 @@ extern crate log;
 
 // Depending on the shared gate makes unsupported server targets fail during
 // compilation, while this public identity prevents release metadata drift.
-pub const SERVER_TARGET: &str = xcss_server_target::SERVER_TARGET_TRIPLE;
+pub const SERVER_TARGET: &str = xcss::server_target::SERVER_TARGET_TRIPLE;
 
 pub mod app_error;
 pub mod args;

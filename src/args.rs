@@ -17,7 +17,7 @@ use std::ops::Deref;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use xcss_config::{ConfigSource, EnvMapping, EnvValueKind, Override};
+use xcss::config::{ConfigSource, EnvMapping, EnvValueKind, Override};
 
 use crate::auth::AuthConfig;
 use crate::http_logger::HttpLogger;
@@ -46,8 +46,8 @@ const LONG_VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (git ",
     env!("XCZS_BUILD_GIT_SHA"),
-    ") foundation=",
-    env!("XCSS_FOUNDATION_REVISION")
+    ") xcss=",
+    env!("XCSS_REVISION")
 );
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -302,7 +302,7 @@ pub fn build_cli() -> Command {
                 .global(true)
                 .long("development")
                 .action(ArgAction::SetTrue)
-                .help("Enable Foundation HTTP development mode on loopback only"),
+                .help("Enable xcss HTTP development mode on loopback only"),
         )
         .arg(
             Arg::new("data-dir")
@@ -567,7 +567,7 @@ impl Args {
                 )
             })
             .transpose()?;
-        let environment = xcss_config::read_environment(&configuration_environment(), |name| {
+        let environment = xcss::config::read_environment(&configuration_environment(), |name| {
             env::var(name).ok()
         })?;
         let mut command_line = Vec::new();
@@ -631,7 +631,7 @@ impl Args {
         if let Some(value) = matches.get_one::<usize>("max-tag-scan-entries") {
             command_line.push(Override::new("/max_tag_scan_entries", *value));
         }
-        let loaded = xcss_config::resolve_validated(
+        let loaded = xcss::config::resolve_validated(
             &Self::default(),
             config.as_ref().map(|config| config.contents.as_bytes()),
             &environment,
@@ -646,9 +646,9 @@ impl Args {
                 .state_dir
                 .as_deref()
                 .context("data_dir is required for init")?;
-            xcss_server_cli::runtime_allowed(directory).map_err(xcss_server_cli::CliError)?;
-            xcss_server_cli::create_empty_private_directory(directory)
-                .map_err(xcss_server_cli::CliError)?;
+            xcss::server_cli::runtime_allowed(directory).map_err(xcss::server_cli::CliError)?;
+            xcss::server_cli::create_empty_private_directory(directory)
+                .map_err(xcss::server_cli::CliError)?;
         }
         let args = args.validate()?;
         if let Some(config_identity) = config_identity.as_ref() {
@@ -1409,8 +1409,8 @@ fn validate_development_web_selection(args: &Args) -> Result<()> {
         return Ok(());
     };
     let invalid = || {
-        xcss_config::ConfigError::new(
-            xcss_config::Reason::InvalidValue,
+        xcss::config::ConfigError::new(
+            xcss::config::Reason::InvalidValue,
             "/XCSS_DEV_WEB_DIR",
             ConfigSource::Environment,
         )
@@ -1420,13 +1420,13 @@ fn validate_development_web_selection(args: &Args) -> Result<()> {
     }
     // Validate the entire selected development tree before initialization or
     // runtime locks/logs. Runtime construction captures and checks it again.
-    xcss_web_assets::DirectoryAssets::new(Path::new(&directory)).map_err(|_| invalid())?;
+    xcss::web_assets::DirectoryAssets::new(Path::new(&directory)).map_err(|_| invalid())?;
     Ok(())
 }
 
-fn validate_intrinsic(args: &Args, source: ConfigSource) -> Result<(), xcss_config::ConfigError> {
+fn validate_intrinsic(args: &Args, source: ConfigSource) -> Result<(), xcss::config::ConfigError> {
     let invalid =
-        |path| xcss_config::ConfigError::new(xcss_config::Reason::InvalidValue, path, source);
+        |path| xcss::config::ConfigError::new(xcss::config::Reason::InvalidValue, path, source);
     let mut addresses = args.addrs.clone();
     addresses.sort_unstable();
     if addresses.is_empty()

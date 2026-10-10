@@ -18,7 +18,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
-use xcss_contracts::AdministratorSession;
+use xcss::contracts::AdministratorSession;
 
 const CSRF_HEADER: &str = "x-csrf-token";
 static HTTP_LOGGER_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -75,7 +75,7 @@ fn invalid_session_is_not_written_to_access_log(tmpdir: TempDir) -> Result<(), E
         .redirect(reqwest::redirect::Policy::none())
         .build()?
         .get(format!("http://localhost:{port}"))
-        .header(COOKIE, "xcss-xczs-session=forged-admin")
+        .header(COOKIE, "admin-xczs-session=forged-admin")
         .send()?;
     assert_eq!(response.status(), 401);
 
@@ -547,7 +547,7 @@ fn malformed_http_connection_produces_a_safe_structured_warning(
     assert_eq!(warnings.len(), 1);
     assert_eq!(warnings[0]["service"], "xczs");
     assert_eq!(warnings[0]["event"], "xczs.diagnostic");
-    assert_eq!(warnings[0]["component"], "xcss_server_runtime::http1");
+    assert_eq!(warnings[0]["component"], "xcss::server_runtime::http1");
     assert!(!output.contains("Invalid Header"));
     Ok(())
 }

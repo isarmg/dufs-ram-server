@@ -33,7 +33,9 @@ use tokio::{io, sync::OwnedSemaphorePermit};
 use tokio_util::sync::CancellationToken;
 
 mod snapshot;
+mod tagged;
 mod walk;
+use tagged::TagFilter;
 
 pub(super) use snapshot::ListSnapshotCache;
 use snapshot::{
@@ -365,6 +367,20 @@ impl Server {
             .unwrap_or("asc")
             .to_string();
         let query = query_params.get("q").cloned().unwrap_or_default();
+        let tag_filter = match TagFilter::parse(query_params) {
+            Ok(filter) => filter,
+            Err(_) => {
+                respond_list_api_problem(
+                    res,
+                    StatusCode::BAD_REQUEST,
+                    ErrorCode::INVALID_TAG_FILTER,
+                    "Invalid tag filter",
+                    RecoveryAdvice::None,
+                )?;
+                return Ok(());
+            }
+        };
+        let binding_query = serde_json::to_string(&(&query, &tag_filter))?;
         if query.chars().count() > 128 {
             respond_list_api_problem(
                 res,
@@ -473,7 +489,7 @@ impl Server {
                 directory: before,
                 sort: &sort,
                 order: &order,
-                query: &query,
+                query: &binding_query,
                 limit,
             };
             let page = match self
@@ -513,7 +529,7 @@ impl Server {
                     return Ok(());
                 }
             };
-            return write_list_response(res, page);
+            return self.send_tagged_list_page(res, page, &path).await;
         }
 
         let cancellation = CancellationToken::new();
@@ -583,6 +599,27 @@ impl Server {
             }
         };
 
+        let paths = if tag_filter.active() {
+            match self
+                .filter_tagged_paths(&path, paths, tag_filter, !query.is_empty())
+                .await
+            {
+                Ok(paths) => paths,
+                Err(_) => {
+                    respond_list_api_problem(
+                        res,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        ErrorCode::TAG_LOOKUP_FAILED,
+                        "File tags are temporarily unavailable",
+                        RecoveryAdvice::Retry,
+                    )?;
+                    return Ok(());
+                }
+            }
+        } else {
+            paths
+        };
+
         let after_metadata = self
             .list_metadata_guarded(&path, list_permit.clone(), ListMetadataPhase::AfterWalk)
             .await;
@@ -611,11 +648,11 @@ impl Server {
         let page = if paths.len() > limit {
             let binding = ListSnapshotBinding {
                 owner,
-                path,
+                path: path.clone(),
                 directory: before,
                 sort,
                 order,
-                query,
+                query: binding_query,
                 limit,
             };
             match self.content.list_snapshot_cache.cache(
@@ -633,7 +670,7 @@ impl Server {
         } else {
             ListSnapshotPage::from_vec(paths, None)
         };
-        write_list_response(res, page)
+        self.send_tagged_list_page(res, page, &path).await
     }
 
     pub(super) async fn handle_ls_dir(
@@ -645,15 +682,7 @@ impl Server {
         _principal: FilePrincipal,
         res: &mut Response,
     ) -> Result<()> {
-        self.send_index(
-            path,
-            IndexOptions {
-                exist,
-                head_only,
-                _principal,
-            },
-            res,
-        )
+        self.send_index(path, IndexOptions { exist, head_only }, res)
     }
 
     pub(super) async fn handle_search_dir(
@@ -679,7 +708,6 @@ impl Server {
             IndexOptions {
                 exist: true,
                 head_only,
-                _principal,
             },
             res,
         )
@@ -767,6 +795,17 @@ impl Server {
             reason: format!("worker_join_error={error}"),
             problem: ListingProblem::DirectoryOperationFailed,
         })?
+    }
+
+    pub(super) fn send_tags_page_for_get(&self, res: &mut Response) -> Result<()> {
+        self.send_index(
+            &self.content.args.serve_path,
+            IndexOptions {
+                exist: true,
+                head_only: false,
+            },
+            res,
+        )
     }
 
     fn send_index(&self, path: &Path, options: IndexOptions, res: &mut Response) -> Result<()> {
@@ -1292,7 +1331,6 @@ fn pathitem_from_rooted_entry(
 struct IndexOptions {
     exist: bool,
     head_only: bool,
-    _principal: FilePrincipal,
 }
 
 #[derive(Debug, Serialize)]
@@ -1305,12 +1343,18 @@ struct IndexData {
 struct ListResponse<'a> {
     paths: &'a [PathItem],
     next_cursor: Option<&'a str>,
+    file_tags: Option<Vec<crate::server::tagging::db::ListedTags>>,
 }
 
-fn write_list_response(res: &mut Response, page: ListSnapshotPage) -> Result<()> {
+fn write_list_response(
+    res: &mut Response,
+    page: ListSnapshotPage,
+    file_tags: Option<Vec<crate::server::tagging::db::ListedTags>>,
+) -> Result<()> {
     let output = serde_json::to_vec(&ListResponse {
         paths: page.paths(),
         next_cursor: page.next_cursor.as_deref(),
+        file_tags,
     })?;
     res.headers_mut()
         .typed_insert(ContentType::from(mime_guess::mime::APPLICATION_JSON));

@@ -16,8 +16,8 @@ use std::process::{Child, Command, Stdio};
 use std::thread::{JoinHandle, sleep};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
-use xcss_admin_auth::normalize_administrator_username;
-use xcss_contracts::{AdministratorRole, AdministratorSession};
+use xcss::admin_auth::normalize_administrator_username;
+use xcss::contracts::{AdministratorRole, AdministratorSession};
 
 #[allow(dead_code)]
 pub type Error = Box<dyn std::error::Error>;
@@ -33,7 +33,7 @@ pub const UPLOAD_STAGE_DIRECTORY: &str = ".xczs-upload-stages";
 pub const USER_ACCOUNT: &str = "user:$argon2id$v=19$m=19456,t=2,p=1$HdPI2G8k0h+yEgnqIt2rSw$P+MRyz7wH+b/iPY+He/9DApcy6yB9TAoo7j2JG1Smzs";
 #[allow(dead_code)]
 pub const ADMIN_ACCOUNT: &str = "admin:$argon2id$v=19$m=19456,t=2,p=1$HdPI2G8k0h+yEgnqIt2rSw$P+MRyz7wH+b/iPY+He/9DApcy6yB9TAoo7j2JG1Smzs";
-const SESSION_COOKIE_NAME: &str = "xcss-xczs-session";
+const SESSION_COOKIE_NAME: &str = "admin-xczs-session";
 const CSRF_HEADER: &str = "x-csrf-token";
 
 #[allow(dead_code)]

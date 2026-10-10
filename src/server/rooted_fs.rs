@@ -28,8 +28,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
-pub(super) use xcss_fs_safety::linux::FileIdentity;
-use xcss_fs_safety::linux::{AdvisoryLock, MountPolicy, OpenAt2Root};
+pub(super) use xcss::fs_safety::linux::FileIdentity;
+use xcss::fs_safety::linux::{AdvisoryLock, MountPolicy, OpenAt2Root};
 
 mod purge;
 
@@ -595,19 +595,23 @@ impl RootedFs {
     {
         let this = self.clone();
         let path = path.to_path_buf();
-        run_blocking_guarded(guard, move || {
-            let relative = this.relative_path_or_dot(&path)?;
-            let fd = openat2(
-                &this.inner.root,
-                relative,
-                OFlags::PATH | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-                Mode::empty(),
-                this.inner.resolve,
-            )
-            .map_err(std::io::Error::from)?;
-            File::from(fd).metadata()
-        })
-        .await
+        run_blocking_guarded(guard, move || this.metadata_nofollow_blocking(&path)).await
+    }
+
+    pub(super) fn metadata_nofollow_blocking(
+        &self,
+        path: &Path,
+    ) -> std::io::Result<std::fs::Metadata> {
+        let relative = self.relative_path_or_dot(path)?;
+        let fd = openat2(
+            &self.inner.root,
+            relative,
+            OFlags::PATH | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+            self.inner.resolve,
+        )
+        .map_err(std::io::Error::from)?;
+        File::from(fd).metadata()
     }
 
     pub(super) async fn metadata(&self, path: &Path) -> std::io::Result<std::fs::Metadata> {
@@ -782,7 +786,7 @@ impl RootedFs {
                 }
                 Err(error) => return Err(error),
             };
-            for reserved in xcss_server_runtime::PLATFORM_RESERVED_PATHS {
+            for reserved in xcss::server_runtime::PLATFORM_RESERVED_PATHS {
                 let reserved = this.inner.root_path.join(reserved.trim_start_matches('/'));
                 let reserved = this.resolved_path_key_blocking(&reserved)?;
                 if super::path_coordinator::resolved_path_contains(&reserved, &target)

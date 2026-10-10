@@ -6,12 +6,12 @@ const source = "a".repeat(40);
 const foundation = "b".repeat(40);
 const line = revision => `source = "git+https://github.com/isarmg/xcss.git?rev=${revision}#${revision}"\n`;
 
-test("release version binds software, full source and the one locked Foundation revision", () => {
+test("release version binds software, full source and the one locked xcss revision", () => {
   assert.equal(releaseVersion("0.53.5", source, line(foundation).repeat(2)),
-    `xczs 0.53.5 (git ${source}) foundation=${foundation}`);
+    `xczs 0.53.5 (git ${source}) xcss=${foundation}`);
 });
 
-test("release version rejects missing, mixed and mismatched Foundation revisions", () => {
+test("release version rejects missing, mixed and mismatched xcss revisions", () => {
   assert.throws(() => releaseVersion("0.53.5", source, ""), /Missing/);
   assert.throws(() => releaseVersion("0.53.5", source, line(foundation) + line("c".repeat(40))), /Mixed/);
   assert.throws(() => releaseVersion("0.53.5", source, line(foundation).replace(`#${foundation}`, `#${source}`)), /Invalid locked/);

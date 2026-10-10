@@ -5,7 +5,7 @@ use std::{
     io::ErrorKind,
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
 };
-use xcss_schema_identity::SchemaIdentity;
+use xcss::schema_identity::SchemaIdentity;
 
 #[cfg(test)]
 use std::io::{self, Read, Seek, SeekFrom};
@@ -456,7 +456,7 @@ pub(super) fn open_initialized_connection(
     recovery_now_ms: i64,
 ) -> Result<Connection> {
     let mut connection = open_connection(path, root)?;
-    let result = xcss_sqlite::block_on_sqlite_connection(async {
+    let result = xcss::sqlite::block_on_sqlite_connection(async {
         validate_product_metadata(&mut connection).await?;
         verify_root_identity(&mut connection, root).await?;
         validate_integrity(&mut connection).await?;
@@ -470,7 +470,7 @@ pub(super) fn open_initialized_connection(
         .await
     });
     if let Err(error) = result {
-        let _ = xcss_sqlite::block_on_sqlite_connection(connection.close());
+        let _ = xcss::sqlite::block_on_sqlite_connection(connection.close());
         return Err(error);
     }
     Ok(connection)
@@ -482,7 +482,7 @@ pub(in crate::server) fn initialize_current(path: &Path, root: RootIdentity) -> 
         "state database already exists; initialization never overwrites data"
     );
     prepare_database_file(path, &root)?;
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = connect_direct(path).await?;
         let result = async {
             harden_connection(&mut connection).await?;
@@ -504,7 +504,7 @@ pub(in crate::server) fn initialize_current(path: &Path, root: RootIdentity) -> 
 
 pub(in crate::server) fn validate_current(path: &Path, root: RootIdentity) -> Result<()> {
     let mut connection = open_existing_database_for_preflight(path, root)?;
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         validate_product_metadata(&mut connection).await?;
         verify_root_identity(&mut connection, root).await?;
         validate_integrity(&mut connection).await
@@ -528,7 +528,7 @@ fn open_connection(path: &Path, root: RootIdentity) -> Result<Connection> {
 /// Own the captured generation until its native worker has explicitly closed.
 pub(super) struct ValidationConnection {
     connection: Option<Connection>,
-    _snapshot: xcss_sqlite::ValidationSnapshot,
+    _snapshot: xcss::sqlite::ValidationSnapshot,
 }
 impl std::fmt::Debug for ValidationConnection {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -555,7 +555,7 @@ impl std::ops::DerefMut for ValidationConnection {
 impl Drop for ValidationConnection {
     fn drop(&mut self) {
         if let Some(connection) = self.connection.take()
-            && xcss_sqlite::block_on_sqlite_connection(connection.close()).is_err()
+            && xcss::sqlite::block_on_sqlite_connection(connection.close()).is_err()
         {
             log::error!("The private SQLite validation worker could not be closed");
         }
@@ -583,9 +583,9 @@ where
     main_database.revalidate()?;
     sidecars.revalidate()?;
     let expected = main_database.snapshot;
-    let snapshot = xcss_sqlite::ValidationSnapshot::capture(path)?;
+    let snapshot = xcss::sqlite::ValidationSnapshot::capture(path)?;
     validate_raw_main_snapshot(&snapshot, root)?;
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut private = connect_direct(snapshot.database_path()).await?;
         let result = async {
             harden_connection(&mut private).await?;
@@ -603,7 +603,7 @@ where
     // Finish and drop raw descriptors before opening the original SQLite generation.
     drop(main_database);
     drop(sidecars);
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = connect_direct(path).await?;
         let result = async {
             let metadata = fs::symlink_metadata(path)?;
@@ -635,14 +635,14 @@ where
 {
     let sidecars = SqliteSidecarGuard::inspect(path)?;
     let main_database = MainDatabaseGuard::inspect(path)?;
-    let snapshot = xcss_sqlite::ValidationSnapshot::capture(path)?;
+    let snapshot = xcss::sqlite::ValidationSnapshot::capture(path)?;
     after_snapshot()?;
     main_database.revalidate()?;
     sidecars.revalidate()?;
     validate_raw_main_snapshot(&snapshot, root)?;
     drop(main_database);
     drop(sidecars);
-    let connection = xcss_sqlite::block_on_sqlite_connection(async {
+    let connection = xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = connect_direct(snapshot.database_path()).await?;
         let result = async {
             harden_connection(&mut connection).await?;
@@ -663,12 +663,12 @@ where
 
 /// Check the captured main separately so a foreign main cannot be hidden by its WAL.
 fn validate_raw_main_snapshot(
-    snapshot: &xcss_sqlite::ValidationSnapshot,
+    snapshot: &xcss::sqlite::ValidationSnapshot,
     root: RootIdentity,
 ) -> Result<()> {
     let raw_path = snapshot.database_path().with_file_name("raw-main.sqlite3");
     fs::copy(snapshot.database_path(), &raw_path)?;
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut raw = connect_direct(&raw_path).await?;
         let result = async {
             harden_connection(&mut raw).await?;
@@ -749,13 +749,13 @@ where
     open_existing_database_for_preflight_after_snapshot(path, root, after_snapshot)
 }
 
-fn connection_limits() -> xcss_sqlite::ConnectionLimits {
-    xcss_sqlite::ConnectionLimits::new(2 * 1024 * 1024)
+fn connection_limits() -> xcss::sqlite::ConnectionLimits {
+    xcss::sqlite::ConnectionLimits::new(2 * 1024 * 1024)
 }
 
 async fn harden_connection(connection: &mut Connection) -> Result<()> {
-    xcss_sqlite::apply_connection_limits(connection, connection_limits()).await?;
-    xcss_sqlite::enable_defensive(connection).await?;
+    xcss::sqlite::apply_connection_limits(connection, connection_limits()).await?;
+    xcss::sqlite::enable_defensive(connection).await?;
     sqlx::raw_sql("PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA mmap_size=0; PRAGMA temp_store=MEMORY;")
         .execute(connection).await?;
     Ok(())
@@ -796,7 +796,7 @@ async fn configure_validated_connection(connection: &mut Connection) -> Result<(
 
 fn preflight_existing_database(path: &Path, root: RootIdentity) -> Result<()> {
     let mut connection = open_existing_database_for_preflight(path, root)?;
-    xcss_sqlite::block_on_sqlite_connection(validate_database_before_mutation(
+    xcss::sqlite::block_on_sqlite_connection(validate_database_before_mutation(
         &mut connection,
         root,
     ))
@@ -820,7 +820,7 @@ async fn validate_exact_schema(connection: &mut Connection) -> Result<()> {
 async fn expected_schema() -> Result<SchemaSnapshot> {
     let mut connection = Connection::connect("sqlite::memory:").await?;
     let result = async {
-        xcss_sqlite::apply_connection_limits(&mut connection, connection_limits()).await?;
+        xcss::sqlite::apply_connection_limits(&mut connection, connection_limits()).await?;
         sqlx::raw_sql(CURRENT_SCHEMA)
             .execute(&mut connection)
             .await?;
@@ -835,7 +835,7 @@ async fn expected_schema() -> Result<SchemaSnapshot> {
 
 async fn inspect_schema(connection: &mut Connection) -> Result<SchemaSnapshot> {
     // The shared reader rejects all excess objects/bytes rather than truncating evidence.
-    let rows = xcss_sqlite::schema_rows(&mut *connection).await?;
+    let rows = xcss::sqlite::schema_rows(&mut *connection).await?;
     let objects = rows
         .into_iter()
         .map(|row| {
@@ -1167,7 +1167,7 @@ async fn initialize_schema(connection: &mut Connection, root: RootIdentity) -> R
 
 pub(super) async fn validate_product_metadata(connection: &mut Connection) -> Result<()> {
     validate_exact_schema(connection).await?;
-    xcss_sqlite::require_current_schema(connection, &expected_schema_identity()?)
+    xcss::sqlite::require_current_schema(connection, &expected_schema_identity()?)
         .await
         .context("State database metadata or schema fingerprint is not exactly current")?;
     Ok(())
@@ -1178,7 +1178,7 @@ pub(super) fn expected_schema_fingerprint() -> Result<String> {
 }
 
 async fn schema_fingerprint(connection: &mut Connection) -> Result<String> {
-    Ok(xcss_sqlite::schema_fingerprint(connection).await?)
+    Ok(xcss::sqlite::schema_fingerprint(connection).await?)
 }
 
 pub(in crate::server) fn expected_schema_identity() -> Result<SchemaIdentity> {
@@ -1189,7 +1189,7 @@ pub(in crate::server) fn expected_schema_identity() -> Result<SchemaIdentity> {
             .context("Current schema revision cannot be represented as u64")?,
         expected_schema_fingerprint()?,
     )
-    .context("Compiled XCZS schema identity violates the Foundation contract")
+    .context("Compiled XCZS schema identity violates the xcss contract")
 }
 
 async fn insert_root_identity(transaction: &mut Connection, root: RootIdentity) -> Result<()> {

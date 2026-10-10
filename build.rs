@@ -3,13 +3,13 @@ use std::{path::Path, process::Command};
 fn main() {
     let tagging = include_str!("schema/tagging.sql");
     let tagging_fingerprint =
-        xcss_sqlite::fingerprint_trusted_ddl(&[tagging]).expect("current tag schema fingerprint");
+        xcss::sqlite::fingerprint_trusted_ddl(&[tagging]).expect("current tag schema fingerprint");
     println!("cargo:rustc-env=XCZS_TAG_SCHEMA_SHA256={tagging_fingerprint}");
     println!("cargo:rerun-if-changed=schema/tagging.sql");
 
     let schema = include_str!("schema/product.sql");
     let fingerprint =
-        xcss_sqlite::fingerprint_trusted_ddl(&[schema]).expect("current XCZS schema fingerprint");
+        xcss::sqlite::fingerprint_trusted_ddl(&[schema]).expect("current XCZS schema fingerprint");
     println!("cargo:rustc-env=XCZS_CURRENT_SCHEMA_SHA256={fingerprint}");
     println!("cargo:rerun-if-changed=schema/product.sql");
 
@@ -39,22 +39,22 @@ fn main() {
             let (requested, locked) = line
                 .trim_end_matches('"')
                 .split_once('#')
-                .expect("Foundation source requires a locked commit");
+                .expect("xcss source requires a locked commit");
             assert!(
                 requested.len() == 40
                     && requested.bytes().all(|byte| byte.is_ascii_hexdigit())
                     && requested == locked,
-                "Foundation source must bind one exact full commit"
+                "xcss source must bind one exact full commit"
             );
             requested
         })
         .collect();
     assert!(
         revisions.len() == 1,
-        "one exact Foundation Git revision is required"
+        "one exact xcss Git revision is required"
     );
     println!(
-        "cargo:rustc-env=XCSS_FOUNDATION_REVISION={}",
+        "cargo:rustc-env=XCSS_REVISION={}",
         revisions.iter().next().unwrap()
     );
     println!("cargo:rerun-if-changed=Cargo.lock");
@@ -64,8 +64,8 @@ fn main() {
         .unwrap_or_else(|| {
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web/runtime-dist")
         });
-    xcss_web_assets::build::generate(root)
-        .expect("build the Web platform with the Foundation builder before compiling Server");
+    xcss::web_assets::build::generate(root)
+        .expect("build the Web platform with the xcss builder before compiling Server");
 }
 
 fn emit_git_rerun_paths() {

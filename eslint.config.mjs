@@ -1,10 +1,12 @@
 import js from "@eslint/js";
 import nounsanitized from "eslint-plugin-no-unsanitized";
 import globals from "globals";
+import typescript from "./scripts/eslint-typescript.mjs";
 
 const authoredFiles = [
   "eslint.config.mjs",
   "playwright.config.js",
+  "vite.platform.config.mjs",
   "scripts/**/*.mjs",
   "tests/frontend/**/*.mjs",
   "web/**/*.{js,jsx}",
@@ -98,6 +100,29 @@ export default [
         "error",
         { name: "fetch", message: "Use modules/http/client.js." },
       ],
+    },
+  },
+  {
+    files: ["web/**/*.{ts,tsx}"],
+    ignores: ["web/dist/**", "web/runtime-dist/**"],
+    plugins: { typescript },
+    processor: "typescript/source",
+  },
+  {
+    files: ["web/modules/http/client.ts/*.js"],
+    rules: {
+      "no-restricted-globals": ["error", { name: "XMLHttpRequest", message: "Use modules/upload/transport.ts." }],
+    },
+  },
+  {
+    files: ["web/**/*.ts/*.js", "web/**/*.tsx/*.js"],
+    // Oxc erases explanatory comments in deliberately empty catch blocks.
+    rules: { "no-empty": ["error", { allowEmptyCatch: true }] },
+  },
+  {
+    files: ["web/modules/upload/transport.ts/*.js"],
+    rules: {
+      "no-restricted-globals": ["error", { name: "fetch", message: "Use modules/http/client.ts." }],
     },
   },
 ];

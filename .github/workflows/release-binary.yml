@@ -132,8 +132,8 @@ jobs:
         run: |
           set -euo pipefail
           asset_name="xczs-${VERSION}-${TARGET}"
-          node node_modules/@xcss/web-toolchain/dist/server-cli.js \
-            --config foundation-web-build.json --mode release --no-install \
+          node node_modules/@xcss/web/dist/web-toolchain/server-cli.js \
+            --config xcss-web-build.json --mode release --no-install \
             --source-revision "$GITHUB_SHA"
           source_binary="target/$TARGET/release/xczs"
           install -d -m 0755 dist
@@ -160,10 +160,8 @@ jobs:
             sha256sum "$asset_name" > "$asset_name.sha256"
             sha256sum --check "$asset_name.sha256"
           )
-          {
-            printf '# Xczs %s\n\n' "$VERSION"
-            printf 'Source commit: `%s`\n' "$GITHUB_SHA"
-          } > dist/RELEASE_NOTES.md
+          cp "docs/releases/$VERSION.md" dist/RELEASE_NOTES.md
+          printf '\n源码提交：`%s`\n' "$GITHUB_SHA" >> dist/RELEASE_NOTES.md
           test -s dist/RELEASE_NOTES.md
           test -z "$(git status --porcelain --untracked-files=no)"
 

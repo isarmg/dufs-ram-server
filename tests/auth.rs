@@ -17,10 +17,10 @@ use serde_json::{Value, json};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 use uuid::Uuid;
-use xcss_contracts::{AdministratorRole, AdministratorSession, ErrorEnvelope};
+use xcss::contracts::{AdministratorRole, AdministratorSession, ErrorEnvelope};
 
 const CSRF_HEADER: &str = "x-csrf-token";
-const SESSION_COOKIE_NAME: &str = "xcss-xczs-session";
+const SESSION_COOKIE_NAME: &str = "admin-xczs-session";
 
 fn client_without_redirects() -> Result<Client, Error> {
     Ok(Client::builder()
@@ -412,7 +412,7 @@ fn login_failure_budget_is_per_account_and_ignores_forwarded_addresses(
     let first_ip = "192.0.2.10";
     let second_ip = "192.0.2.11";
 
-    for _ in 0..xcss_admin_core::FAILURES_PER_ACCOUNT {
+    for _ in 0..xcss::admin_core::FAILURES_PER_ACCOUNT {
         let rejected = login_response_from(&server, "user", "wrong-password", Some(first_ip))?;
         assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
         assert!(!rejected.headers().contains_key(RETRY_AFTER));
@@ -472,7 +472,7 @@ fn successful_login_clears_the_platform_failure_history(
 fn untrusted_forwarded_addresses_do_not_split_login_backoff(
     #[with(&[] as &[&str], &[USER_ACCOUNT])] server: TestServer,
 ) -> Result<(), Error> {
-    for _ in 0..xcss_admin_core::FAILURES_PER_ACCOUNT {
+    for _ in 0..xcss::admin_core::FAILURES_PER_ACCOUNT {
         let rejected = login_response_from(&server, "user", "wrong-password", Some("192.0.2.30"))?;
         assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
         assert!(!rejected.headers().contains_key(SET_COOKIE));

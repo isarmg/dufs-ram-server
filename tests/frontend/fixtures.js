@@ -268,8 +268,15 @@ function logicalPathUrl(page, path) {
   return new URL(encoded, new URL("/", page.url())).href;
 }
 
+async function chooseFileAction(page, action, name) {
+  const button = page.locator(`[data-file-action="${action}"]`);
+  if (await button.getAttribute("aria-pressed") !== "true") await button.click();
+  await rowByName(page, name).locator(".cell-name a").click();
+}
+
 module.exports = {
   actionDialog,
+  chooseFileAction,
   currentDirectoryPath,
   currentLogicalChild,
   currentUrl,

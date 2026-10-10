@@ -1,6 +1,84 @@
 use super::*;
 
 impl Database {
+    /// Read only the bounded visible page and never inherit tags by path alone.
+    pub fn listed_tags(&self, samples: &[Option<Sample>]) -> Result<Vec<ListedTags>> {
+        anyhow::ensure!(samples.len() <= 500, "tag lookup page is too large");
+        database_operation!(self, 3, connection, {
+            let mut result = Vec::with_capacity(samples.len());
+            for sample in samples {
+                let mut value = ListedTags::default();
+                if let Some(sample) = sample {
+                    let id: Option<i64> = sqlx::query_scalar(
+                        "SELECT id FROM files WHERE root_id='main' AND path=? AND status IN ('present','suspect') AND dev=? AND ino=? AND size=? AND mtime_ns=? AND ctime_ns=? ORDER BY id DESC LIMIT 1",
+                    ).bind(&sample.path).bind(sample.dev).bind(sample.ino).bind(sample.size)
+                        .bind(sample.mtime_ns).bind(sample.ctime_ns).fetch_optional(&mut *connection).await?;
+                    if let Some(id) = id {
+                        value.file_id = Some(id);
+                        value.tags = sqlx::query(
+                            "SELECT t.id,CASE WHEN length(CAST(t.name AS BLOB))<=320 THEN t.name END,CASE WHEN t.color IS NULL OR length(CAST(t.color AS BLOB))<=7 THEN t.color END FROM tags t JOIN file_tags ft ON ft.tag_id=t.id WHERE ft.file_id=? ORDER BY t.name COLLATE NOCASE,t.name,t.id LIMIT 51",
+                        ).bind(id).fetch_all(&mut *connection).await?.into_iter().map(|row| {
+                            Ok(TagLabel { id: row.try_get(0)?, name: row.try_get(1)?, color: row.try_get(2)? })
+                        }).collect::<Result<Vec<_>>>()?;
+                        value.tags_has_more = value.tags.len() > PAGE_SIZE;
+                        value.tags.truncate(PAGE_SIZE);
+                    }
+                }
+                result.push(value);
+            }
+            Ok(result)
+        })
+    }
+
+    pub fn matching_tag_paths(&self, filter: &FileQuery) -> Result<TagMatches> {
+        use futures_util::TryStreamExt as _;
+        database_operation!(self, 3, connection, {
+            let mut q = QueryBuilder::<Sqlite>::new(
+                "SELECT CASE WHEN length(CAST(physical.path AS BLOB))<=4096 THEN physical.path END,physical.dev,physical.ino,physical.size,physical.mtime_ns,physical.ctime_ns,EXISTS(SELECT 1 FROM files f",
+            );
+            file_filter(&mut q, filter)?;
+            q.push(" AND f.id=physical.id) FROM files physical WHERE physical.root_id='main' AND physical.status IN ('present','suspect')");
+            if filter.scope == "current" {
+                q.push(" AND physical.parent=").push_bind(&filter.directory);
+            } else if !filter.directory.is_empty() {
+                q.push(" AND (physical.parent=")
+                    .push_bind(&filter.directory)
+                    .push(" OR physical.path LIKE ")
+                    .push_bind(format!("{}/%", escape_like(&filter.directory)))
+                    .push(" ESCAPE '\\')");
+            }
+            q.push(" LIMIT 100001");
+            let query = q.build();
+            let mut rows = query.fetch(connection);
+            let mut result = std::collections::HashMap::new();
+            let mut path_bytes = 0usize;
+            while let Some(row) = rows.try_next().await? {
+                let path: String = row.try_get(0)?;
+                path_bytes = path_bytes.saturating_add(path.capacity());
+                anyhow::ensure!(
+                    result.len() < 100000
+                        && path_bytes.saturating_add((result.len() + 1).saturating_mul(512))
+                            <= 32 * 1024 * 1024,
+                    "tag filter memory budget exceeded"
+                );
+                result.try_reserve(1)?;
+                result.insert(
+                    path,
+                    (
+                        [
+                            row.try_get(1)?,
+                            row.try_get(2)?,
+                            row.try_get(3)?,
+                            row.try_get(4)?,
+                            row.try_get(5)?,
+                        ],
+                        row.try_get(6)?,
+                    ),
+                );
+            }
+            Ok(result)
+        })
+    }
     pub fn status(&self) -> Result<Status> {
         database_operation!(self, 3, connection, {
             let (root, available, last_scan_at, last_error, error_bounded): (

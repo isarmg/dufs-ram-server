@@ -1,17 +1,17 @@
 # Xczs HTTP 与运行时合同
 
-本文描述当前 Xczs 的 HTTP 行为、Foundation 分工和验证入口。Rust 与 Web 依赖由
-`Cargo.toml`、`Cargo.lock`、`package.json` 和 `package-lock.json` 固定到 Foundation 1.0.0。
+本文描述当前 Xczs 的 HTTP 行为、xcss 分工和验证入口。Rust 与 Web 依赖由
+`Cargo.toml`、`Cargo.lock`、`package.json` 和 `package-lock.json` 固定到 xcss 1.0.0。
 
 ## 请求与认证
 
 | 入口或机制 | 当前行为 |
 | --- | --- |
 | `/healthz`、`/readyz` | 公开最小探针响应；详细状态仍需认证 |
-| 管理员认证 | Foundation Axum Adapter 处理会话、Cookie、CSRF 和同源校验 |
+| 管理员认证 | xcss Axum Adapter 处理会话、Cookie、CSRF 和同源校验 |
 | 登录与文件页面 | React 渲染页面结构，加载同源模块、共享 UI 和样式 |
-| 标签页面与 API | `/__xczs__/tags` 使用同一管理员会话；`/api/v1/file-tags/*` 仅向已认证管理员开放，写入仍需 CSRF |
-| 请求 ID | Foundation 校验或生成 ID，供响应和日志关联 |
+| 标签页面与 API | 文件目录表包含标签列，搜索查询 `all`、`any`、`exclude` 与文件名条件同时生效，分页游标绑定完整条件；`/__xczs__/tags` 和 `#tag-files` 兼容旧书签，使用同一管理员会话与应用入口；菜单通过 hash 路由切换；`/api/v1/file-tags/*` 仅向已认证管理员开放，写入仍需 CSRF |
+| 请求 ID | xcss 校验或生成 ID，供响应和日志关联 |
 | GET/HEAD | 登录、列表和操作查询为 GET-only；文件 HEAD 包含上传状态查询分支 |
 | 方法拒绝 | 受保护接口先认证；公开静态资源允许 GET/HEAD，其他方法返回 405 和 Allow |
 | 原始路径 | 路由前验证并传递 RoutePath，保持原始 URI；路径策略只解码一次 |
@@ -23,7 +23,7 @@ PUT/PATCH 使用流式读取与实际字节限制。写入是否进入提交阶�
 
 ## 代码边界
 
-Foundation 负责通用认证、请求 ID、真实 socket peer、连接限制、信号和有界停机。
+xcss 负责通用认证、请求 ID、真实 socket peer、连接限制、信号和有界停机。
 Xczs 负责共享根路径安全、文件流、列表、上传、持久操作和删除回收。静态管理员会话位于内存，
 业务操作状态由 Xczs 的 SQLite actor 管理。标签索引、关联及在线备份由私有状态目录中的独立 `tags.db` 管理。
 
@@ -31,7 +31,7 @@ Xczs 负责共享根路径安全、文件流、列表、上传、持久操作和
 
 React 页面中的文件和上传控制器拥有各自 DOM 区域。主题更新保留正在运行的上传队列。
 CSP 只允许同源静态资产，SVG 使用同源摘要路径。产品源码接受严格类型检查及 ESLint 浏览器安全检查。
-Foundation 共同清单绑定 native 与 React 资源的路径、MIME、大小和 SHA-256。正式资源以完整清单摘要
+xcss 共同清单绑定 native 与 React 资源的路径、MIME、大小和 SHA-256。正式资源以完整清单摘要
 构成 URL 命名空间，GET/HEAD 与条件请求采用同一提供器，304 保持 immutable 缓存策略。开发目录模式
 明确使用未绑定 binary，读取最新资源并重新验证 ETag，不使用生产 immutable 缓存。
 
@@ -60,3 +60,5 @@ cargo test --locked --target x86_64-unknown-linux-gnu --all-targets --all-featur
 
 测试使用独立临时共享根和状态目录。正式发布还要求候选包、完整源码提交、签名和验收结果一致；
 具体流程见[运维文档](operations.md)。
+
+目录 API 的 `file_tags` 数组与 `paths` 一一对应，包含 `file_id`、有界 `tags` 和 `tags_has_more`。读取标签会核对当前文件的设备、inode、大小及 mtime/ctime；替换文件不继承旧标签。暂时无法读取标签时 `file_tags` 为 `null`，文件列表仍可操作，页面明确显示标签不可用。`GET /api/v1/file-tags/file?path=相对路径` 以同一身份规则读取单个文件的标签。

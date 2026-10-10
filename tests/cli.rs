@@ -27,7 +27,7 @@ fn version_includes_source_revision() -> Result<(), Error> {
             || ((7..=64).contains(&revision.len())
                 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()))
     );
-    let foundation = env!("XCSS_FOUNDATION_REVISION");
+    let foundation = env!("XCSS_REVISION");
     assert_eq!(foundation.len(), 40);
     assert!(foundation.bytes().all(|byte| byte.is_ascii_hexdigit()));
     Command::new(assert_cmd::cargo::cargo_bin!())
@@ -35,7 +35,7 @@ fn version_includes_source_revision() -> Result<(), Error> {
         .assert()
         .success()
         .stdout(format!(
-            "xczs {} (git {revision}) foundation={foundation}\n",
+            "xczs {} (git {revision}) xcss={foundation}\n",
             env!("CARGO_PKG_VERSION")
         ));
     Ok(())
@@ -74,7 +74,7 @@ fn unknown_option_is_rejected() -> Result<(), Error> {
         ])
         .output()?;
     assert_eq!(output.status.code(), Some(2));
-    let envelope: xcss_server_cli::ErrorEnvelope = serde_json::from_slice(&output.stdout)?;
+    let envelope: xcss::server_cli::ErrorEnvelope = serde_json::from_slice(&output.stdout)?;
     assert_eq!(envelope.code.as_str(), "invalid_cli_input");
     assert_eq!(
         envelope.message,

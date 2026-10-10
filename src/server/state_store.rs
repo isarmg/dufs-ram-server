@@ -1133,7 +1133,7 @@ impl StoreWorker {
 #[cfg(test)]
 impl StoreWorker {
     fn inspect_pragmas(&mut self) -> Result<PragmaSnapshot> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             Ok(PragmaSnapshot {
                 journal_mode: sqlx::query_scalar("PRAGMA journal_mode")
                     .fetch_one(&mut self.connection)

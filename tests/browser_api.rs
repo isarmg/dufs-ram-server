@@ -227,7 +227,7 @@ fn sqlite_upload_checkpoint(
     database: &Path,
     upload_id: Uuid,
 ) -> Result<UploadCheckpointRow, Error> {
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = sqlx::SqliteConnection::connect_with(
             &sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(database)

@@ -92,11 +92,11 @@ pub(crate) fn emit_http_record(access: &str, request_id: Option<&str>, is_error:
         return false;
     };
     let level = if is_error {
-        xcss_log::Level::Error
+        xcss::log::Level::Error
     } else {
-        xcss_log::Level::Info
+        xcss::log::Level::Info
     };
-    let record = xcss_log::LogRecord::server(
+    let record = xcss::log::LogRecord::server(
         "xczs",
         "http",
         "xczs.http.completed",
@@ -137,13 +137,13 @@ enum WriterCommand {
 }
 
 struct LogEntry {
-    record: xcss_log::LogRecord,
+    record: xcss::log::LogRecord,
 }
 
 enum LogOutput {
     #[cfg(test)]
     File(BufWriter<File>),
-    Rotating(xcss_log::RotatingLogFile),
+    Rotating(xcss::log::RotatingLogFile),
 }
 
 impl LogOutput {
@@ -175,26 +175,26 @@ impl log::Log for AsyncLogger {
         }
 
         let level = match record.level() {
-            Level::Error => xcss_log::Level::Error,
-            Level::Warn => xcss_log::Level::Warn,
-            Level::Info => xcss_log::Level::Info,
-            Level::Debug => xcss_log::Level::Debug,
-            Level::Trace => xcss_log::Level::Trace,
+            Level::Error => xcss::log::Level::Error,
+            Level::Warn => xcss::log::Level::Warn,
+            Level::Info => xcss::log::Level::Info,
+            Level::Debug => xcss::log::Level::Debug,
+            Level::Trace => xcss::log::Level::Trace,
         };
         let result = match record.target() {
             "common.config.loaded" => {
-                xcss_log::LogRecord::common("xczs", xcss_log::CommonEvent::ConfigLoaded)
+                xcss::log::LogRecord::common("xczs", xcss::log::CommonEvent::ConfigLoaded)
             }
             "common.runtime.started" => {
-                xcss_log::LogRecord::common("xczs", xcss_log::CommonEvent::RuntimeStarted)
+                xcss::log::LogRecord::common("xczs", xcss::log::CommonEvent::RuntimeStarted)
             }
             "common.runtime.stopped" => {
-                xcss_log::LogRecord::common("xczs", xcss_log::CommonEvent::RuntimeStopped)
+                xcss::log::LogRecord::common("xczs", xcss::log::CommonEvent::RuntimeStopped)
             }
             "common.runtime.shutdown_started" => {
-                xcss_log::LogRecord::common("xczs", xcss_log::CommonEvent::ShutdownStarted)
+                xcss::log::LogRecord::common("xczs", xcss::log::CommonEvent::ShutdownStarted)
             }
-            "http_access" => xcss_log::LogRecord::server(
+            "http_access" => xcss::log::LogRecord::server(
                 "xczs",
                 "http",
                 "xczs.http.completed",
@@ -207,7 +207,7 @@ impl log::Log for AsyncLogger {
                     truncate_log_entry(sanitize_log_line(&record.args().to_string())),
                 )
             }),
-            _ => xcss_log::LogRecord::server(
+            _ => xcss::log::LogRecord::server(
                 "xczs",
                 if record.target().is_empty() {
                     "runtime"
@@ -256,11 +256,12 @@ impl log::Log for AsyncLogger {
 }
 
 pub fn init(log_file: Option<PathBuf>, data_dir: &Path) -> Result<()> {
-    xcss_server_cli::validate_runtime_log_directory(data_dir).map_err(xcss_server_cli::CliError)?;
+    xcss::server_cli::validate_runtime_log_directory(data_dir)
+        .map_err(xcss::server_cli::CliError)?;
     let path = log_file.unwrap_or_else(|| data_dir.join("logs/xczs.jsonl"));
-    let output = LogOutput::Rotating(xcss_log::RotatingLogFile::open_file(
+    let output = LogOutput::Rotating(xcss::log::RotatingLogFile::open_file(
         path,
-        xcss_log::LogRetention::default(),
+        xcss::log::LogRetention::default(),
     )?);
 
     let (sender, receiver) = sync_channel(LOG_QUEUE_CAPACITY);
@@ -446,16 +447,16 @@ fn write_internal_log_error(
     error: &std::io::Error,
 ) -> std::io::Result<()> {
     let _ = error;
-    let record = xcss_log::LogRecord::server(
+    let record = xcss::log::LogRecord::server(
         "xczs",
         "logging",
         &format!("xczs.{event}"),
         "The runtime log sink is unavailable.",
-        xcss_log::Level::Error,
+        xcss::log::Level::Error,
     )
     .map_err(std::io::Error::other)?;
     record.write_to(output).map_err(|error| match error {
-        xcss_log::LogError::Io(error) => error,
+        xcss::log::LogError::Io(error) => error,
         other => std::io::Error::other(other),
     })
 }
@@ -483,12 +484,12 @@ fn report_dropped(output: &mut LogOutput, dropped: &AtomicU64) -> bool {
         return false;
     }
     let warning = LogEntry {
-        record: xcss_log::LogRecord::server(
+        record: xcss::log::LogRecord::server(
             "xczs",
             "logging",
             "xczs.log_queue_overloaded",
             "The bounded log queue dropped new records.",
-            xcss_log::Level::Warn,
+            xcss::log::Level::Warn,
         )
         .and_then(|value| value.with_attribute("dropped_newest", count))
         .and_then(|value| value.with_attribute("capacity", LOG_QUEUE_CAPACITY))

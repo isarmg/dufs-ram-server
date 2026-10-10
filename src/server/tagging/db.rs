@@ -44,6 +44,28 @@ pub struct TagRow {
 }
 
 #[derive(Debug, Serialize)]
+pub struct TagLabel {
+    pub id: i64,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct ListedTags {
+    pub file_id: Option<i64>,
+    pub tags: Vec<TagLabel>,
+    pub tags_has_more: bool,
+}
+
+pub type TagMatches = std::collections::HashMap<String, ([i64; 5], bool)>;
+
+impl Sample {
+    pub fn identity(&self) -> [i64; 5] {
+        [self.dev, self.ino, self.size, self.mtime_ns, self.ctime_ns]
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct Page {
     pub files: Vec<FileRow>,
     pub total: i64,
@@ -64,13 +86,13 @@ pub struct Status {
 
 pub struct Database {
     connection: Mutex<Option<SqliteConnection>>,
-    pub(super) admission: std::sync::Arc<tokio::sync::Semaphore>,
+    pub(in crate::server) admission: std::sync::Arc<tokio::sync::Semaphore>,
     path: std::path::PathBuf,
     limits: Limits,
 }
 #[derive(Debug, thiserror::Error)]
 #[error("tag database is busy")]
-pub(super) struct Busy;
+pub(in crate::server) struct Busy;
 #[derive(Debug, Serialize)]
 pub struct TagPage {
     pub tags: Vec<TagRow>,
@@ -84,8 +106,8 @@ pub struct FolderPage {
     pub next_cursor: Option<String>,
 }
 const CURRENT_SCHEMA: &str = include_str!("../../../schema/tagging.sql");
-fn connection_limits() -> xcss_sqlite::ConnectionLimits {
-    xcss_sqlite::ConnectionLimits::new(2 * 1024 * 1024)
+fn connection_limits() -> xcss::sqlite::ConnectionLimits {
+    xcss::sqlite::ConnectionLimits::new(2 * 1024 * 1024)
 }
 async fn connect(path: &Path) -> Result<SqliteConnection> {
     let mut connection = SqliteConnection::connect_with(
@@ -96,8 +118,8 @@ async fn connect(path: &Path) -> Result<SqliteConnection> {
     )
     .await?;
     let result = async {
-        xcss_sqlite::apply_connection_limits(&mut connection, connection_limits()).await?;
-        xcss_sqlite::enable_defensive(&mut connection).await?;
+        xcss::sqlite::apply_connection_limits(&mut connection, connection_limits()).await?;
+        xcss::sqlite::enable_defensive(&mut connection).await?;
         sqlx::raw_sql("PRAGMA trusted_schema=OFF; PRAGMA mmap_size=0; PRAGMA cache_size=-2048; PRAGMA temp_store=FILE;")
             .execute(&mut connection).await?;
         Ok::<_, anyhow::Error>(())
@@ -120,7 +142,7 @@ macro_rules! database_operation {
     ($database:expr, $seconds:expr, $connection:ident, $body:block) => {{
         let mut guard = $database.lock()?;
         let $connection = guard.as_mut().expect("owned tag connection");
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             deadline($connection, $seconds).await?;
             $body
         })
@@ -138,7 +160,7 @@ impl Drop for Database {
             .get_mut()
             .unwrap_or_else(|error| error.into_inner());
         if let Some(connection) = guard.take()
-            && xcss_sqlite::block_on_sqlite_connection(connection.close()).is_err()
+            && xcss::sqlite::block_on_sqlite_connection(connection.close()).is_err()
         {
             log::error!("The tag SQLite worker could not be closed");
         }
@@ -154,7 +176,7 @@ impl Database {
             .open(path)?;
         file.sync_all()?;
         drop(file);
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             let mut connection = connect(path).await?;
             let result = async {
                 let mut tx = connection.begin_with("BEGIN IMMEDIATE").await?;
@@ -174,14 +196,14 @@ impl Database {
         })
     }
     pub fn validate_current(path: &Path, root: &Path) -> Result<()> {
-        let snapshot = xcss_sqlite::ValidationSnapshot::capture_with_limits(
+        let snapshot = xcss::sqlite::ValidationSnapshot::capture_with_limits(
             path,
-            xcss_sqlite::SnapshotLimits {
+            xcss::sqlite::SnapshotLimits {
                 max_total_bytes: Limits::PRODUCTION.database_bytes,
                 ..Default::default()
             },
         )?;
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             let mut connection = connect(snapshot.database_path()).await?;
             let result = async {
                 deadline(&mut connection, 3).await?;
@@ -189,7 +211,7 @@ impl Database {
                     .execute(&mut connection)
                     .await?;
                 anyhow::ensure!(
-                    xcss_sqlite::schema_fingerprint(&mut connection).await?
+                    xcss::sqlite::schema_fingerprint(&mut connection).await?
                         == env!("XCZS_TAG_SCHEMA_SHA256"),
                     "tag database does not have the exact current structure"
                 );
@@ -225,7 +247,7 @@ impl Database {
     }
     pub fn open(path: &Path, root: &Path) -> Result<Self> {
         Self::validate_current(path, root)?;
-        let connection = xcss_sqlite::block_on_sqlite_connection(async {
+        let connection = xcss::sqlite::block_on_sqlite_connection(async {
             let mut connection = connect(path).await?;
             let result = async {
                 sqlx::raw_sql(

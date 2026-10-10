@@ -150,7 +150,7 @@ fn sqlite_delete_outbox_purges_trash_and_replays_after_restart() -> Result<(), E
         assert_eq!(response_json(status)?["state"], "succeeded");
     }
 
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = sqlx::SqliteConnection::connect_with(
             &sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&state_db)
@@ -237,7 +237,7 @@ fn sqlite_claimed_delete_job_is_recovered_and_purged_after_forced_restart() -> R
     let source_device = metadata.dev().to_be_bytes();
     let source_inode = metadata.ino().to_be_bytes();
 
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = sqlx::SqliteConnection::connect_with(
             &sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&state_db)
@@ -283,7 +283,7 @@ fn sqlite_claimed_delete_job_is_recovered_and_purged_after_forced_restart() -> R
     // shutdown—is responsible for returning Claimed to Ready and purging it.
     server.restart_with_default_auth_args(state_args);
 
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = sqlx::SqliteConnection::connect_with(
             &sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&state_db)

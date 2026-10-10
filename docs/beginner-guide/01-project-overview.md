@@ -4,14 +4,14 @@
 
 Xczs 是一个只运行在 Linux AMD64 GNU（`x86_64-unknown-linux-gnu`）上的浏览器文件管理器：服务端把某个目录设为“共享根”，认证后的管理员可以通过网页浏览、搜索、上传、下载、移动、重命名、新建和删除其中的文件。其他 CPU、操作系统或 ABI 由编译守卫直接拒绝，不存在 best-effort 支持层。
 
-它采用“一体化二进制”部署：Rust 程序既处理 API，也返回构建时嵌入的 React、Foundation CSS 和文件业务 ES modules。React 负责登录及页面结构，认证协议始终复用 Foundation。生产环境通常在它前面放置 nginx，负责 TLS 和公网边界。
+它采用“一体化二进制”部署：Rust 程序既处理 API，也返回构建时嵌入的 React、xcss CSS 和文件业务 ES modules。React 负责登录及页面结构，认证协议始终复用 xcss。生产环境通常在它前面放置 nginx，负责 TLS 和公网边界。
 
 ## 1.2 用户看到什么
 
 用户从浏览器看到的核心流程是：
 
 1. 打开 HTTPS 地址；
-2. 输入 Foundation 管理员 username 和密码；登录 candidate 由共享规则执行 ASCII trim/lowercase 后变成 canonical username；
+2. 输入 xcss 管理员 username 和密码；登录 candidate 由共享规则执行 ASCII trim/lowercase 后变成 canonical username；
 3. 进入共享根，面包屑最左侧的房子图标代表根目录；
 4. 分页浏览或搜索文件；
 5. 在一列 Actions 中通过“移动、下载、删除、重命名”四个固定槽操作项目；
@@ -100,7 +100,7 @@ Xczs 同时使用两个目录，不能混在一起：
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant J as listing/controller.js / operations/file_operations.js
+    participant J as listing/controller.ts / operations/file_operations.ts
     participant R as Router
     participant A as browser_api.rs
     participant S as StateStore
@@ -165,17 +165,17 @@ xczs/
 
 ### `web/modules/` 的重点
 
-- [app.js](../../web/modules/app.js)：页面启动和模块组装；
-- [http/client.js](../../web/modules/http/client.js)：`fetch`、错误解码、超时和 Operation 查询；
-- [http/headers.js](../../web/modules/http/headers.js)：严格解析规范的非负整数响应头；
-- [listing/controller.js](../../web/modules/listing/controller.js)：列表、分页、搜索、固定操作槽和行内重命名；
-- [operations/file_operations.js](../../web/modules/operations/file_operations.js)：新建、移动、重命名、删除、注销；
-- [operations/dialogs.js](../../web/modules/operations/dialogs.js)：应用内对话框和焦点恢复；
-- [upload/manager.js](../../web/modules/upload/manager.js)：上传编排和任务状态机；
-- [upload/selection.js](../../web/modules/upload/selection.js)：批量选择、路径预算和重复目标校验；
-- [upload/protocol.js](../../web/modules/upload/protocol.js)：严格解析上传响应头；
-- [upload/queue.js](../../web/modules/upload/queue.js)：有界任务队列和终态历史；
-- [upload/view.js](../../web/modules/upload/view.js)：进度、速度、剩余时间和操作按钮。
+- [app.ts](../../web/modules/app.ts)：页面启动和模块组装；
+- [http/client.ts](../../web/modules/http/client.ts)：`fetch`、错误解码、超时和 Operation 查询；
+- [http/headers.ts](../../web/modules/http/headers.ts)：严格解析规范的非负整数响应头；
+- [listing/controller.ts](../../web/modules/listing/controller.ts)：列表、分页、搜索、操作目标选择和行内重命名；
+- [operations/file_operations.ts](../../web/modules/operations/file_operations.ts)：新建、移动、重命名、删除、注销；
+- [operations/dialogs.ts](../../web/modules/operations/dialogs.ts)：应用内对话框和焦点恢复；
+- [upload/manager.ts](../../web/modules/upload/manager.ts)：上传编排和任务状态机；
+- [upload/selection.ts](../../web/modules/upload/selection.ts)：批量选择、路径预算和重复目标校验；
+- [upload/protocol.ts](../../web/modules/upload/protocol.ts)：严格解析上传响应头；
+- [upload/queue.ts](../../web/modules/upload/queue.ts)：有界任务队列和终态历史；
+- [upload/view.ts](../../web/modules/upload/view.ts)：进度、速度、剩余时间和操作按钮。
 
 ## 1.9 主要技术为什么合适
 
@@ -183,13 +183,13 @@ xczs/
 
 适合构建单文件部署、低运行时开销的服务，并能用类型和所有权约束共享状态。代价是文件系统并发和异步错误路径的代码比脚本语言更显式。
 
-### Tokio + Hyper
+### Tokio + Axum
 
-Tokio 提供异步任务、网络、信号和同步原语；Hyper 提供底层 HTTP/1.1 服务。项目需要精确控制连接、正文流、超时和停机，因此没有采用更高层的全家桶框架。
+Tokio 提供异步任务、网络、信号和同步原语；Axum 组织路由及请求/响应适配，xcss Runtime 在底层管理 Hyper HTTP/1.1 连接、正文流、超时和停机。
 
 ### React 与原生 ES Modules
 
-页面没有客户端路由，但并非纯原生 DOM 应用。React 与 Foundation UI 负责登录、导航和页面骨架；列表、文件操作及上传状态机继续由原生 ES modules 管理各自的 DOM 区域。Vite 只在构建阶段打包 React 平台资源，生产仍不需要 Node.js 服务。这样的混合结构复用了统一组件和认证客户端，也要求开发者明确维护 React 与业务控制器之间的 DOM 所有权，并用 JSDoc 与 TypeScript `checkJs` 约束模块接口。
+页面没有客户端路由，但并非纯原生 DOM 应用。React 与 xcss UI 负责登录、导航和页面骨架；列表、文件操作及上传状态机继续由原生 ES modules 管理各自的 DOM 区域。Vite 在构建阶段编译所有 TypeScript/TSX 页面和业务模块，生产仍不需要 Node.js 服务。这样的混合结构复用了统一组件和认证客户端，也要求开发者明确维护 React 与业务控制器之间的 DOM 所有权，并用严格 TypeScript 约束模块接口。
 
 ### SQLite
 
@@ -229,7 +229,7 @@ rg "class .*Error|@typedef" web/modules
 
 尝试回答：
 
-1. 为什么 `web/index.js` 很短，而页面逻辑仍然完整？
+1. 为什么 `web/index.ts` 很短，而页面逻辑仍然完整？
 2. 为什么状态目录不能放在共享根里面？
 3. 如果删除请求显示“请求超时”，你会先用原 Operation ID 查询，还是立即生成新 ID 再删一次？为什么？
 

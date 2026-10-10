@@ -8,11 +8,20 @@ const eslint = new ESLint({ cwd: projectRoot });
 const results = await eslint.lintFiles([
   "eslint.config.mjs",
   "playwright.config.js",
+  "vite.platform.config.mjs",
   "scripts/**/*.mjs",
   "tests/frontend/**/*.mjs",
-  "web/**/*.{js,jsx}",
+  "web/**/*.{ts,tsx}",
 ]);
 const errors = results.reduce((total, result) => total + result.errorCount, 0);
+// The TypeScript processor checks transformed executable code. Check source
+// whitespace separately so erased types and comments keep the same policy.
+for (const result of results.filter(result => /\.tsx?$/u.test(result.filePath))) {
+  const source = readFileSync(result.filePath, "utf8");
+  if (!source.endsWith("\n") || /\t|[ \t]+$/mu.test(source) || source.startsWith("\uFEFF")) {
+    throw new Error(`Invalid TypeScript source whitespace: ${result.filePath}`);
+  }
+}
 if (errors > 0) {
   const formatter = await eslint.loadFormatter("stylish");
   process.stderr.write(await formatter.format(results));

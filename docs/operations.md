@@ -73,7 +73,7 @@ operation 容量为全局 4096、每账号 1024，终态 TTL 为 15 分钟。启
 
 认证客户端应通过 `GET /__xczs__/api/jobs/<UUID>` 查询当前账号的 mutation job。响应使用 `job_id` 字段及 `running/succeeded/failed/unknown` 状态。
 
-状态库固定使用 SQLite rollback journal `DELETE` 模式和 `synchronous=EXTRA`，由单独状态线程串行访问。数据库文件以 `0600` 使用，必须位于共享根之外；已有数据库还必须是非符号链接、单硬链接普通文件，并绑定创建时共享根的设备号和 inode。任何 SQLite 连接打开前，固定 `-journal/-wal/-shm` 都要经 `lstat`、`O_NOFOLLOW|O_NONBLOCK` 打开、`fstat` 和打开前后身份复核，拒绝符号链接、特殊文件、多硬链接、出现/消失或替换；主库不存在时不接受任何孤立 sidecar。现存主库和 WAL/journal 经公共稳定快照机制只读复制到私有临时目录，先验证精确的五列 `product_metadata`、`xczs` 应用名、当前持久化结构版本 `1.0.0`、schema revision 1、Foundation 规范 SHA-256 指纹、根绑定和完整性，再打开原路径的当前业务连接。指纹对排除 `sqlite_*` 与 `product_metadata` 后按 `type/name/tbl_name/sql` 排序的原始字段逐个编码 u64 大端长度和字段字节。只有显式 `init` 会在新文件中创建唯一当前 schema；任何非当前 identity、无标记库、版本/指纹/对象漂移、其他应用数据库、错误共享根或非 SQLite 文件都会在 chmod、journal mode 和恢复写入前拒绝，主库及全部 sidecar 保持原字节、mode 和身份。同一状态库不能复制给另一共享根复用。
+状态库固定使用 SQLite rollback journal `DELETE` 模式和 `synchronous=EXTRA`，由单独状态线程串行访问。数据库文件以 `0600` 使用，必须位于共享根之外；已有数据库还必须是非符号链接、单硬链接普通文件，并绑定创建时共享根的设备号和 inode。任何 SQLite 连接打开前，固定 `-journal/-wal/-shm` 都要经 `lstat`、`O_NOFOLLOW|O_NONBLOCK` 打开、`fstat` 和打开前后身份复核，拒绝符号链接、特殊文件、多硬链接、出现/消失或替换；主库不存在时不接受任何孤立 sidecar。现存主库和 WAL/journal 经公共稳定快照机制只读复制到私有临时目录，先验证精确的五列 `product_metadata`、`xczs` 应用名、当前持久化结构版本 `1.0.0`、schema revision 1、xcss 规范 SHA-256 指纹、根绑定和完整性，再打开原路径的当前业务连接。指纹对排除 `sqlite_*` 与 `product_metadata` 后按 `type/name/tbl_name/sql` 排序的原始字段逐个编码 u64 大端长度和字段字节。只有显式 `init` 会在新文件中创建唯一当前 schema；任何非当前 identity、无标记库、版本/指纹/对象漂移、其他应用数据库、错误共享根或非 SQLite 文件都会在 chmod、journal mode 和恢复写入前拒绝，主库及全部 sidecar 保持原字节、mode 和身份。同一状态库不能复制给另一共享根复用。
 
 SQLite 提交与共享根中的 mkdir、rename、文件同步和目录 `fsync` 不属于一个共同事务。operation/upload 崩溃恢复中的 `unknown` 是保守结果，不是回滚记录。DELETE 先持久化含根内相对目标/trash 路径和源 dev/inode/类型的 `Prepared` outbox，再做 checked rename 与父目录 `fsync`；成功后才把覆盖 dev/inode、类型、链接数、大小、uid/gid、完整 mode 和纳秒级 mtime/ctime 的 32 字节 trash revision 与 `Ready` 原子写入。worker 把到期 job 原子 claim 为 `Claimed`，并用 revision 与持续 fd 锚点共同复核；普通 I/O 失败持久化回 `Ready` 并从 100 ms 指数退避到最长 30 秒。若 state-store 的 defer/complete 命令瞬时失败，worker 会有界保留本地 claim，并在回读确认数据库仍为 `Claimed` 后重试；重启也会把遗留 `Claimed` 恢复为 `Ready`。`Prepared` 没有已提交 revision，reconciler 始终保留目标，把 trash 路径上的任何 occupant 移入 `.xczs-quarantine-<uuid>.hold` 后释放 intent，绝不再依据弱源 inode 推断 rename 结果。`Ready/Claimed` 缺失 revision、身份不匹配或最终删除出现 `InvalidData` 时同样 quarantine 整棵 trash 根并释放 job。每个最终 unlink/rmdir 候选先移入随机隔离名，再用既有 fd 复核；`ENOTEMPTY/EXIST` 等异常不从 cursor 0 重扫。DFS 最多保留 2048 层目录 frame，每次 push 都用 `try_reserve`；超深树返回 `InvalidData` 并把剩余 trash 根永久隔离，内存预留失败则保留游标供以后重试。未记账 orphan 在兜底通道满、取消或普通 I/O 失败时保持隐藏，等待以后 maintenance 重新发现；若 purge 判定为 `InvalidData`，整棵根立即进入永久 quarantine。quarantine 永不由 maintenance 自动清理；发现后应停止 Xczs，核对内容、owner、来源日志和状态库再手工移除。递归清理不会进入 trash 下的嵌套/bind mount，普通 mount 边界 I/O 故障保留 job 并退避，卸载后继续。能用 inotify 竞争随机隔离名的恶意同 UID writer 仍不在支持边界内。
 
@@ -101,7 +101,7 @@ SQLite 提交与共享根中的 mkdir、rename、文件同步和目录 `fsync` �
 
 仓库内 nginx 示例固定 HTTP/1.1 回源，传递单值 `Host`、`X-Forwarded-For` 和 `X-Forwarded-Proto`，关闭请求重放与缓存，并只对 exact `POST /api/v1/auth/login` 所在 location 使用来源 IP 请求速率、连接数和短正文时限。未知 HTTP Host 由默认 server 拒绝，合法 HTTP server 只跳转到配置中的固定规范 HTTPS 域名；未知 HTTPS SNI/Host 在默认 server 拒绝。Xczs 的内部路由本身也只接受规范 URI，尾斜杠、重复斜杠和非规范百分号编码不会成为另一个登录入口。
 
-Foundation 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
+xcss 统一限制登录正文为 16 KiB、读取期限 10 秒、全局 32/每个真实 TCP 来源 4 个读取许可；取消或失败释放许可。失败预算为五分钟内每来源 20 次、每规范账号 10 次，最多两个 Argon2id 计算槽，取得计算槽最多等待两秒。失败预算耗尽返回 `429 auth.rate_limited` 和保守的 `Retry-After: 300`。这些是共享平台政策，不由 Xczs 实现或配置；网关仍须独立按真实客户端 IP 限速。
 
 生产模式固定要求 HTTPS Origin，并与唯一规范 Host/URI authority 和 `Sec-Fetch-Site: same-origin` 一致；不读取 Forwarded 或 X-Forwarded-* 来决定认证、scheme 或限流来源。nginx 必须终止 TLS、覆盖 Host 为规范域名，并通过防火墙、网络命名空间或精确 ACL 阻止客户端及不可信本机进程直连后端。仅显式 `--development` 允许 HTTP，且所有监听地址必须为 loopback；不能用于公网部署。
 
@@ -112,7 +112,7 @@ Xczs 的普通文件和 Range 正文没有总时长/最低速率限制，但每�
 ## 3. 健康检查和监控
 
 - `GET` 或 `HEAD /healthz` 是公开 liveness，只表明进程仍能处理 HTTP，不访问文件内容，也不泄露账号或路径。
-- `GET` 或 `HEAD /readyz` 无需认证，只有最小 `ready` 布尔值。Foundation 在启动和每 5 秒刷新共享根私有隐藏探针的写入、同步与读回、SQLite 回滚写事务及最低空间探针；探针文件在开始监听前固定创建，周期检查不改变共享根目录时间戳。每次探针有平台时限，失败返回 503，停止准入立即变为未就绪。端点读取最近一次结果，不泄露路径、账号或错误详情，也不是对 rename 和所有业务配额的完整保证。
+- `GET` 或 `HEAD /readyz` 无需认证，只有最小 `ready` 布尔值。xcss 在启动和每 5 秒刷新共享根私有隐藏探针的写入、同步与读回、SQLite 回滚写事务及最低空间探针；探针文件在开始监听前固定创建，周期检查不改变共享根目录时间戳。每次探针有平台时限，失败返回 503，停止准入立即变为未就绪。端点读取最近一次结果，不泄露路径、账号或错误详情，也不是对 rename 和所有业务配额的完整保证。
 - 告警至少覆盖进程重启、HTTP 5xx/429/507、登录限流、磁盘空间、inode、共享根挂载状态、备份年龄和备份恢复演练结果。
 
 普通写请求返回成功只表示其规定的原子发布和目录同步步骤已返回成功。硬件、固件、网络文件系统或宿主机错误兑现同步请求仍可能破坏数据，因此监控不能替代备份。
@@ -162,12 +162,12 @@ systemctl start xczs
 
 ## 6. 构建输入与发行校验
 
-Foundation 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 1.0.0 / `d58b9ef0822984ee0d29fb8b8139cfd2787374fb`，八个 Web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Xczs 1.0.0 的独立源码树构建、浏览器回归和发行核验由当前提交的 CI 与标签工作流执行。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
+xcss 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 1.0.0 / `9637806055b7d7a18be206f0b83e9b22b73902db`，一个 @xcss/web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Xczs 1.0.0 的独立源码树构建、浏览器回归和发行核验由当前提交的 CI 与标签工作流执行。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
 
-`foundation-web-build.json` 声明根 Web、`build:platform`、`web/runtime-dist` 和 Xczs Cargo package。
+`xcss-web-build.json` 声明根 Web、`build:platform`、`web/runtime-dist` 和 Xczs Cargo package。
 正式源码构建通过 `npm run build:server:release` 完成前端→Rust→实际 binary 资源验收。`build:platform`
 把类型检查输出保留在 `web/dist`，并将实际 native/React 资源组装至 runtime-dist；所有清单、摘要、
-内嵌字节与 HTTP 资源响应由 Foundation 共同实现。完整清单摘要构成正式资源 URL 的命名空间，
+内嵌字节与 HTTP 资源响应由 xcss 共同实现。完整清单摘要构成正式资源 URL 的命名空间，
 固定文件名也可以安全使用 immutable 缓存；动态 HTML 和用户文件继续使用原来的私有缓存规则。
 
 开发通过 `npm run build:server` 明确生成 `unbound` binary。选择 `--development` 并设置绝对路径
@@ -175,7 +175,7 @@ Foundation 是编译期供应链输入，不是运行时共享服务。当前 Ru
 该 provider 不依据编译时文件名单限制新 chunk，并逐次进行 no-follow/普通单链接文件验证。正式或
 非开发模式拒绝覆盖，且拒绝发生在任何管理员状态创建与业务数据库写入之前。
 
-资源输出的清理范围通过 Foundation `assertWebOutput` 校验，不允许指向源码、仓库祖先、Git metadata、
+资源输出的清理范围通过 xcss `assertWebOutput` 校验，不允许指向源码、仓库祖先、Git metadata、
 另一个项目或链接目录。专用外部 stage 与默认 runtime-dist 允许重建；发行清单始终绑定 binary。
 
 仓库的 `.github/workflows/read-only-ci.yml` 只提供远程回归反馈：权限为 `contents: read`，checkout 不保留凭据，静态、Rust、质量和 Chromium/Firefox 层不会创建 tag/release 或签名，也不会上传制品。质量层分别运行覆盖率、部署行为、发布脚本自测和 release binary smoke；主分支推送总是运行，普通 PR 保持轻量，修改工作流、依赖清单、部署样例或发布/部署脚本的 PR 则在合并前运行完整质量层。各步骤只在自己的前置条件成功时运行，一项实质检查失败不会跳过其余独立检查。唯一当前 Node 26.7.0 由 `.node-version`、manifest/lockfile 和工作流共同声明；`scripts/check.sh` 与正式打包入口还会在任何审计、构建或依赖代码前精确比对实际运行时，因此 npm 的 `EBADENGINE` warning 不能形成绿色结论。Rust 1.99.0、ShellCheck 0.11.0、锁定的 npm 工具和 Action commit SHA 也在工作流中固定；静态、Rust 与浏览器 job 使用 `ubuntu-24.04`，含 nginx 1.25.1+ 部署门的质量 job 使用 x64 `ubuntu-26.04`，两种托管镜像的实际版本及宿主工具均写入日志。GitHub 当前把 26.04 标为 preview；若该 runner 不可调度或镜像回归，质量门必须保持失败，不能退回 nginx 1.24 旧语法完成合并。合并前应查看全部矩阵结果，但它不包含正式签名边界，也不替代目标 exact tag 上的完整本地门和下述发布流程。
@@ -192,7 +192,7 @@ Foundation 是编译期供应链输入，不是运行时共享服务。当前 Ru
 
 脚本从 façade 解析一次完整 commit ID。它先生成并验证一份质量门 archive，在没有 `.git` 的 `0700` 私有副本中运行检查；门禁结束后用独立 snapshot index 比较 tracked 内容和 mode，并拒绝任何非忽略新增路径。随后整棵质量树及其缓存被删除，再从同一 commit 分别生成全新的签名构建归档和打包归档。每份 tar 都作为独立文件保存到私有 stage 并立即验证，再解包并用目标 commit tree 建立独立临时 index；解包树会以 no-follow 方式拒绝 symlink 及任何非普通文件/目录条目，缺失、额外、类型、mode 或内容不同都会失败。后两份 tar 的 SHA-256 还必须完全相同。因此本地 replace object、private attributes、质量工具或构建期间改变 worktree/Git 元数据，不能让同一声明 SHA 对应另一棵检查、构建或打包树。只有最后一份重新验证的树提供文档和部署材料。同 UID 恶意进程仍属于必须用身份/主机隔离解决的边界。
 
-隔离质量门以 `env -i` 启动，固定 PATH、Rust 工具链和完整源码 SHA，并使用私有 HOME、Cargo home/target、npm cache、XDG 目录与临时目录。Cargo 先从锁文件 vendor，再以 offline source replacement 运行；这与之后签名构建使用的独立 vendor 树相互隔离。npm cache 播种器只接受 `package-lock.json` 中带 HTTPS resolved URL 与 SHA-512 integrity 的条目，并重新散列宿主 cache 内容后写入私有 cache；`npm ci` 使用 `prefer-offline`，缺失包以及 `npm audit` 仍可能访问网络。宿主 RustSec Git 数据库只有在 canonical origin、`HEAD=FETCH_HEAD`、实体 `FETCH_HEAD` 时间戳不得比当前时间早超过 7 天或晚超过 300 秒，并通过完整物理/Git/内容检查后才可复用；alternates、不安全元数据、symlink/submodule/特殊项、untracked 路径和 tracked 内容/mode 漂移均拒绝。合格输入以无硬链接私有 clone 封存 revision、fetch epoch、index/config 校验和；不合格、过期或缺失时，在任何项目或依赖代码前用 dummy lockfile 在私有数据库联网刷新，离线失败关闭。发布入口先执行 `cargo audit --db ... --no-fetch --no-yanked` sealed pre-audit；随后用私有 Cargo home 执行 `cargo fetch --locked`，保证 yanked 检查拥有完整锁图所需的 crates.io 索引项，再以同一封存数据库运行 `cargo audit --no-fetch --deny yanked`。索引缺失、抓取失败或锁图含已撤回 crate 都失败关闭；该 Cargo home 每次全新创建，因此当前正式发布要求 registry 网络可达，宿主 Cargo 缓存不能替代这一步。之后通过必填 `XCZS_QUALITY_AUDIT_DB` 把同一数据库交给隔离 `scripts/check.sh`，该脚本也在其他项目/依赖步骤前先审计。封存时校验 seal 与新鲜度，pre-audit 和 yanked 检查后重验 seal；完整门禁后重验 seal 与新鲜度，随后销毁质量树和该 RustSec 数据库。包内环境清单只记录 advisory revision/fetch epoch，不记录内部 seal 摘要。Playwright 只复用显式浏览器 cache，不让测试依赖用户 npm/Cargo 配置。JavaScript 安全门固定使用 ESLint 核心规则与 Mozilla `no-unsanitized` 规则，检查语法、基础格式、常见动态 HTML/动态执行/原生模态 API，并限制 `fetch` 与 XHR 的所属模块；策略单测验证常见拒绝和合法边界。TypeScript 7.0.2 另以 `allowJs + checkJs + strict + noEmit` 检查全部生产 JavaScript，外部/解析输入保持为 `unknown` 并经守卫收窄，生产源码不保留显式或隐式 `any`。两者都不替代运行时守卫或完整跨过程污点证明。本地有 ShellCheck 时统一门执行 warning 检查，缺失时明确跳过且不联网安装；远程 CI 固定并强制执行 0.11.0。
+隔离质量门以 `env -i` 启动，固定 PATH、Rust 工具链和完整源码 SHA，并使用私有 HOME、Cargo home/target、npm cache、XDG 目录与临时目录。Cargo 先从锁文件 vendor，再以 offline source replacement 运行；这与之后签名构建使用的独立 vendor 树相互隔离。npm cache 播种器只接受 `package-lock.json` 中带 HTTPS resolved URL 与 SHA-512 integrity 的条目，并重新散列宿主 cache 内容后写入私有 cache；`npm ci` 使用 `prefer-offline`，缺失包以及 `npm audit` 仍可能访问网络。宿主 RustSec Git 数据库只有在 canonical origin、`HEAD=FETCH_HEAD`、实体 `FETCH_HEAD` 时间戳不得比当前时间早超过 7 天或晚超过 300 秒，并通过完整物理/Git/内容检查后才可复用；alternates、不安全元数据、symlink/submodule/特殊项、untracked 路径和 tracked 内容/mode 漂移均拒绝。合格输入以无硬链接私有 clone 封存 revision、fetch epoch、index/config 校验和；不合格、过期或缺失时，在任何项目或依赖代码前用 dummy lockfile 在私有数据库联网刷新，离线失败关闭。发布入口先执行 `cargo audit --db ... --no-fetch --no-yanked` sealed pre-audit；随后用私有 Cargo home 执行 `cargo fetch --locked`，保证 yanked 检查拥有完整锁图所需的 crates.io 索引项，再以同一封存数据库运行 `cargo audit --no-fetch --deny yanked`。索引缺失、抓取失败或锁图含已撤回 crate 都失败关闭；该 Cargo home 每次全新创建，因此当前正式发布要求 registry 网络可达，宿主 Cargo 缓存不能替代这一步。之后通过必填 `XCZS_QUALITY_AUDIT_DB` 把同一数据库交给隔离 `scripts/check.sh`，该脚本也在其他项目/依赖步骤前先审计。封存时校验 seal 与新鲜度，pre-audit 和 yanked 检查后重验 seal；完整门禁后重验 seal 与新鲜度，随后销毁质量树和该 RustSec 数据库。包内环境清单只记录 advisory revision/fetch epoch，不记录内部 seal 摘要。Playwright 只复用显式浏览器 cache，不让测试依赖用户 npm/Cargo 配置。JavaScript 安全门固定使用 ESLint 核心规则与 Mozilla `no-unsanitized` 规则，检查语法、基础格式、常见动态 HTML/动态执行/原生模态 API，并限制 `fetch` 与 XHR 的所属模块；策略单测验证常见拒绝和合法边界。TypeScript 7.0.2 另以 `strict + noEmit + isolatedModules + verbatimModuleSyntax` 检查全部生产 TypeScript/TSX，外部/解析输入保持为 `unknown` 并经守卫收窄，生产源码不保留显式或隐式 `any`。两者都不替代运行时守卫或完整跨过程污点证明。本地有 ShellCheck 时统一门执行 warning 检查，缺失时明确跳过且不联网安装；远程 CI 固定并强制执行 0.11.0。
 
 脚本严格校验 Rust/rustc/Cargo 1.99.0、`cargo-cyclonedx 0.5.9` 与 `cargo-audit 0.22.2`。固定工具链 sysroot 的 `share/doc/rust/COPYRIGHT-library.html` 必须是 sysroot 内 no-follow 普通文件，并精确匹配发布脚本中对 Rust 1.99.0 固定的已审核 SHA-256；未知工具链没有审核摘要时直接拒绝。验证后的副本以 `RUST-STANDARD-LIBRARY-COPYRIGHT.html` 打包。签名构建另用锁文件 vendor 依赖，随后以清空环境、私有 Cargo home、离线 source replacement、关闭增量编译和显式编译器运行 release 构建；完整 Git SHA 嵌入版本字符串，私有构建路径经过 remap 并在二进制中复查。`SOURCE_DATE_EPOCH` 同时传给 Rust 构建、SBOM 和归档；未显式设置时使用提交时间。
 
@@ -200,7 +200,7 @@ SBOM 递归把本地 Xczs `bom-ref`/`purl` 规范化为绑定完整源码 SHA �
 
 `THIRD_PARTY_LICENSES.txt` 从 Cargo metadata 中 Xczs 可达的非开发依赖生成，依赖源码必须位于本轮 vendor 根。每个包必须声明非空、经审核的 SPDX `license` 表达式；metadata `license_file` 只用于收集上游正文，不能替代表达式或作为分类 fallback。生成器按 `WITH > AND > OR` 优先级解析真实 SPDX AST，只接受审核清单内的 license identifier/exception，并要求表达式存在一条完整 permissive 选择：`OR` 任一分支可行，`AND` 两侧都必须 permissive；只对明确列出的 Cargo 遗留 `MIT/Apache-2.0` 和 `Unlicense/MIT` 写法映射为 `OR`。例如 `LGPL AND (MIT OR Apache-2.0)` 会拒绝，而 `(LGPL AND Apache-2.0) OR MIT` 可选择完整 MIT 分支。
 
-生成器收集 metadata `license_file` 与包根下 LICENSE/COPYING/NOTICE 的常规文件。每个候选必须是依赖源码及 vendor real root 内的 no-follow 普通文件；所有当前 Foundation crate 必须携带真实 Apache-2.0 文本，字体必须携带 OFL。缺失任何必要许可证即失败，不能用产品许可证或按名称特判绕过。
+生成器收集 metadata `license_file` 与包根下 LICENSE/COPYING/NOTICE 的常规文件。每个候选必须是依赖源码及 vendor real root 内的 no-follow 普通文件；所有当前 xcss crate 必须携带真实 Apache-2.0 文本，字体必须携带 OFL。缺失任何必要许可证即失败，不能用产品许可证或按名称特判绕过。
 
 包内 `BUILD-ENVIRONMENT.txt`、SBOM、第三方 notice、Rust 标准库 notice 和项目 Apache-2.0 许可证均纳入 `SHA256SUMS`。
 
@@ -259,9 +259,9 @@ test ! -L "$release_dir"
 expected_version=1.0.0
 expected_sha=0123456789abcdef0123456789abcdef01234567
 expected_target=x86_64-unknown-linux-gnu
-expected_foundation_revision=d58b9ef0822984ee0d29fb8b8139cfd2787374fb
+expected_common_revision=9637806055b7d7a18be206f0b83e9b22b73902db
 test "$("$release_dir/xczs" --version)" = \
-  "xczs $expected_version (git $expected_sha) foundation=$expected_foundation_revision"
+  "xczs $expected_version (git $expected_sha) xcss=$expected_common_revision"
 grep -Fx "format=xczs-build-environment-v1" \
   "$release_dir/BUILD-ENVIRONMENT.txt"
 grep -Fx "source_sha=$expected_sha" "$release_dir/BUILD-ENVIRONMENT.txt"
@@ -292,3 +292,11 @@ openssl pkeyutl -verify -rawin -pubin \
 ## 8. 事件响应
 
 发现疑似入侵时，先限制入口和后端网络访问，保全 journal、网关日志、配置、二进制摘要和共享根快照，再轮换网关密钥、账号密码及其他可能暴露的凭据。漏洞使用 GitHub Private Vulnerability Reporting 私密提交；公开 issue 不得包含生产路径、账号、密码、密钥、共享文件或日志中的敏感内容。安全修复只面向当前版本与当前 `main`。
+
+## 当前中立接口与旧版数据处理
+
+当前版本只使用 `.state-instance.lock`、`.state-maintenance.lock`、`.state-maintenance-pending.json` 和 `.state-atomic-` 临时文件前缀；离线升级工具采用 `.release-upgrade` 工作目录。服务身份头为 `x-service`，健康状态中的公共源码修订字段为 `common_revision`。管理会话采用 `__Host-admin-xczs-session`，显式开发模式采用 `admin-xczs-session`；生产 Cookie 的 Secure、HttpOnly、SameSite、Path 和 CSRF 约束继续生效。资源清单格式为 `web-assets-v1`；本项目的文件状态库与标签库仍采用各自当前产品 DDL，不引入公共管理数据库表。
+
+这些接口没有旧名称别名或旧版兼容分支。旧版升级前，先按本文的停服步骤停止服务及全部维护工具；确认全部进程退出后，完整备份配置、SQLite 数据库及其 WAL/SHM、业务文件和必要的私有凭据。备份包含敏感数据，应保留原有访问权限并离线保存。
+
+保留旧数据目录，按当前安装步骤配置新的私有数据目录，执行显式 `init` 初始化，随后运行 `config validate`，再启动服务并登录管理页面；本产品无需配对客户端。旧配置应人工审阅后填写当前字段，不能整体覆盖新目录。旧业务数据需要另行处理；当前版本不提供自动迁移。不得让旧、新版本同时写同一目录，不得通过删锁文件或修改数据库 metadata 强制启动；当前结构指纹包含实际表名、索引名和 SQL，仅改名称不能证明数据符合当前合同。

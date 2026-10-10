@@ -5,7 +5,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
 };
-use xcss_server_runtime::{
+use xcss::server_runtime::{
     BoundListeners, HttpServer, ProcessSignals, ProductDescriptor, ServerRuntime, health_check,
 };
 use xczs::args::{Args, build_cli};
@@ -23,20 +23,20 @@ fn main() -> std::process::ExitCode {
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            let envelope = if let Some(error) = error.downcast_ref::<xcss_config::ConfigError>() {
+            let envelope = if let Some(error) = error.downcast_ref::<xcss::config::ConfigError>() {
                 error.envelope()
-            } else if let Some(error) = error.downcast_ref::<xcss_server_cli::CliError>() {
+            } else if let Some(error) = error.downcast_ref::<xcss::server_cli::CliError>() {
                 error.0.clone()
-            } else if let Some(error) = error.downcast_ref::<xcss_state_file::Error>() {
-                xcss_server_cli::state_error(error)
-            } else if let Some(error) = error.downcast_ref::<xcss_server_cli::SnapshotError>() {
-                xcss_server_cli::snapshot_error(error)
+            } else if let Some(error) = error.downcast_ref::<xcss::state_file::Error>() {
+                xcss::server_cli::state_error(error)
+            } else if let Some(error) = error.downcast_ref::<xcss::server_cli::SnapshotError>() {
+                xcss::server_cli::snapshot_error(error)
             } else {
                 if !json {
                     eprintln!("{error:#}");
                 }
-                xcss_server_cli::ErrorEnvelope::with_code(
-                    xcss_server_cli::ErrorCode::new("current_state_invalid").unwrap(),
+                xcss::server_cli::ErrorEnvelope::with_code(
+                    xcss::server_cli::ErrorCode::new("current_state_invalid").unwrap(),
                     "The command could not validate or operate on the current configuration and data.",
                 )
             };
@@ -45,7 +45,7 @@ fn main() -> std::process::ExitCode {
             } else {
                 1
             };
-            xcss_server_cli::report_error(&envelope, json, exit)
+            xcss::server_cli::report_error(&envelope, json, exit)
         }
     }
 }
@@ -66,8 +66,8 @@ async fn run(raw_args: Vec<std::ffi::OsString>) -> Result<()> {
         }
         Err(_) => {
             return Err(
-                xcss_server_cli::CliError(xcss_server_cli::ErrorEnvelope::with_code(
-                    xcss_server_cli::ErrorCode::new("invalid_cli_input").unwrap(),
+                xcss::server_cli::CliError(xcss::server_cli::ErrorEnvelope::with_code(
+                    xcss::server_cli::ErrorCode::new("invalid_cli_input").unwrap(),
                     "Command arguments do not satisfy the current CLI contract; use --help.",
                 ))
                 .into(),
@@ -94,7 +94,7 @@ async fn run(raw_args: Vec<std::ffi::OsString>) -> Result<()> {
     match mode.as_str() {
         "init" => {
             Server::initialize(args)?;
-            xcss_log::LogRecord::common("xczs", xcss_log::CommonEvent::InitializationCompleted)?
+            xcss::log::LogRecord::common("xczs", xcss::log::CommonEvent::InitializationCompleted)?
                 .emit_stderr()?;
             println!(
                 "{}",
@@ -119,19 +119,19 @@ async fn run(raw_args: Vec<std::ffi::OsString>) -> Result<()> {
         }
         "status" => {
             let report =
-                xcss_server_cli::query_status(SocketAddr::new(args.addrs[0], args.port), "xczs")
+                xcss::server_cli::query_status(SocketAddr::new(args.addrs[0], args.port), "xczs")
                     .await
-                    .map_err(xcss_server_cli::CliError)?;
+                    .map_err(xcss::server_cli::CliError)?;
             if !report.ready {
-                return Err(
-                    xcss_server_cli::CliError(xcss_server_cli::ErrorEnvelope::with_code(
-                        xcss_server_cli::ErrorCode::new("service_not_ready").unwrap(),
+                return Err(xcss::server_cli::CliError(
+                    xcss::server_cli::ErrorEnvelope::with_code(
+                        xcss::server_cli::ErrorCode::new("service_not_ready").unwrap(),
                         "The service answered but its business readiness checks failed.",
-                    ))
-                    .into(),
-                );
+                    ),
+                )
+                .into());
             }
-            xcss_server_cli::print_report(&report, json)?;
+            xcss::server_cli::print_report(&report, json)?;
             return Ok(());
         }
         _ => {}
@@ -146,16 +146,16 @@ async fn run(raw_args: Vec<std::ffi::OsString>) -> Result<()> {
 
 async fn run_server(args: Args, json: bool) -> Result<()> {
     let data_dir = args.state_dir.as_ref().context("data_dir is required")?;
-    xcss_server_cli::runtime_allowed(data_dir).map_err(xcss_server_cli::CliError)?;
+    xcss::server_cli::runtime_allowed(data_dir).map_err(xcss::server_cli::CliError)?;
     Server::validate_current(&args)?;
-    let directory = xcss_state_file::PrivateStateDirectory::open(data_dir)?;
+    let directory = xcss::state_file::PrivateStateDirectory::open(data_dir)?;
     let _common_lock = directory.try_instance_lock()?;
-    xcss_server_cli::runtime_allowed(data_dir).map_err(xcss_server_cli::CliError)?;
+    xcss::server_cli::runtime_allowed(data_dir).map_err(xcss::server_cli::CliError)?;
     Server::validate_current(&args)?;
     logger::init(args.log_file.clone(), data_dir)
         .map_err(|e| anyhow!("Failed to init logger, {e}"))?;
     info!(target:"common.config.loaded", "configuration loaded");
-    xcss_server_runtime::install_panic_hook();
+    xcss::server_runtime::install_panic_hook();
     let print_addrs = args.addrs.clone();
     let max_connections = args.max_connections;
     let mut signals = ProcessSignals::install()?;
@@ -184,7 +184,7 @@ async fn run_server(args: Args, json: bool) -> Result<()> {
     let runtime = ServerRuntime::builder(ProductDescriptor {
         id: "xczs".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        foundation_revision: env!("XCSS_FOUNDATION_REVISION").into(),
+        common_revision: env!("XCSS_REVISION").into(),
         profile: "server-filesystem".into(),
         capabilities: vec![
             "embedded-web".into(),
@@ -207,7 +207,7 @@ async fn run_server(args: Args, json: bool) -> Result<()> {
     )
     .register_background_task(
         "shutdown-log",
-        xcss_server_runtime::TaskCriticality::Degrading,
+        xcss::server_runtime::TaskCriticality::Degrading,
         |mut shutdown| async move {
             if !*shutdown.borrow() {
                 let _ = shutdown.changed().await;
@@ -255,7 +255,7 @@ fn final_exit(code: i32) -> ! {
 }
 
 fn validate_cli_password(password: &str) -> Result<()> {
-    xcss_admin_auth::validate_password(password)
+    xcss::admin_auth::validate_password(password)
         .context("Password violates the current administrator policy")
 }
 
@@ -297,19 +297,19 @@ mod tests {
     fn cli_password_validation_uses_the_foundation_administrator_policy() {
         assert!(validate_cli_password("").is_err());
         for password in [
-            "p".repeat(xcss_admin_auth::PASSWORD_MIN_BYTES),
-            "p".repeat(xcss_admin_auth::PASSWORD_MAX_BYTES),
-            "é".repeat(xcss_admin_auth::PASSWORD_MAX_BYTES / "é".len()),
+            "p".repeat(xcss::admin_auth::PASSWORD_MIN_BYTES),
+            "p".repeat(xcss::admin_auth::PASSWORD_MAX_BYTES),
+            "é".repeat(xcss::admin_auth::PASSWORD_MAX_BYTES / "é".len()),
         ] {
             assert!(validate_cli_password(&password).is_ok());
         }
         for password in [
-            "p".repeat(xcss_admin_auth::PASSWORD_MIN_BYTES - 1),
+            "p".repeat(xcss::admin_auth::PASSWORD_MIN_BYTES - 1),
             "valid-password\n".to_string(),
-            "p".repeat(xcss_admin_auth::PASSWORD_MAX_BYTES + 1),
+            "p".repeat(xcss::admin_auth::PASSWORD_MAX_BYTES + 1),
             format!(
                 "a{}",
-                "é".repeat(xcss_admin_auth::PASSWORD_MAX_BYTES / "é".len())
+                "é".repeat(xcss::admin_auth::PASSWORD_MAX_BYTES / "é".len())
             ),
         ] {
             assert!(validate_cli_password(&password).is_err());

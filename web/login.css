@@ -1,4 +1,4 @@
-/* Foundation owns the six-row login card, icons, palette and input styles.
+/* xcss owns the six-row login card, icons, palette and input styles.
  * Product CSS preserves the error row; shared controls live at the top right. */
 body { margin: 0; }
 .hidden { visibility: hidden; }

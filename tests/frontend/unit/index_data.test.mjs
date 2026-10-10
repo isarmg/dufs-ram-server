@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseIndexData } from "../../../web/modules/shared/index_data.js";
+import { parseIndexData } from "../../../web/dist/modules/shared/index_data.js";
 
 const session = { authenticated: true, user_id: "admin", username: "admin", role: "admin", csrf_token: "A".repeat(43) };
 const metadata = { href: "/folder/文件 & name", dir_exists: true };
@@ -40,12 +40,12 @@ test("only canonical absolute business paths and a boolean directory flag are ad
   }
 });
 
-test("session validation is owned by the Foundation contract", () => {
+test("session validation is owned by the xcss contract", () => {
   for (const key of Object.keys(session)) {
     const missing = { ...session }; delete missing[key];
-    assert.throws(() => parseIndexData(metadata, missing), /Foundation contract/);
+    assert.throws(() => parseIndexData(metadata, missing), /xcss contract/);
   }
   for (const invalid of [null, { ...session, extra: true }, { ...session, authenticated: false }, { ...session, role: "viewer" }, { ...session, username: "Admin" }, { ...session, csrf_token: "B".repeat(43) }]) {
-    assert.throws(() => parseIndexData(metadata, invalid), /Foundation contract/);
+    assert.throws(() => parseIndexData(metadata, invalid), /xcss contract/);
   }
 });

@@ -6,7 +6,7 @@ use http::{
 include!(concat!(env!("OUT_DIR"), "/xcss-web-assets.rs"));
 
 pub fn web_assets_manifest() -> anyhow::Result<&'static str> {
-    xcss_web_assets::verify_embedded(ASSETS, MANIFEST, DIGEST)?;
+    xcss::web_assets::verify_embedded(ASSETS, MANIFEST, DIGEST)?;
     Ok(MANIFEST)
 }
 pub(super) fn embedded_assets_prefix() -> String {
@@ -33,7 +33,8 @@ impl Server {
             status_not_found(res);
             return true;
         }
-        *res = xcss_web_assets::response(ASSETS, name, method, headers).map(axum::body::Body::from);
+        *res =
+            xcss::web_assets::response(ASSETS, name, method, headers).map(axum::body::Body::from);
         // The complete inventory digest is part of this URL, including fixed filenames.
         res.headers_mut().insert(
             CACHE_CONTROL,

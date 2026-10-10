@@ -3,6 +3,41 @@
 version = 4
 
 [[package]]
+name = "aead"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1973cfbc1a2daf9cf550e74e1f088c28e7f7d8c1e1418fb6c9dc5184b7e84c99"
+dependencies = [
+ "crypto-common 0.2.2",
+ "inout",
+]
+
+[[package]]
+name = "aes"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35f0f96ce78e38c3dc6d8948aa8163d06385be74000f3c7a95bf1eef35d3ea32"
+dependencies = [
+ "cipher",
+ "cpubits",
+ "cpufeatures 0.3.1",
+]
+
+[[package]]
+name = "aes-gcm"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f2b8006a0c83f52b62ba44a97b58bf76fe2f70a329e588f67f89691d93d498f"
+dependencies = [
+ "aead",
+ "aes",
+ "cipher",
+ "ctr",
+ "ctutils",
+ "ghash",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -357,6 +392,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cipher"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8cf2a2c93cd704877c0858356ed03480ff301ee950b43f1cbe4573b088bfa6c"
+dependencies = [
+ "block-buffer 0.12.1",
+ "crypto-common 0.2.2",
+ "inout",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -436,6 +482,12 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+
+[[package]]
+name = "cpubits"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b85f9c39137c3a891689859392b1bd49812121d0d61c9caf00d46ed5ce06ae"
 
 [[package]]
 name = "cpufeatures"
@@ -520,7 +572,18 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
 dependencies = [
+ "getrandom 0.4.3",
  "hybrid-array",
+ "rand_core 0.10.1",
+]
+
+[[package]]
+name = "ctr"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baaca1c4b237092596f64d571e9db6ce4109c4ef9742e27590f1709594461f21"
+dependencies = [
+ "cipher",
 ]
 
 [[package]]
@@ -799,6 +862,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghash"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eecf2d5dc9b66b732b97707a0210906b1d30523eb773193ab777c0c84b3e8d5"
+dependencies = [
+ "polyval",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -889,6 +961,15 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hkdf"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4aaa26c720c68b866f2c96ef5c1264b3e6f473fe5d4ce61cd44bbe913e553018"
+dependencies = [
+ "hmac",
+]
 
 [[package]]
 name = "hmac"
@@ -1167,6 +1248,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inout"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4250ce6452e92010fdf7268ccc5d14faa80bb12fc741938534c58f16804e03c7"
+dependencies = [
+ "hybrid-array",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1439,6 +1529,17 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+
+[[package]]
+name = "polyval"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0fa31d631f2b2cb2a544d0aa321ce847a94764d701ca2becc411138b93d49cd"
+dependencies = [
+ "cpubits",
+ "cpufeatures 0.3.1",
+ "universal-hash",
+]
 
 [[package]]
 name = "potential_utf"
@@ -2532,6 +2633,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
+name = "universal-hash"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4987bdc12753382e0bec4a65c50738ffaabc998b9cdd1f952fb5f39b0048a96"
+dependencies = [
+ "crypto-common 0.2.2",
+ "ctutils",
+]
+
+[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2869,225 +2980,52 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
-name = "xcss-admin-auth"
+name = "xcss"
 version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
+source = "git+https://github.com/isarmg/xcss.git?rev=9637806055b7d7a18be206f0b83e9b22b73902db#9637806055b7d7a18be206f0b83e9b22b73902db"
 dependencies = [
+ "aes-gcm",
+ "anyhow",
  "argon2",
+ "async-trait",
+ "axum",
  "base64 0.23.1",
- "getrandom 0.4.3",
- "hmac",
- "sha2 0.11.0",
- "subtle",
- "thiserror",
-]
-
-[[package]]
-name = "xcss-admin-axum"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "axum",
  "bytes",
- "http-body-util",
- "mime",
- "serde",
- "serde_json",
- "tokio",
- "xcss-admin-auth",
- "xcss-admin-core",
- "xcss-contracts",
-]
-
-[[package]]
-name = "xcss-admin-core"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "async-trait",
- "serde_json",
- "thiserror",
- "tokio",
- "xcss-admin-auth",
- "xcss-contracts",
-]
-
-[[package]]
-name = "xcss-admin-static"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "async-trait",
- "serde",
- "serde_json",
- "thiserror",
- "xcss-admin-auth",
- "xcss-admin-core",
- "xcss-fs-safety",
-]
-
-[[package]]
-name = "xcss-config"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "rustix",
- "serde",
- "serde_json",
- "xcss-error",
- "xcss-state-file",
-]
-
-[[package]]
-name = "xcss-contracts"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
- "xcss-admin-auth",
- "xcss-error",
- "xcss-schema-identity",
-]
-
-[[package]]
-name = "xcss-error"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "xcss-fs-safety"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "getrandom 0.4.3",
- "rustix",
- "thiserror",
-]
-
-[[package]]
-name = "xcss-log"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
  "chrono",
- "rustix",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
- "tracing-subscriber",
- "windows-sys 0.61.2",
- "xcss-error",
-]
-
-[[package]]
-name = "xcss-schema-identity"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "serde",
- "sha2 0.11.0",
- "thiserror",
-]
-
-[[package]]
-name = "xcss-server-cli"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "axum",
+ "futures-executor",
+ "futures-util",
+ "getrandom 0.4.3",
+ "hkdf",
+ "hmac",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "ipnet",
+ "libc",
+ "libsqlite3-sys",
+ "log",
+ "mime",
  "reqwest",
+ "rustix",
  "serde",
  "serde_json",
  "serde_path_to_error",
- "tokio",
- "tower",
- "xcss-admin-static",
- "xcss-error",
- "xcss-fs-safety",
- "xcss-server-runtime",
- "xcss-sqlite",
- "xcss-state-file",
-]
-
-[[package]]
-name = "xcss-server-runtime"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "async-trait",
- "axum",
- "futures-util",
- "getrandom 0.4.3",
- "hyper",
- "hyper-util",
- "log",
- "rustix",
- "serde",
- "serde_json",
+ "sha2 0.11.0",
  "socket2",
+ "sqlx",
+ "subtle",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tower",
- "xcss-admin-auth",
- "xcss-admin-axum",
- "xcss-admin-core",
- "xcss-contracts",
- "xcss-schema-identity",
-]
-
-[[package]]
-name = "xcss-server-target"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-
-[[package]]
-name = "xcss-sqlite"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "futures-executor",
- "libc",
- "libsqlite3-sys",
- "rustix",
- "sha2 0.11.0",
- "sqlx",
- "tempfile",
- "thiserror",
- "tokio",
- "xcss-schema-identity",
-]
-
-[[package]]
-name = "xcss-state-file"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "rustix",
- "thiserror",
- "xcss-server-target",
-]
-
-[[package]]
-name = "xcss-web-assets"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xcss.git?rev=d58b9ef0822984ee0d29fb8b8139cfd2787374fb#d58b9ef0822984ee0d29fb8b8139cfd2787374fb"
-dependencies = [
- "anyhow",
- "bytes",
- "http",
- "rustix",
- "serde",
- "serde_json",
- "sha2 0.11.0",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -3133,21 +3071,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "uuid",
- "xcss-admin-auth",
- "xcss-admin-axum",
- "xcss-admin-core",
- "xcss-admin-static",
- "xcss-config",
- "xcss-contracts",
- "xcss-fs-safety",
- "xcss-log",
- "xcss-schema-identity",
- "xcss-server-cli",
- "xcss-server-runtime",
- "xcss-server-target",
- "xcss-sqlite",
- "xcss-state-file",
- "xcss-web-assets",
+ "xcss",
 ]
 
 [[package]]

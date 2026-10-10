@@ -59,7 +59,7 @@ use std::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::timeout_at;
 use tokio_util::sync::CancellationToken;
-use xcss_server_runtime::WorkScope as ServerLifecycle;
+use xcss::server_runtime::WorkScope as ServerLifecycle;
 
 pub type Request = axum::extract::Request;
 pub type Response = axum::response::Response;
@@ -255,7 +255,7 @@ impl Drop for ServerRuntime {
 }
 
 #[async_trait::async_trait]
-impl xcss_server_runtime::LifecycleParticipant for ServerRuntime {
+impl xcss::server_runtime::LifecycleParticipant for ServerRuntime {
     fn quiesce(&self) {
         self.lifecycle.quiesce();
     }
@@ -296,10 +296,10 @@ pub struct Server {
 struct ContentServices {
     args: ValidatedConfig,
     administrator:
-        Arc<xcss_admin_core::AdministratorService<xcss_admin_static::StaticAdministratorStore>>,
-    administrator_origin: xcss_admin_auth::AdministratorOriginMode,
+        Arc<xcss::admin_core::AdministratorService<xcss::admin_static::StaticAdministratorStore>>,
+    administrator_origin: xcss::admin_auth::AdministratorOriginMode,
     assets_prefix: String,
-    development_web: Option<xcss_web_assets::DirectoryAssets>,
+    development_web: Option<xcss::web_assets::DirectoryAssets>,
     path_policy: PathPolicy,
     path_coordinator: PathCoordinator,
     rooted_fs: RootedFs,
@@ -371,14 +371,14 @@ impl Server {
         let args = args.validate()?;
         Self::check_reserved_path_conflicts(&args.serve_path)?;
         let directory = args.state_dir.as_ref().context("data_dir is required")?;
-        xcss_server_cli::runtime_allowed(directory).map_err(xcss_server_cli::CliError)?;
-        xcss_server_cli::create_empty_private_directory(directory)
-            .map_err(xcss_server_cli::CliError)?;
-        let state = xcss_state_file::PrivateStateDirectory::open(directory)?;
+        xcss::server_cli::runtime_allowed(directory).map_err(xcss::server_cli::CliError)?;
+        xcss::server_cli::create_empty_private_directory(directory)
+            .map_err(xcss::server_cli::CliError)?;
+        let state = xcss::state_file::PrivateStateDirectory::open(directory)?;
         let _maintenance = state.try_maintenance_lock()?;
-        xcss_server_cli::runtime_allowed(directory).map_err(xcss_server_cli::CliError)?;
-        xcss_server_cli::create_runtime_log_directory(directory)
-            .map_err(xcss_server_cli::CliError)?;
+        xcss::server_cli::runtime_allowed(directory).map_err(xcss::server_cli::CliError)?;
+        xcss::server_cli::create_runtime_log_directory(directory)
+            .map_err(xcss::server_cli::CliError)?;
         let rooted = RootedFs::initialize(&args.serve_path)?;
         let (device, inode) = rooted.root_identity();
         state_store::initialize_current(
@@ -386,18 +386,18 @@ impl Server {
             state_store::RootIdentity { device, inode },
         )?;
         tagging::db::Database::initialize(&directory.join("tags.db"), &args.serve_path)?;
-        let accounts = xcss_fs_safety::PrivateDirectory::open_existing(directory)?
-            .create_child(&xcss_fs_safety::EntryName::new("administrator")?)?;
+        let accounts = xcss::fs_safety::PrivateDirectory::open_existing(directory)?
+            .create_child(&xcss::fs_safety::EntryName::new("administrator")?)?;
         let _administrator = args.auth.administrator_service_with_directory(accounts)?;
         Ok(())
     }
 
     /// Inspect current structures without creating locks, databases or accounts.
-    pub fn validate_current(args: &Args) -> Result<xcss_schema_identity::SchemaIdentity> {
+    pub fn validate_current(args: &Args) -> Result<xcss::schema_identity::SchemaIdentity> {
         Self::check_reserved_path_conflicts(&args.serve_path)?;
         let rooted = RootedFs::inspect_existing(&args.serve_path)?;
         let directory = args.state_dir.as_ref().context("data_dir is required")?;
-        xcss_state_file::PrivateStateDirectory::open(directory)?;
+        xcss::state_file::PrivateStateDirectory::open(directory)?;
         for name in ["state.sqlite3", "tags.db"] {
             use std::os::unix::fs::MetadataExt;
             let metadata = std::fs::symlink_metadata(directory.join(name))?;
@@ -410,8 +410,8 @@ impl Server {
                 "current persistent database must be an owned single-link private file with mode 0600"
             );
         }
-        xcss_server_cli::validate_runtime_log_directory(directory)
-            .map_err(xcss_server_cli::CliError)?;
+        xcss::server_cli::validate_runtime_log_directory(directory)
+            .map_err(xcss::server_cli::CliError)?;
         let identity = rooted.identity();
         let (device, inode) = (identity.device, identity.inode);
         state_store::validate_current(
@@ -419,17 +419,17 @@ impl Server {
             state_store::RootIdentity { device, inode },
         )?;
         tagging::db::Database::validate_current(&directory.join("tags.db"), &args.serve_path)?;
-        xcss_server_cli::validate_static_administrator_accounts(
+        xcss::server_cli::validate_static_administrator_accounts(
             &directory.join("administrator"),
             &args.auth.configured_ids(),
         )
-        .map_err(xcss_server_cli::CliError)?;
+        .map_err(xcss::server_cli::CliError)?;
         state_store::expected_schema_identity()
     }
 
     /// Read-only preflight before root locks, SQLite creation or recovery.
     pub fn check_reserved_path_conflicts(root: &Path) -> Result<()> {
-        for reserved in xcss_server_runtime::PLATFORM_RESERVED_PATHS {
+        for reserved in xcss::server_runtime::PLATFORM_RESERVED_PATHS {
             let components = reserved
                 .trim_start_matches('/')
                 .split('/')
@@ -465,7 +465,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn schema_identity(&self) -> Result<xcss_schema_identity::SchemaIdentity> {
+    pub fn schema_identity(&self) -> Result<xcss::schema_identity::SchemaIdentity> {
         state_store::expected_schema_identity()
     }
 
@@ -493,29 +493,29 @@ impl Server {
                     args.development && env!("XCZS_BUILD_GIT_SHA") == "unbound",
                     "directory Web assets require an unbound development build"
                 );
-                Some(xcss_web_assets::DirectoryAssets::new(
+                Some(xcss::web_assets::DirectoryAssets::new(
                     std::path::Path::new(&directory),
                 )?)
             }
             None => None,
         };
-        let account_root = xcss_fs_safety::PrivateDirectory::open_existing(
+        let account_root = xcss::fs_safety::PrivateDirectory::open_existing(
             args.state_database_path()
                 .parent()
                 .context("State database has no parent directory")?
                 .join("administrator"),
         )?;
         account_root.read_bounded(
-            &xcss_fs_safety::EntryName::new("administrator-accounts.json")?,
+            &xcss::fs_safety::EntryName::new("administrator-accounts.json")?,
             1024 * 1024,
         )?;
         let administrator = args
             .auth
             .administrator_service_with_directory(account_root)?;
         let administrator_origin = if args.development {
-            xcss_admin_auth::AdministratorOriginMode::LoopbackDevelopmentHttp
+            xcss::admin_auth::AdministratorOriginMode::LoopbackDevelopmentHttp
         } else {
-            xcss_admin_auth::AdministratorOriginMode::ProductionHttps
+            xcss::admin_auth::AdministratorOriginMode::ProductionHttps
         };
         let assets_prefix = embedded_assets_prefix();
         let rooted_fs = RootedFs::new(&args.serve_path)?;

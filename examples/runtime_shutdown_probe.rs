@@ -1,6 +1,6 @@
 //! Isolated process acceptance fixture, never shipped as a product command.
 use std::{sync::Arc, time::Duration};
-use xcss_server_runtime::{
+use xcss::server_runtime::{
     BoundListeners, HttpServer, LifecycleParticipant, ProcessSignals, ProductDescriptor,
     ServerRuntime, ShutdownLimits, WorkScope,
 };
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let runtime = ServerRuntime::builder(ProductDescriptor {
         id: "xczs-shutdown-fixture".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        foundation_revision: "6c6206cf7df047fb8b4c72689fbba6495e2e7968".into(),
+        common_revision: env!("XCSS_REVISION").into(),
         profile: "server-filesystem".into(),
         capabilities: vec![],
     })
@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     transport.participant = Some(Arc::new(Participant(scope, release)));
     println!("READY");
     match runtime.serve(transport, axum::Router::new()).await {
-        Err(xcss_server_runtime::Error::ShutdownIncomplete(error)) => {
+        Err(xcss::server_runtime::Error::ShutdownIncomplete(error)) => {
             eprintln!("INCOMPLETE {}", serde_json::to_string(&error.report)?);
             std::process::exit(1);
         }

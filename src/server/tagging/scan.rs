@@ -12,7 +12,7 @@ use std::{
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
 };
-use xcss_fs_safety::linux::{FileIdentity, OpenAt2Root};
+use xcss::fs_safety::linux::{FileIdentity, OpenAt2Root};
 
 const RESOLVE: ResolveFlags = ResolveFlags::BENEATH
     .union(ResolveFlags::NO_SYMLINKS)
@@ -182,7 +182,7 @@ fn collect_with_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xcss_fs_safety::linux::MountPolicy;
+    use xcss::fs_safety::linux::MountPolicy;
     #[test]
     fn scan_refuses_retained_path_bytes_before_returning_partial_samples() {
         let directory = tempfile::tempdir().unwrap();

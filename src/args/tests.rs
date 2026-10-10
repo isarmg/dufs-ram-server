@@ -116,8 +116,8 @@ fn test_args_from_empty_config_file_requires_auth() {
         .unwrap();
     let err = Args::parse(matches).unwrap_err();
     assert!(
-        err.downcast_ref::<xcss_config::ConfigError>()
-            .is_some_and(|error| error.reason == xcss_config::Reason::InvalidSyntax)
+        err.downcast_ref::<xcss::config::ConfigError>()
+            .is_some_and(|error| error.reason == xcss::config::Reason::InvalidSyntax)
     );
 }
 
@@ -766,7 +766,7 @@ fn empty_bind_list_is_rejected() {
     let error = Args::parse(matches).expect_err("an empty bind list was accepted");
     assert!(
         error
-            .downcast_ref::<xcss_config::ConfigError>()
+            .downcast_ref::<xcss::config::ConfigError>()
             .is_some_and(|error| error.path == "/bind")
     );
 }
@@ -785,8 +785,8 @@ fn test_non_ip_bind_config_is_rejected() {
         .unwrap();
     let err = Args::parse(matches).unwrap_err();
     assert!(
-        err.downcast_ref::<xcss_config::ConfigError>()
-            .is_some_and(|error| error.reason == xcss_config::Reason::InvalidValue)
+        err.downcast_ref::<xcss::config::ConfigError>()
+            .is_some_and(|error| error.reason == xcss::config::Reason::InvalidValue)
     );
 }
 
@@ -868,7 +868,7 @@ fn extreme_timeout_values_are_rejected_during_startup_validation() {
             let error = Args::parse(matches).expect_err("extreme timeout value was accepted");
             assert!(
                 error
-                    .downcast_ref::<xcss_config::ConfigError>()
+                    .downcast_ref::<xcss::config::ConfigError>()
                     .is_some_and(|error| error.path
                         == format!("/{}", name.trim_start_matches("--").replace('-', "_"))),
                 "unexpected error for {name}: {error:#}"
@@ -929,7 +929,7 @@ fn search_entry_limit_has_a_hard_upper_bound() {
             assert!(
                 result
                     .expect_err("an excessive search entry limit was accepted")
-                    .downcast_ref::<xcss_config::ConfigError>()
+                    .downcast_ref::<xcss::config::ConfigError>()
                     .is_some_and(|error| error.path == "/max_search_entries")
             );
         }
@@ -949,7 +949,7 @@ fn semaphore_limits_above_tokios_maximum_are_rejected() {
         let error = Args::parse(matches).expect_err("oversized semaphore count was accepted");
         assert!(
             error
-                .downcast_ref::<xcss_config::ConfigError>()
+                .downcast_ref::<xcss::config::ConfigError>()
                 .is_some_and(|error| error.path
                     == format!("/{}", name.trim_start_matches("--").replace('-', "_"))),
             "unexpected error for {name}: {error:#}"

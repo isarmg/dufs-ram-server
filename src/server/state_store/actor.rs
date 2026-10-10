@@ -55,7 +55,7 @@ pub(super) fn run(runtime: ActorRuntime) {
 
     healthy.store(true, Ordering::Release);
     if ready.send(Ok(())).is_err() {
-        let _ = xcss_sqlite::block_on_sqlite_connection(connection.close());
+        let _ = xcss::sqlite::block_on_sqlite_connection(connection.close());
         return;
     }
 
@@ -174,7 +174,7 @@ impl StoreWorker {
                     if reply.is_closed() {
                         continue;
                     }
-                    let _ = reply.send(xcss_sqlite::block_on_sqlite_connection(async {
+                    let _ = reply.send(xcss::sqlite::block_on_sqlite_connection(async {
                         self.reset_deadline().await?;
                         super::upload::load_upload_session(&mut self.connection, key).await
                     }));
@@ -239,7 +239,7 @@ impl StoreWorker {
                     if reply.is_closed() {
                         continue;
                     }
-                    let _ = reply.send(xcss_sqlite::block_on_sqlite_connection(async {
+                    let _ = reply.send(xcss::sqlite::block_on_sqlite_connection(async {
                         self.reset_deadline().await?;
                         super::purge::load_purge_job(&mut self.connection, key).await
                     }));
@@ -312,7 +312,7 @@ impl StoreWorker {
                 }
                 #[cfg(test)]
                 Command::InjectSqlError { reply } => {
-                    let result = xcss_sqlite::block_on_sqlite_connection(async {
+                    let result = xcss::sqlite::block_on_sqlite_connection(async {
                         sqlx::query("SELECT * FROM __xczs_missing_test_table")
                             .execute(&mut self.connection)
                             .await
@@ -323,7 +323,7 @@ impl StoreWorker {
                 }
                 #[cfg(test)]
                 Command::SetQueryOnly { enabled, reply } => {
-                    let result = xcss_sqlite::block_on_sqlite_connection(async {
+                    let result = xcss::sqlite::block_on_sqlite_connection(async {
                         let sql = if enabled {
                             "PRAGMA query_only=ON"
                         } else {
@@ -344,7 +344,7 @@ impl StoreWorker {
                 }
             }
         }
-        if xcss_sqlite::block_on_sqlite_connection(self.connection.close()).is_err() {
+        if xcss::sqlite::block_on_sqlite_connection(self.connection.close()).is_err() {
             log::error!("The state database worker could not be closed");
         }
     }
@@ -395,7 +395,7 @@ impl StoreWorker {
     }
 
     fn probe_readiness(&mut self) -> Result<()> {
-        xcss_sqlite::block_on_sqlite_connection(async {
+        xcss::sqlite::block_on_sqlite_connection(async {
             self.reset_deadline().await?;
             database::validate_product_metadata(&mut self.connection)
                 .await

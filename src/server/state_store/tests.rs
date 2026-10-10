@@ -178,7 +178,7 @@ fn temporary_with_repository_limits(limits: RepositoryLimits) -> Result<StateSto
 }
 
 fn database_schema_snapshot(path: &Path) -> Result<DatabaseSchemaSnapshot> {
-    xcss_sqlite::block_on_sqlite_connection(async {
+    xcss::sqlite::block_on_sqlite_connection(async {
         let mut connection = fixture_connection(path, true).await?;
         let result = async {
             let journal_mode = sqlx::query_scalar("PRAGMA journal_mode").fetch_one(&mut connection).await?;
@@ -1553,8 +1553,8 @@ async fn rejects_unmarked_state_database_without_modification() -> Result<()> {
         .expect("an unmarked former state database must be rejected");
     assert!(
         error.chain().any(|cause| matches!(
-            cause.downcast_ref::<xcss_sqlite::Error>(),
-            Some(xcss_sqlite::Error::ProductMetadataTableMissing)
+            cause.downcast_ref::<xcss::sqlite::Error>(),
+            Some(xcss::sqlite::Error::ProductMetadataTableMissing)
         )),
         "unexpected unmarked-database error: {error:#}"
     );

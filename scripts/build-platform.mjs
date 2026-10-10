@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import "./check-foundation-web.mjs";
+import "./check-xcss-web.mjs";
 import { cpSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertWebOutput } from "@xcss/web-toolchain/server";
+import { assertWebOutput } from "@xcss/web/web-toolchain/server";
 
 // Vite interprets '#' in physical filenames as a URL fragment. Build the
 // exact installed inputs in a fresh private, URL-safe scratch directory. The
@@ -30,6 +30,11 @@ try {
   for (const file of ["package.json", "vite.platform.config.mjs"]) {
     cpSync(join(root, file), join(scratch, file));
   }
+  const types = spawnSync(process.execPath, [
+    join(scratch, "node_modules/typescript/bin/tsc"), "-p", "web/tsconfig.json",
+  ], { cwd: scratch, env: process.env, stdio: "inherit" });
+  if (types.error) throw types.error;
+  if (types.status !== 0) throw new Error("TypeScript frontend check failed");
   const result = spawnSync(process.execPath, [
     join(scratch, "node_modules/vite/bin/vite.js"),
     "build", "--config", "vite.platform.config.mjs",
@@ -44,21 +49,15 @@ try {
   // dist is generated output only; never remove source or dependency inputs.
   rmSync(output, { recursive: true, force: true });
   cpSync(join(scratch, "web/dist"), output, { recursive: true, errorOnExist: true });
-  const declarations = spawnSync(process.execPath, [
-    join(scratch, "node_modules/typescript/bin/tsc"), "-p", "web/tsconfig.platform.json",
-  ], { cwd: scratch, env: process.env, stdio: "inherit" });
-  if (declarations.error) throw declarations.error;
-  if (declarations.status !== 0) throw new Error("React platform declaration check failed");
-  // Runtime assets remain flat. The explicit public wrappers expose no
-  // product-internal declaration imports to the unbundled file controllers.
-  cpSync(join(scratch, "web/types/platform.d.ts"), join(output, "platform.d.ts"));
   const existing = lstatSync(runtimeOutput, { throwIfNoEntry: false });
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new Error("Unsafe runtime output");
   rmSync(runtimeOutput, { recursive: true, force: true });
-  cpSync(output, join(runtimeOutput, "dist"), { recursive: true, filter: source => !source.endsWith(".d.ts") });
-  for (const name of ["login.js", "index.js", "index.css", "login.css", "favicon.ico", "modules"]) {
-    cpSync(join(root, "web", name), join(runtimeOutput, name), { recursive: true });
+  // All executable browser code is compiled by Vite. Static product assets
+  // keep their existing URLs for the server-authored HTML templates.
+  for (const name of ["index.css", "login.css", "favicon.ico"]) {
+    cpSync(join(root, "web", name), join(output, name));
   }
+  cpSync(output, runtimeOutput, { recursive: true });
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

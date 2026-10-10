@@ -1,4 +1,12 @@
-const { currentUrl, expect, login, test } = require("./fixtures");
+const {
+  actionDialog,
+  chooseFileAction,
+  currentLogicalChild,
+  currentUrl,
+  expect,
+  login,
+  test,
+} = require("./fixtures");
 
 const dangerousName = `危险 <img src=x onerror=alert(1)> & "'.txt`;
 const listingRevision = "a".repeat(64);
@@ -256,9 +264,10 @@ test("目录页拒绝重复游标且保留上一页", async ({ appPage: page }) 
 
 test("大量目录项使用可访问窗口限制 DOM 数量", async ({ appPage: page }) => {
   test.slow();
-  let pageIndex = 0;
+  let created = false;
   await page.route("**/__xczs__/api/list?**", route => {
-    const current = pageIndex++;
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    const current = cursor === null ? 0 : Number(cursor.slice("cursor-".length));
     const paths = Array.from({ length: 200 }, (_, offset) => ({
       path_type: "File",
       name: `window-${current * 200 + offset}.txt`,
@@ -266,6 +275,16 @@ test("大量目录项使用可访问窗口限制 DOM 数量", async ({ appPage: 
       size: offset,
       revision: listingRevision,
     }));
+    // Closing the created-item editor refreshes the first page. Keep that
+    // inserted file ahead of window-0 so every toolbar action must resolve the
+    // shifted row by its current identity, including across this refresh.
+    if (created && current === 0) {
+      paths.unshift({
+        path_type: "File", name: "newfile", mtime: 0, size: 0,
+        revision: listingRevision,
+      });
+      paths.pop();
+    }
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -295,6 +314,7 @@ test("大量目录项使用可访问窗口限制 DOM 数量", async ({ appPage: 
   await expect(page.getByRole("button", { name: "Show next items" })).toBeVisible();
 
   await page.getByRole("button", { name: "New empty file" }).click();
+  created = true;
   const inlineEditor = page.locator(".inline-name-input");
   await expect(inlineEditor).toHaveValue("newfile");
   await expect(inlineEditor).toBeFocused();
@@ -305,13 +325,91 @@ test("大量目录项使用可访问窗口限制 DOM 数量", async ({ appPage: 
     name: "window-0.txt",
     exact: true,
   })).toBeVisible();
-  for (const action of ["move", "delete", "rename"]) {
-    await expect(shiftedFirstRow.locator(
-      `button[data-action="${action}"]`,
-    )).toHaveAttribute("data-index", "1");
-  }
+  await expect(shiftedFirstRow).toHaveAttribute("data-index", "1");
   await expect(page.getByRole("link", {
     name: "window-199.txt",
     exact: true,
   })).toHaveCount(0);
+
+  const source = currentLogicalChild(page, "window-0.txt");
+  const destination = currentLogicalChild(page, "existing-folder");
+  const requests = [];
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "DELETE" ||
+        (request.method() === "POST" && /\/__xczs__\/api\/(move|rename)$/.test(path))) {
+      requests.push(request);
+    }
+  });
+
+  for (const action of ["move", "delete", "rename"]) {
+    await chooseFileAction(page, action, "window-0.txt");
+    const mode = page.locator(`[data-file-action="${action}"]`);
+    await expect(mode).toHaveAttribute("aria-pressed", "false");
+    const responsePromise = page.waitForResponse(response => {
+      const request = response.request();
+      return action === "delete"
+        ? request.method() === "DELETE"
+        : request.method() === "POST" &&
+          new URL(response.url()).pathname === `/__xczs__/api/${action}`;
+    });
+    if (action === "rename") {
+      await expect(inlineEditor).toHaveValue("window-0.txt");
+      await expect(inlineEditor).toBeFocused();
+      await expect(page.locator("#addPath1.is-renaming")).toHaveCount(1);
+      await inlineEditor.fill("window-renamed.txt");
+      await inlineEditor.press("Enter");
+    } else {
+      const dialog = actionDialog(page, action === "move" ? "Move item" : "Delete item");
+      await expect(dialog).toBeVisible();
+      if (action === "move") {
+        const input = dialog.getByRole("textbox", { name: "Destination folder" });
+        await expect(input).toBeFocused();
+        await input.fill(destination);
+      } else {
+        await expect(dialog).toContainText('Delete "window-0.txt"?');
+      }
+      await dialog.getByRole("button", {
+        name: action === "move" ? "Move" : "Delete", exact: true,
+      }).click();
+    }
+    // The window rows are synthetic, so the actual fixture backend must reject
+    // these operations. A stale index must never mutate the real newfile.
+    const response = await responsePromise;
+    expect(response.status()).toBe(412);
+    expect((await response.json()).code).toBe(
+      action === "delete" ? "delete_target_changed" : "source_changed",
+    );
+    expect(response.headers()["x-xczs-operation-state"]).toBe("failed");
+    const request = response.request();
+    expect(request.headers()["x-csrf-token"]).toBeTruthy();
+    expect(request.headers()["x-xczs-operation-id"]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    if (action === "delete") {
+      expect(decodeURIComponent(new URL(request.url()).pathname)).toBe(source);
+      expect(request.headers()["if-match"]).toBe(`"${listingRevision}"`);
+    } else {
+      expect(request.postDataJSON()).toEqual(action === "move"
+        ? { source, directory: destination, source_revision: listingRevision, overwrite: false }
+        : { source, name: "window-renamed.txt", source_revision: listingRevision, overwrite: false });
+    }
+    const failure = actionDialog(page, action === "move" ? "Move failed" :
+      action === "delete" ? "Delete failed" : "Rename failed");
+    await expect(failure).toContainText("window-0.txt");
+    await failure.getByRole("button", { name: "Close", exact: true }).click();
+    if (action === "rename") {
+      await expect(inlineEditor).toHaveCount(0);
+    }
+    await expect(mode).toBeFocused();
+    await expect(shiftedFirstRow).toHaveAttribute("data-index", "1");
+    await expect(shiftedFirstRow.getByRole("link", {
+      name: "window-0.txt", exact: true,
+    })).toBeVisible();
+    await expect(page.locator(".paths-table tbody tr")).toHaveCount(200);
+    const newfile = await page.context().request.get(currentUrl(page, "newfile"));
+    expect(newfile.status()).toBe(200);
+    expect(await newfile.body()).toHaveLength(0);
+  }
+  expect(requests.map(request => request.method())).toEqual(["POST", "DELETE", "POST"]);
 });

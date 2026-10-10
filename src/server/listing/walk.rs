@@ -19,7 +19,7 @@ use std::{
 };
 use tokio::sync::OwnedSemaphorePermit;
 use tokio_util::sync::CancellationToken;
-use xcss_server_runtime::TrackedTasks as TaskTracker;
+use xcss::server_runtime::TrackedTasks as TaskTracker;
 
 pub(in crate::server) struct DirectoryWalk {
     pub(in crate::server) work_tasks: TaskTracker,

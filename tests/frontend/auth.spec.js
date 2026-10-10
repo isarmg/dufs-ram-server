@@ -104,13 +104,13 @@ test("登录错误、会话 Cookie 与注销均由服务端生效", async ({
   await expect(password).toBeFocused();
   expect(
     (await anonymous.cookies()).find(
-      cookie => cookie.name === "__Host-xcss-xczs-session",
+      cookie => cookie.name === "__Host-admin-xczs-session",
     ),
   ).toBeUndefined();
   await anonymous.close();
 
   const sessionCookie = (await context.cookies()).find(
-    cookie => cookie.name === "__Host-xcss-xczs-session",
+    cookie => cookie.name === "__Host-admin-xczs-session",
   );
   expect(sessionCookie).toMatchObject({
     httpOnly: true,
@@ -131,7 +131,7 @@ test("登录错误、会话 Cookie 与注销均由服务端生效", async ({
   expect((await logoutResponse).status()).toBe(204);
   expect(
     (await context.cookies()).find(
-      cookie => cookie.name === "__Host-xcss-xczs-session",
+      cookie => cookie.name === "__Host-admin-xczs-session",
     ),
   ).toBeUndefined();
 
