@@ -5,6 +5,7 @@ const {
   currentUrl,
   expect,
   login,
+  sameOriginRequestHeaders,
   test,
 } = require("./fixtures");
 
@@ -346,8 +347,32 @@ test("Large directories limit DOM entries with an accessible window", async ({ a
     await chooseFileAction(page, action, "window-0.txt");
     const mode = page.locator(`[data-file-action="${action}"]`);
     await expect(mode).toHaveAttribute("aria-pressed", "false");
-    // Capture the body as soon as the response arrives, while the UI action is
-    // still settling. Chromium may no longer retain it after the click returns.
+    const mutationUrl = action === "delete"
+      ? currentUrl(page, "window-0.txt")
+      : new URL(`/__xczs__/api/${action}`, page.url()).href;
+    const responseBodies = new WeakMap();
+    // Retain the real server body before forwarding the same response to the UI.
+    // Chromium's DevTools cache can discard these private, no-store bodies even
+    // without navigation, so starting response.json() immediately is insufficient.
+    const captureResponse = async route => {
+      const request = route.request();
+      if (request.method() !== (action === "delete" ? "DELETE" : "POST")) {
+        return route.fallback();
+      }
+      const headers = await request.allHeaders();
+      const proof = sameOriginRequestHeaders(page);
+      headers.origin = proof.Origin;
+      headers["sec-fetch-site"] = proof["Sec-Fetch-Site"];
+      const upstream = await route.fetch({ headers, maxRedirects: 0, maxRetries: 0 });
+      try {
+        const body = await upstream.body();
+        responseBodies.set(request, body);
+        await route.fulfill({ response: upstream, body });
+      } finally {
+        await upstream.dispose();
+      }
+    };
+    await page.route(mutationUrl, captureResponse, { times: 1 });
     const [{ response, payload }] = await Promise.all([
       page.waitForResponse(response => {
         const request = response.request();
@@ -355,9 +380,9 @@ test("Large directories limit DOM entries with an accessible window", async ({ a
           ? request.method() === "DELETE"
           : request.method() === "POST" &&
             new URL(response.url()).pathname === `/__xczs__/api/${action}`;
-      }).then(async response => ({
+      }).then(response => ({
         response,
-        payload: await response.json(),
+        payload: JSON.parse(responseBodies.get(response.request()).toString("utf8")),
       })),
       (async () => {
         if (action === "rename") {
@@ -381,7 +406,7 @@ test("Large directories limit DOM entries with an accessible window", async ({ a
           }).click();
         }
       })(),
-    ]);
+    ]).finally(() => page.unroute(mutationUrl, captureResponse));
     // The window rows are synthetic, so the actual fixture backend must reject
     // these operations. A stale index must never mutate the real newfile.
     expect(response.status()).toBe(412);
