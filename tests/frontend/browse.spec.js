@@ -346,38 +346,46 @@ test("Large directories limit DOM entries with an accessible window", async ({ a
     await chooseFileAction(page, action, "window-0.txt");
     const mode = page.locator(`[data-file-action="${action}"]`);
     await expect(mode).toHaveAttribute("aria-pressed", "false");
-    const responsePromise = page.waitForResponse(response => {
-      const request = response.request();
-      return action === "delete"
-        ? request.method() === "DELETE"
-        : request.method() === "POST" &&
-          new URL(response.url()).pathname === `/__xczs__/api/${action}`;
-    });
-    if (action === "rename") {
-      await expect(inlineEditor).toHaveValue("window-0.txt");
-      await expect(inlineEditor).toBeFocused();
-      await expect(page.locator("#addPath1.is-renaming")).toHaveCount(1);
-      await inlineEditor.fill("window-renamed.txt");
-      await inlineEditor.press("Enter");
-    } else {
-      const dialog = actionDialog(page, action === "move" ? "Move item" : "Delete item");
-      await expect(dialog).toBeVisible();
-      if (action === "move") {
-        const input = dialog.getByRole("textbox", { name: "Destination folder" });
-        await expect(input).toBeFocused();
-        await input.fill(destination);
-      } else {
-        await expect(dialog).toContainText('Delete "window-0.txt"?');
-      }
-      await dialog.getByRole("button", {
-        name: action === "move" ? "Move" : "Delete", exact: true,
-      }).click();
-    }
+    // Capture the body as soon as the response arrives, while the UI action is
+    // still settling. Chromium may no longer retain it after the click returns.
+    const [{ response, payload }] = await Promise.all([
+      page.waitForResponse(response => {
+        const request = response.request();
+        return action === "delete"
+          ? request.method() === "DELETE"
+          : request.method() === "POST" &&
+            new URL(response.url()).pathname === `/__xczs__/api/${action}`;
+      }).then(async response => ({
+        response,
+        payload: await response.json(),
+      })),
+      (async () => {
+        if (action === "rename") {
+          await expect(inlineEditor).toHaveValue("window-0.txt");
+          await expect(inlineEditor).toBeFocused();
+          await expect(page.locator("#addPath1.is-renaming")).toHaveCount(1);
+          await inlineEditor.fill("window-renamed.txt");
+          await inlineEditor.press("Enter");
+        } else {
+          const dialog = actionDialog(page, action === "move" ? "Move item" : "Delete item");
+          await expect(dialog).toBeVisible();
+          if (action === "move") {
+            const input = dialog.getByRole("textbox", { name: "Destination folder" });
+            await expect(input).toBeFocused();
+            await input.fill(destination);
+          } else {
+            await expect(dialog).toContainText('Delete "window-0.txt"?');
+          }
+          await dialog.getByRole("button", {
+            name: action === "move" ? "Move" : "Delete", exact: true,
+          }).click();
+        }
+      })(),
+    ]);
     // The window rows are synthetic, so the actual fixture backend must reject
     // these operations. A stale index must never mutate the real newfile.
-    const response = await responsePromise;
     expect(response.status()).toBe(412);
-    expect((await response.json()).code).toBe(
+    expect(payload.code).toBe(
       action === "delete" ? "delete_target_changed" : "source_changed",
     );
     expect(response.headers()["x-xczs-operation-state"]).toBe("failed");
