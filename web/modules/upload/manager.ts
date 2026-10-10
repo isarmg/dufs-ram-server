@@ -232,8 +232,9 @@ export function createUploadManager(options: UploadManagerOptions) {
 
   const beforeUnload = (event: BeforeUnloadEvent) => {
     if (
-      queueState === "running" &&
-      (preflightReservedRows > 0 || queue.size > 0 || running > 0)
+      running > 0 ||
+      (queueState === "running" &&
+        (preflightReservedRows > 0 || queue.size > 0))
     ) {
       event.preventDefault();
       event.returnValue = "";
@@ -374,7 +375,8 @@ export function createUploadManager(options: UploadManagerOptions) {
   function pauseForAuthentication() {
     if (queueState === "paused-auth") return;
     queueState = "paused-auth";
-    window.removeEventListener("beforeunload", beforeUnload);
+    // Other in-flight requests are not aborted when dispatch is paused.
+    // Keep their unload protection if navigation is requested or cancelled.
     queueMessage.textContent = PAGE_EXPIRED_MESSAGE;
     queueMessage.classList.remove("hidden");
   }
@@ -382,7 +384,8 @@ export function createUploadManager(options: UploadManagerOptions) {
   function pauseForUnknown(uploader: Uploader) {
     unresolvedUnknown.add(uploader.index);
     if (queueState !== "paused-auth") queueState = "paused-unknown";
-    window.removeEventListener("beforeunload", beforeUnload);
+    // Pausing dispatch does not stop other concurrent transfers. Keep their
+    // unload protection until they finish; a paused queue alone may refresh.
     queueMessage.textContent = t(
       "{0} 的上传结果不确定，剩余队列已暂停。请刷新文件夹后再选择文件。",
       "Upload result for {0} is unknown. The remaining upload queue is paused; refresh the folder before selecting files again.",
@@ -639,8 +642,8 @@ export function createUploadManager(options: UploadManagerOptions) {
 
       if (classification.kind === "authentication") {
         pauseForAuthentication();
-        onUnauthorized();
         this.fail(AUTH_REQUIRED_MESSAGE);
+        onUnauthorized();
         return;
       }
       if (classification.kind === "csrf") {
@@ -907,8 +910,8 @@ export function createUploadManager(options: UploadManagerOptions) {
         if (isAuthenticationError(error)) {
           pauseForAuthentication();
           const csrfFailed = isRequestErrorCode(error, "auth.csrf_rejected");
-          if (!csrfFailed) onUnauthorized();
           this.fail(csrfFailed ? PAGE_EXPIRED_MESSAGE : AUTH_REQUIRED_MESSAGE);
+          if (!csrfFailed) onUnauthorized();
           return;
         }
         await this.reconcileDiscard(skipReason, restartAfterDiscard);
@@ -948,8 +951,8 @@ export function createUploadManager(options: UploadManagerOptions) {
         }
         if (classification.kind === "authentication") {
           pauseForAuthentication();
-          onUnauthorized();
           this.fail(AUTH_REQUIRED_MESSAGE);
+          onUnauthorized();
           return;
         }
         if (classification.kind === "csrf") {
@@ -961,8 +964,8 @@ export function createUploadManager(options: UploadManagerOptions) {
         if (isAuthenticationError(error)) {
           pauseForAuthentication();
           const csrfFailed = isRequestErrorCode(error, "auth.csrf_rejected");
-          if (!csrfFailed) onUnauthorized();
           this.fail(csrfFailed ? PAGE_EXPIRED_MESSAGE : AUTH_REQUIRED_MESSAGE);
+          if (!csrfFailed) onUnauthorized();
           return;
         }
       }
@@ -1146,8 +1149,8 @@ export function createUploadManager(options: UploadManagerOptions) {
         });
         if (classification.kind === "authentication") {
           pauseForAuthentication();
-          onUnauthorized();
           this.fail(AUTH_REQUIRED_MESSAGE);
+          onUnauthorized();
           return;
         }
         if (classification.kind === "csrf") {
@@ -2074,7 +2077,10 @@ function adjacentUploadNameLink(
 
 function yieldToBrowser() {
   return new Promise((resolve) => {
-    window.requestAnimationFrame(() => resolve(undefined));
+    // Animation frames stop in hidden tabs and would strand the remainder of
+    // a folder batch. A task still yields between DOM chunks without requiring
+    // the user to keep this page visible.
+    window.setTimeout(() => resolve(undefined), 0);
   });
 }
 
