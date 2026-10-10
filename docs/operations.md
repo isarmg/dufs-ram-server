@@ -95,7 +95,7 @@ SQLite 提交与共享根中的 mkdir、rename、文件同步和目录 `fsync` �
 
 有一个必须保留的 metadata 安全例外：已暂存的覆盖上传可能已经重放旧目标 uid/gid、mode 或允许的 xattr。若旧目标随后消失，服务以 `upload_metadata_preservation_refused` 拒绝用空 PATCH 把该 stage 当作全新文件发布；浏览器必须先 discard，再生成新 ID，以完整正文和 create-only PUT 重传。这样避免把旧对象的 metadata 意外赋给一个语义上新建的文件。
 
-仓库 systemd 样例的 `TimeoutStopSec=120s` 大于应用内置停机边界：首次信号后普通工作和提交共用 30 秒宽限，随后仅有 10 秒强制收尾窗；约 40 秒仍卡住时 Xczs 不再刷新日志，立即以状态 1 退出，不能保证该提交已落盘或尾部日志已写出。正常完成 tracked cleanup 后只执行一次、最多 5 秒的日志 flush，再显式 `exit(0)`；flush 由专用命名 OS thread 执行，不依赖可能被故障文件系统工作占满的 Tokio blocking pool，也不会让 runtime drop 继续等待卡在内核/FUSE 的已取消任务。主任务在 flush 期间继续优先监听第二信号，收到后跳过等待并立即以 130/143 退出。调大 systemd 超时不会延长这个应用硬截止；应监控并演练最慢文件/目录同步，使常见提交能在窗口内完成。SIGKILL 也会越过全部保证。
+仓库 systemd 样例的 `TimeoutStopSec=120s` 大于应用内置停机边界。首次信号停止准入，普通工作和已登记提交共用 30 秒宽限；宽限耗尽或收到第二个信号后，取消普通工作，再给排空 10 秒。第三个信号或强制阶段超时会结束排空并报告失败。成功与失败都调用日志刷新，最多等待 5 秒，然后显式以状态码 `0` 或 `1` 退出，不通过 runtime Drop 等待卡在内核或 FUSE 的任务。日志写入使用独立 OS 线程，刷新调用者只在有界时间内等待确认，期间没有另一个停止信号监听器。失败不能保证未完成提交或尾部日志落盘；调大 systemd 超时不会延长这些应用期限。应演练最慢文件和目录同步，确保正常提交能在窗口内完成。SIGKILL 会绕过应用停机代码。
 
 ## 2. 网关边界
 
@@ -162,7 +162,7 @@ systemctl start xczs
 
 ## 6. 构建输入与发行校验
 
-xcss 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 1.0.0 / `627d988a4ed471469ed4fdce8af0ea6b5c131ce6`，一个 @xcss/web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Xczs 1.0.0 的独立源码树构建、浏览器回归和发行核验由当前提交的 CI 与标签工作流执行。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
+xcss 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 1.0.0 / `b0524c4fb018b5ba4f27ad71bf32b74c8ef0a972`，一个 @xcss/web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Xczs 1.0.0 的独立源码树构建、浏览器回归和发行核验由当前提交的 CI 与标签工作流执行。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
 
 `xcss-web-build.json` 声明根 Web、`build:platform`、`web/runtime-dist` 和 Xczs Cargo package。
 正式源码构建通过 `npm run build:server:release` 完成前端→Rust→实际 binary 资源验收。`build:platform`
@@ -259,7 +259,7 @@ test ! -L "$release_dir"
 expected_version=1.0.0
 expected_sha=0123456789abcdef0123456789abcdef01234567
 expected_target=x86_64-unknown-linux-gnu
-expected_common_revision=627d988a4ed471469ed4fdce8af0ea6b5c131ce6
+expected_common_revision=b0524c4fb018b5ba4f27ad71bf32b74c8ef0a972
 test "$("$release_dir/xczs" --version)" = \
   "xczs $expected_version (git $expected_sha) xcss=$expected_common_revision"
 grep -Fx "format=xczs-build-environment-v1" \

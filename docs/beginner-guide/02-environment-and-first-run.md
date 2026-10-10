@@ -139,16 +139,17 @@ $argon2id$v=19$m=...$...$...
 
 ## 2.6 启动最小实例
 
-先复制受保护配置模板，把其中的共享根、状态目录和账号 PHC 替换为本章生成的真实值，再启动：
+先复制受保护配置模板，把其中的共享根、状态目录和账号 PHC 替换为本章生成的真实值，再显式初始化状态库并启动：
 
 ```sh
 cp config/xczs.json.example "$tutorial_root/xczs.json"
 chmod 0600 "$tutorial_root/xczs.json"
-# 用编辑器替换路径、PHC，并为本章的小型临时卷设置 min-free-space: 0
+# 用编辑器替换路径、PHC，并为本章的小型临时卷设置 min_free_space: 0
+target/debug/xczs --config "$tutorial_root/xczs.json" init
 target/debug/xczs --config "$tutorial_root/xczs.json"
 ```
 
-`--min-free-space 0` 只为了避免很小的临时测试卷达不到默认 1 GiB 余量；不要把它不加思考地复制到生产配置。
+`init` 读取并验证这份配置，创建当前状态库及管理员凭据，不启动 HTTP 服务；下一条命令才启动服务。已有当前状态库无需重复初始化，其他版本或身份不匹配的数据库不会被自动迁移。JSON 中的 `min_free_space: 0` 对应 CLI 的 `--min-free-space 0`，只用于很小的临时测试卷，生产应按容量保留余量。
 
 成功后会输出类似：
 
@@ -167,16 +168,16 @@ curl --noproxy '*' --connect-timeout 2 --max-time 10 \
   -i http://127.0.0.1:5000/healthz
 ```
 
-预期状态是 `200 OK`。该接口是公开 liveness，只证明进程还能处理 HTTP。
+预期状态是 `204 No Content`，响应没有正文。该接口公开提供存活检查，只证明进程还能处理 HTTP。
 
-readiness 需要认证：
+就绪检查也无需登录：
 
 ```sh
 curl --noproxy '*' --connect-timeout 2 --max-time 10 \
   -i http://127.0.0.1:5000/readyz
 ```
 
-没有会话时收到 `401` 是正常的；这条未认证命令只证明 ready 受到保护，**不会执行 readiness 探针**。带有效会话请求 ready 时，服务才会实际验证共享根的创建、写入、文件同步、删除、目录同步，以及 SQLite 的写事务能力和可用空间。下面的本地 HTTPS 示例给出完整验证命令。
+就绪时返回 `200` 和 `{"ready":true}`，未就绪时返回 `503` 和 `{"ready":false}`。端点读取启动时及每 5 秒更新的探针结果，检查共享根中固定私有探针文件的写入、同步和读回、SQLite 写事务后回滚、可用空间及服务是否正在停止；请求本身不会新建、删除或重命名文件，也不泄露路径和账号。
 
 这里显式使用 `--noproxy '*'`，避免机器上的 `HTTP_PROXY`/`HTTPS_PROXY` 和不完整的 `NO_PROXY` 把回环测试送到外部代理；连接和总时限则避免诊断命令无限等待。
 
@@ -230,34 +231,15 @@ password: test-password
 
 浏览器会因为公开的自签名测试证书显示警告，这是本地测试预期行为。该脚本会创建临时共享根、临时状态目录、多个测试账号和示例文件，在 `Ctrl+C` 后停止后端并清理临时数据。仓库中的测试证书、私钥和固定账号只能用于这个隔离场景，绝不能复制到生产。
 
-在测试服务器仍运行时，可以另开终端登录并真正调用 readiness：
+在测试服务器仍运行时，可以另开终端直接访问公开就绪端点：
 
 ```sh
-(
-  set -eu
-  cookie_dir="$(mktemp -d /tmp/xczs-local-ready.XXXXXXXX)"
-  case "$cookie_dir" in
-    /tmp/xczs-local-ready.[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]) ;;
-    *) printf 'Unexpected temporary path: %s\n' "$cookie_dir" >&2; exit 1 ;;
-  esac
-  trap 'rm -rf -- "$cookie_dir"' EXIT
-  curl -k --noproxy '*' --connect-timeout 2 --max-time 30 \
-    --silent --show-error \
-    --cookie-jar "$cookie_dir/cookies" \
-    --header 'Content-Type: application/json' \
-    --header 'Origin: https://127.0.0.1:9443' \
-    --header 'Sec-Fetch-Site: same-origin' \
-    --data '{"username":"frontend-test-0","password":"test-password"}' \
-    --output /dev/null \
-    https://127.0.0.1:9443/api/v1/auth/login
-  curl -k --noproxy '*' --connect-timeout 2 --max-time 30 \
-    --fail --silent --show-error \
-    --cookie "$cookie_dir/cookies" \
-    https://127.0.0.1:9443/readyz
-)
+curl -k --noproxy '*' --connect-timeout 2 --max-time 30 \
+  --fail --silent --show-error \
+  https://127.0.0.1:9443/readyz
 ```
 
-预期正文是 `{"ready":true}`。这里的 `-k` 只为接受仓库自签名测试证书，不能作为生产 TLS 校验方式。
+`--fail` 让未就绪的 HTTP `503` 产生非零退出状态；就绪时预期正文是 `{"ready":true}`。这里的 `-k` 只用于仓库自签名测试证书，不能作为生产 TLS 校验方式；访问此端点不需要测试账号或 Cookie。
 
 ## 2.9 用 JSON 保存配置
 
@@ -285,7 +267,7 @@ chmod 0600 "$tutorial_root/xczs.json"
 }
 ```
 
-上面的 `ABCDEFGH` 和 PHC 都是占位符。编辑复制出的 JSON 时必须完成三项替换：把两个路径改成第 2.4 节打印的**同一个真实 `$tutorial_root` 值**，把 `auth` 改成第 2.5 节生成的完整 Argon2id PHC，并为这个临时小卷确认 `min-free-space: 0`。Xczs 不会在 JSON 内展开 shell 变量；保留示例中的 `REPLACE_WITH_A_REAL_HASH` 会因无效认证配置启动失败。
+上面的 `ABCDEFGH` 和 PHC 都是占位符。编辑复制出的 JSON 时必须完成三项替换：把两个路径改成第 2.4 节打印的**同一个真实 `$tutorial_root` 值**，把 `auth` 改成第 2.5 节生成的完整 Argon2id PHC，并为这个临时小卷确认 `min_free_space: 0`。Xczs 不会在 JSON 内展开 shell 变量；保留示例中的 `REPLACE_WITH_A_REAL_HASH` 会因无效认证配置启动失败。
 
 若第 2.6 节的服务仍在运行，先在原终端按 `Ctrl+C` 正常停止，再回到保有 `$tutorial_root` 的**同一个 shell**启动；否则另一个 shell 没有这个变量，旧实例也仍占用共享根锁和端口。
 
@@ -297,31 +279,31 @@ target/debug/xczs --config "$tutorial_root/xczs.json"
 
 JSON 采用严格字段校验。写错字段或保留已经删除的旧配置项会直接失败，不会静默忽略。这样会明确暴露不匹配，并能防止操作者误以为某个安全限制仍然生效。
 
-配置优先级是“内置默认值 → JSON → 命令行显式参数”。命令行 `--bind` 整体替换 JSON 列表；账号只能来自受保护 JSON 的 `auth`。生产使用 HTTPS 网关和绝对路径；仅本机开发才显式启用 `--development`。
+配置覆盖顺序是“内置默认值 → JSON → 19 个显式环境映射 → 命令行显式参数”，各层先独立校验。命令行 `--bind` 整体替换低优先级地址列表；管理员由 JSON 的 `auth` 或完整 JSON 数组形式的 `XCZS_AUTH` 声明，没有管理员 CLI 参数。部署时优先使用受保护的 JSON 保存管理员 PHC。生产使用 HTTPS 网关和绝对路径；仅本机开发才显式启用 `--development`。
 
-配置文件本身必须是不超过 1 MiB 的普通 UTF-8 文件，不能是符号链接、FIFO 或设备。Linux 上只允许 root 或服务 euid 拥有，mode 必须精确为 `0400/0440/0600/0640`；组读模式要求 gid 匹配服务 egid，还要求单硬链接且没有扩展 POSIX access ACL。文件只打开一次，ACL 探测与正文读取使用同一 fd，并在读取前后复核身份、安全属性、大小和修改时间没有变化。生产配置只来自命令行和 JSON，Xczs 不读取 `XCZS_*` 环境变量；测试脚本中名字相似的环境变量只控制测试工具，不会成为服务配置。
+配置文件本身必须是不超过 1 MiB 的普通 UTF-8 文件，不能是符号链接、FIFO 或设备。Linux 上只允许 root 或服务 euid 拥有，mode 必须精确为 `0400/0440/0600/0640`；组读模式要求 gid 匹配服务 egid，还要求单硬链接且没有扩展 POSIX access ACL。文件只打开一次，ACL 探测与正文读取使用同一 fd，并在读取前后复核身份、安全属性、大小和修改时间没有变化。生产配置按命令行、19 个显式 `XCZS_*` 环境映射、JSON、默认值的优先级解析，各层均校验。完整映射和字段含义见[命令说明](../cli.md#环境变量)；未知变量不会自动变成配置字段。测试脚本的证书、密钥和测试端口变量只控制测试工具，不属于这些生产映射。
 
 ## 2.10 常用配置及默认值
 
-当前默认值由 [src/args.rs](../../src/args.rs) 定义：
+当前默认值由 [src/args.rs](../../src/args.rs) 定义。下表使用 JSON 字段名；命令行参数使用 `--` 前缀并将下划线改为连字符，例如 `serve_path` 对应 `--serve-path`。`auth` 没有对应 CLI 参数，环境映射见[命令说明](../cli.md#环境变量)：
 
 | 配置 | 默认值 | 作用 |
 | --- | ---: | --- |
-| `serve-path` | 当前工作目录 `.` | 必须已经存在且是目录的共享根 |
+| `serve_path` | 当前工作目录 `.` | 必须已经存在且是目录的共享根 |
 | `data_dir` | 无，必须显式配置 | 位于共享根之外、权限和属主受校验的持久状态目录 |
 | `auth` | 无账号，启动校验失败 | 至少一个 `user:<argon2id PHC>` 全权限账号 |
 | `bind` | `127.0.0.1` | 监听地址，可重复指定 |
 | `development` | false | 显式允许 loopback HTTP；所有监听必须为回环地址 |
 | `port` | `5000` | HTTP 后端端口 |
-| `max-upload-size` | 100 GiB | 单文件声明长度上限 |
-| `upload-idle-timeout` | 60 秒 | 上传没有进展的允许时间 |
-| `upload-total-timeout` | 24 小时 | 单次上传流程总时限 |
-| `max-concurrent-uploads` | 4 | 服务端并发上传槽 |
-| `min-free-space` | 1 GiB | 计入预留后的最低可用空间 |
-| `max-connections` | 256 | 所有 listener 共用的连接配额 |
-| `max-search-entries` | 10000 | 搜索最多检查的目录项，硬上限 100000 |
-| `max-concurrent-searches` | 2 | 并发目录列表和递归搜索数量 |
-| `request-timeout` | 300 秒 | 非上传请求在产生响应头前的预算；不限制已经开始的流式下载正文总时长 |
+| `max_upload_size` | 100 GiB | 单文件声明长度上限 |
+| `upload_idle_timeout` | 60 秒 | 上传没有进展的允许时间 |
+| `upload_total_timeout` | 24 小时 | 单次上传流程总时限 |
+| `max_concurrent_uploads` | 4 | 服务端并发上传槽 |
+| `min_free_space` | 1 GiB | 计入预留后的最低可用空间 |
+| `max_connections` | 256 | 所有 listener 共用的连接配额 |
+| `max_search_entries` | 10000 | 搜索最多检查的目录项，硬上限 100000 |
+| `max_concurrent_searches` | 2 | 并发目录列表和递归搜索数量 |
+| `request_timeout` | 300 秒 | 非上传请求在产生响应头前的预算；不限制已经开始的流式下载正文总时长 |
 
 `data_dir` 没有可随便接受的默认位置，必须显式配置。数据库文件固定为 `<data_dir>/state.sqlite3`。
 
@@ -331,7 +313,7 @@ JSON 采用严格字段校验。写错字段或保留已经删除的旧配置项
 
 1. [main.rs](../../src/main.rs) 构造 CLI；
 2. 若是 `hash-password` 子命令，生成哈希后退出；
-3. [args.rs](../../src/args.rs) 合并并验证 CLI/JSON；
+3. [args.rs](../../src/args.rs) 按默认值、JSON、19 个显式环境变量、CLI 的顺序合并并验证配置；
 4. 初始化异步日志；
 5. `Server::builder(args).build()` 锚定共享根、打开状态库并组装服务；
 6. 为每个地址创建 TCP listener；
@@ -348,11 +330,11 @@ JSON 采用严格字段校验。写错字段或保留已经删除的旧配置项
 1. 停止接受新连接；
 2. 给现有连接和任务 30 秒正常完成；
 3. 超时后取消普通工作，再给强制收尾 10 秒；
-4. 关闭运行时 worker 和状态线程；
+4. 等待已登记的提交排空并关闭状态参与者；
 5. 最多等待 5 秒刷新日志；
-6. 正常退出。
+6. 成功以状态码 `0` 退出，收尾失败以 `1` 退出。
 
-如果 30 秒正常宽限和后续 10 秒强制收尾都耗尽，程序会直接以失败状态退出；第二个停止信号也会要求立即退出。这两条快速退出路径都会跳过尚未完成的后续清理和日志 flush。`kill -9` 更会绕过全部应用停机代码，只应在真正失控时使用。
+第二个停止信号会提前进入取消普通工作的 10 秒强制收尾阶段；第三个信号或强制阶段超时会结束排空并报告失败。成功和失败路径都会执行有界日志刷新，再显式退出；刷新期间不再另行处理停止信号。失败时不能保证仍在进行的提交或尾部日志已经保存。`kill -9` 会绕过应用停机代码，只应在真正失控时使用。
 
 ## 2.13 常见启动失败
 

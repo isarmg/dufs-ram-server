@@ -267,13 +267,13 @@ curl --noproxy '*' --connect-timeout 2 --max-time 10 --fail \
 | 接口 | 认证 | 证明 | 不证明 |
 | --- | --- | --- | --- |
 | `/healthz` | 不需要 | HTTP 进程仍能响应 | 根目录或 SQLite 可写 |
-| `/readyz` | 需要 | 根可创建/写/同步/删，SQLite 可开真实写事务后回滚，空间足够，未停机 | 每条业务请求一定被接受 |
+| `/readyz` | 不需要 | 最近一次私有探针写入、同步和读回成功，SQLite 写事务回滚成功，空间足够且未停止准入 | rename、所有业务配额及每条请求一定成功 |
 
-所以 health 200、ready 503 是合理信号：进程还活着，但不应接收写流量。
+`health` 返回 `204`、`ready` 返回 `503` 表示进程仍活着，但当前不应接收写流量。就绪时 `ready` 返回 `200` 和 `{"ready":true}`，未就绪时返回 `503` 和 `{"ready":false}`。两端点均禁止缓存；探针在启动时及每 5 秒刷新，HTTP 请求只读取最近的结果。
 
-负载均衡器若无法安全维护登录会话 Cookie，应只请求公开 health；另建受控的认证冒烟任务检查 ready。不要把账号密码塞进所有基础网络探针。
+负载均衡器可以直接用 `GET` 或 `HEAD` 请求公开健康端点，无需保存管理员凭据。就绪失败应接入告警或摘流策略，只记录一次 `503` 不会自动停止流量。
 
-下面是一次交互式生产冒烟的 Bash 示例。它额外需要 `jq`，把管理员 username 和密码写入 mode `0600` 的临时文件并生成严格 JSON；curl 的进程参数只暴露文件路径，不暴露凭据内容。域名必须替换为真实站点，并正常校验证书：
+下面是可选的管理员登录与就绪检查联合冒烟，登录用于另行验证认证入口，并非访问 `/readyz` 的前提。它额外需要 `jq`，把管理员 username 和密码写入 mode `0600` 的临时文件并生成严格 JSON；curl 的进程参数只暴露文件路径，不暴露凭据内容。域名必须替换为真实站点，并正常校验证书：
 
 ```bash
 (
@@ -309,13 +309,12 @@ curl --noproxy '*' --connect-timeout 2 --max-time 10 --fail \
     https://files.example.com/api/v1/auth/login
   curl --fail --silent --show-error \
     --connect-timeout 5 --max-time 30 \
-    --cookie "$probe_dir/cookies" \
     --header 'Accept: application/json' \
     https://files.example.com/readyz
 )
 ```
 
-第一条命令的 `session.json` 应为 xcss 五字段 `AdministratorSession` 且 `role` 只能是 `admin`，第二条命令预期输出 `{"ready":true}`。自动探针应从只有探针进程可读的受控凭据源建立或更新会话，并控制登录频率，避免触发 Argon2 和登录限流预算。当前 Xczs 没有 readiness-only 或只读角色，任何管理员凭据都拥有共享根完整权限，因此必须把这项风险纳入设计；无法安全保存时就不要把它塞进通用负载均衡器。独立 ready 任务还必须接入告警或明确的摘流自动化，只记录一次 503 不会自动停止流量。
+第一条命令的 `session.json` 应为 xcss 五字段 `AdministratorSession` 且 `role` 只能是 `admin`；第二条无需 Cookie，预期输出 `{"ready":true}`。管理员登录应控制频率，避免触发密码计算和登录限流预算；普通自动健康探针只需访问公开端点。
 
 ## 9.11 日志与 Operation ID
 
@@ -358,7 +357,7 @@ Operation ID 是连接“浏览器提示、HTTP 请求、状态库结果和服�
 - 共享根与 state 卷磁盘空间；
 - inode 使用率；
 - 共享根挂载是否仍是预期设备；
-- health 与独立 authenticated readiness；
+- 公开存活状态与周期就绪状态；
 - purge 长期积压或内部项异常增长；
 - 备份年龄；
 - 最近一次恢复演练结果和耗时。
@@ -448,7 +447,7 @@ rollback journal 模式下，不要在活跃事务中只复制 `state.sqlite3` �
 | 现象 | 常见原因 | 优先检查 |
 | --- | --- | --- |
 | 服务启动但浏览器登录循环 | 非 HTTPS、Host/Origin 不一致或 Cookie 被拒绝 | 生产 HTTPS、规范 Host、浏览器 Cookie 与 Origin；开发必须显式启用且仅 loopback |
-| health 200、ready 503 | 根/SQLite 不可写、空间不足、正在停机 | journal、权限、挂载、`df -h`、inode |
+| health 204、ready 503 | 根/SQLite 不可写、空间不足、正在停机 | journal、权限、挂载、`df -h`、inode |
 | 第二实例启动失败 | 同一共享根的 flock 已被持有 | 现有进程和根真实路径 |
 | 写请求普遍 403 | CSRF 或 Origin/代理头不一致 | nginx snippet、后端是否被直连 |
 | 上传 507 | 最低空间水位或预留失败 | 目标卷空间、并发上传预留 |

@@ -22,7 +22,7 @@
 
 | ID | 功能/当前实现 | 实现/代码锚点 | 分类 | 复杂度 | 删除后的确定后果 | 验证与边界 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DFM-010 | 严格 JSON，未知字段拒绝；CLI 显式值整体覆盖对应 JSON | `src/args.rs`、`config/xczs.json.example` | 保障 | 中 | 拼写错误可静默变成错误配置 | unknown/duplicate/empty/precedence；无环境变量配置 |
+| DFM-010 | 严格 JSON 与 19 个显式环境映射；命令行、环境、文件、默认值逐层校验并按优先级覆盖 | `src/args.rs`、`config/xczs.json.example` | 保障 | 中 | 拼写错误或无效低优先级值可能被静默隐藏 | 未知字段、重复字段、空值、类型、覆盖优先级；环境映射见[命令说明](cli.md#环境变量) |
 | DFM-011 | 配置文件 no-follow、安全 owner/mode、单硬链接和身份复核 | `src/args.rs` | 保障 | 高 | 服务可能读取攻击者替换或公开可写配置 | symlink/ACL/mode/owner/hardlink/rename race；最大 1 MiB |
 | DFM-012 | `serve-path` canonicalize 并作为唯一共享根 | `src/args.rs`、`src/server/rooted_fs.rs` | 核心 | 高 | 所有浏览、写入和路径隔离失去边界 | 不存在/非目录拒绝；相对路径按 cwd；根 fd identity |
 | DFM-013 | `data_dir` 必填、私有 `0700`，与根/配置/日志分离 | `src/args.rs`、`src/server/state_store.rs` | 保障 | 高 | 重启证据丢失或敏感状态泄露 | owner/mode/symlink/祖先关系/object alias/sidecar 冲突 |
@@ -106,8 +106,8 @@
 | DFM-071 | 启动恢复按最后可靠状态保守转换 | `src/server/state_store/database.rs`、`src/server/maintenance.rs` | 保障 | 高 | 把 running 一律失败会抹掉可能已提交事实 | operation CommitStarted→unknown、upload、purge Claimed→Ready |
 | DFM-072 | purge 每 slice 限条目/时间并持久 cursor/backoff | `src/server/purge.rs`、`src/server/rooted_fs/purge.rs` | 保障 | 高 | 大删除长期独占，或重启反复从头扫描 | 256项/25ms、100ms～30s、fd-relative nofollow、restart |
 | DFM-073 | trash identity 异常进入永久 quarantine，不猜测删除 | `src/server/purge.rs`、`src/server/internal_names.rs` | 保障 | 高 | 错对象可能被递归删除；不隔离则 worker 循环 | quarantine hold 不被 maintenance 扫描；停服人工调查 |
-| DFM-074 | authenticated readiness 真实写根并做 SQLite 回滚写事务 | `src/server.rs`、`tests/health.rs` | 建议保留 | 中 | 探针只能证明端口可连 | 需管理员 session；不做 rename/介质读回，不等于 CRUD |
-| DFM-075 | 两阶段优雅停机与约40秒硬截止 | `src/main.rs`、`src/server.rs` | 保障 | 高 | 立即退增加 unknown；无硬截止会被故障 I/O 拖死 | 30秒+10秒；第二信号取消、第三信号失败；退出日志 flush 最多5秒 |
+| DFM-074 | 公开就绪状态与周期文件、SQLite 探针 | `src/server.rs`、`tests/health.rs` | 建议保留 | 中 | 仅测端口无法证明状态可用 | 固定私有文件写入、同步和读回，SQLite 写事务回滚；端点读取缓存结果，不等于完整 CRUD |
+| DFM-075 | 两阶段有界停机与退出日志刷新 | `src/main.rs`、`src/server.rs` | 保障 | 高 | 立即退增加 unknown；无硬截止会被故障 I/O 拖死 | 30秒+10秒；第二信号取消、第三信号失败；退出日志 flush 最多5秒 |
 
 ## 7. 原生前端、质量与交付
 
