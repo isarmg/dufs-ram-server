@@ -151,6 +151,9 @@ export function createActionDialogs(): ActionDialogs {
     cancelButton.hidden = kind === "alert";
     cancelButton.textContent = options.cancelText || t("取消", "Cancel");
     alternateButton.hidden = kind !== "choice";
+    // Hidden submit buttons still participate in native implicit submission.
+    // A text prompt must submit Confirm when Enter is pressed in its input.
+    alternateButton.type = kind === "choice" ? "submit" : "button";
     alternateButton.textContent = options.alternateText || t("跳过", "Skip");
     confirmButton.textContent =
       options.confirmText ||

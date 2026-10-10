@@ -1082,6 +1082,31 @@ test("Moving uses the dedicated endpoint, preserves the name, and enters the des
   ).toBeVisible();
 });
 
+test("Enter in the move destination prompt confirms a Unicode folder path", async ({
+  appPage: page,
+}) => {
+  const folderName = "会议资料 & 计划";
+  await seedFolder(page, folderName);
+  const directory = currentLogicalChild(page, folderName);
+  await chooseFileAction(page, "move", "rename-me.txt");
+  const dialog = actionDialog(page, "Move item");
+  const input = dialog.getByRole("textbox", { name: "Destination folder" });
+  await input.fill(directory);
+  const responsePromise = page.waitForResponse(response =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname.endsWith("/__xczs__/api/move"),
+  );
+  await input.press("Enter");
+  const response = await responsePromise;
+  expect(response.status()).toBe(204);
+  expect(response.request().postDataJSON().directory).toBe(directory);
+  await expect.poll(() => currentDirectoryPath(page)).toBe(directory);
+  await expect(page.getByRole("link", {
+    name: "rename-me.txt",
+    exact: true,
+  })).toBeVisible();
+});
+
 test("An existing rename target permits explicit overwrite only after confirmation", async ({
   appPage: page,
   context,

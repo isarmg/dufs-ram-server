@@ -466,7 +466,7 @@ function ActionDialog() {
           Button,
           {
             className: "action-dialog-alternate",
-            type: "submit",
+            type: "button",
             value: "alternate",
             hidden: true,
           },
