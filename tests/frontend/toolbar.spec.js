@@ -4,7 +4,7 @@ const {
   currentDirectoryPath,
 } = require("./fixtures");
 
-test("先选择操作再选择文件，取消模式和切换菜单都不产生变更", async ({ appPage: page }) => {
+test("Choosing an operation before a file, cancelling the mode, and switching menus do not mutate files", async ({ appPage: page }) => {
   const changes = [];
   page.on("request", request => {
     if (["DELETE", "POST"].includes(request.method()) && /\/(__xczs__\/api\/(move|rename)|delete-me\.txt)$/.test(new URL(request.url()).pathname))
@@ -30,7 +30,7 @@ test("先选择操作再选择文件，取消模式和切换菜单都不产生�
   expect(changes).toEqual([]);
 });
 
-test("二级菜单下载只接受文件，不会因选择目录而导航", async ({ appPage: page }) => {
+test("Secondary-menu download accepts files only and does not navigate when a directory is selected", async ({ appPage: page }) => {
   const directory = page.url();
   const mode = page.locator('[data-file-action="download"]');
   await mode.click();
@@ -44,7 +44,7 @@ test("二级菜单下载只接受文件，不会因选择目录而导航", async
   await expect(mode).toHaveAttribute("aria-pressed", "false");
 });
 
-test("点击目录行进入原位重命名，再用菜单将该目录移动到目标目录", async ({ appPage: page }) => {
+test("Clicking a directory row starts inline rename, then the menu moves it to the destination directory", async ({ appPage: page }) => {
   const directory = currentDirectoryPath(page);
   const name = `renamed-folder-${randomUUID().slice(0, 8)}`;
   const mode = page.locator('[data-file-action="rename"]');

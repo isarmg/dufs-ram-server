@@ -34,7 +34,7 @@ const projects = requestedProjects.length > 0
     : ["chromium", "firefox"];
 for (const project of projects) {
   if (!["chromium", "firefox", "edge"].includes(project)) {
-    throw new Error(`不支持的浏览器测试项目：${project}`);
+    throw new Error(`Unsupported browser test project: ${project}`);
   }
 }
 

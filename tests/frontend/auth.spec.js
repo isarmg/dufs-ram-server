@@ -4,7 +4,7 @@ for (const [locale, usernameLabel, passwordLabel, submitLabel, usernameError, pa
   ["en", "Username", "Password", "Sign in", "Enter your username.", "Enter your password."],
   ["zh-CN", "用户名", "密码", "登录", "请输入用户名。", "请输入密码。"],
 ]) {
-  test(`登录必填提示在第五行显示且不触发原生校验气泡 (${locale})`, async ({ browser }, testInfo) => {
+  test(`Required login messages appear on the fifth row without native validation bubbles (${locale})`, async ({ browser }, testInfo) => {
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     try {
       const page = await context.newPage();
@@ -48,7 +48,7 @@ for (const [locale, usernameLabel, passwordLabel, submitLabel, usernameError, pa
   });
 }
 
-test("登录错误、会话 Cookie 与注销均由服务端生效", async ({
+test("The server enforces login errors, session cookies, and logout", async ({
   browser,
   context,
   appPage: page,
@@ -143,7 +143,7 @@ test("登录错误、会话 Cookie 与注销均由服务端生效", async ({
   await replay.close();
 });
 
-test("登录卡片保持 3:2 布局和键盘可见控件", async ({ page }, testInfo) => {
+test("The login card maintains a 3:2 layout and visible keyboard controls", async ({ page }, testInfo) => {
   await page.goto(`${testInfo.project.use.baseURL}/__xczs__/login`);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page).toHaveTitle("Sign in");
@@ -188,7 +188,7 @@ test("登录卡片保持 3:2 布局和键盘可见控件", async ({ page }, test
   ).toBe(true);
 });
 
-test("登录密码按 UTF-8 字节而非字符数执行浏览器边界校验", async ({
+test("Browser login password limits use UTF-8 bytes rather than character counts", async ({
   browser,
 }, testInfo) => {
   const anonymous = await browser.newContext({ ignoreHTTPSErrors: true });

@@ -43,7 +43,7 @@ function problemDetails(status, code, detail, recovery = "", extensions = {}) {
   });
 }
 
-test("无冲突选择不弹确认并直接上传", async ({ appPage: page }) => {
+test("Conflict-free selections upload directly without confirmation", async ({ appPage: page }) => {
   const target = currentUrl(page, "uploaded-smoke.txt");
   const responsePromise = page.waitForResponse(
     response =>
@@ -77,7 +77,7 @@ test("无冲突选择不弹确认并直接上传", async ({ appPage: page }) => 
   )).toBeVisible();
 });
 
-test("预检发现的批量冲突只确认一次且确认前不发送 PUT", async ({
+test("Batch conflicts found by preflight require one confirmation and send no PUT before confirmation", async ({
   appPage: page,
 }) => {
   const targetNames = ["download-me.txt", "overwrite-target.txt"];
@@ -113,7 +113,7 @@ test("预检发现的批量冲突只确认一次且确认前不发送 PUT", asyn
   await expect(dialog).toBeHidden();
 });
 
-test("大批次提交时取消会覆盖尚未创建 DOM 行的尾部文件", async ({
+test("Cancellation during a large batch includes trailing files whose DOM rows do not exist yet", async ({
   appPage: page,
 }) => {
   const fileNames = Array.from(
@@ -222,7 +222,7 @@ test("大批次提交时取消会覆盖尚未创建 DOM 行的尾部文件", asy
   expect(putNames).toEqual([fileNames[0]]);
 });
 
-test("目录选择中的嵌套目标即使不在当前 DOM 也由预检识别", async ({
+test("Preflight recognizes nested directory-selection targets even when they are absent from the current DOM", async ({
   appPage: page,
 }) => {
   const target = currentUrl(page, "existing-folder/nested.txt");
@@ -260,7 +260,7 @@ test("目录选择中的嵌套目标即使不在当前 DOM 也由预检识别", 
   ).toBe("nested replacement");
 });
 
-test("跳过预检冲突仍上传同批次中的新文件", async ({ appPage: page }) => {
+test("Skipping preflight conflicts still uploads new files in the same batch", async ({ appPage: page }) => {
   const existingUrl = currentUrl(page, "download-me.txt");
   const newUrl = currentUrl(page, "preflight-skip-new.txt");
   const putTargets = [];
@@ -303,7 +303,7 @@ test("跳过预检冲突仍上传同批次中的新文件", async ({ appPage: pa
   ).toBe("new file survives");
 });
 
-test("预检后且 PUT 前目标变化时再次确认并只采用服务器新 revision", async ({
+test("A target change after preflight but before PUT reconfirms using only the new server revision", async ({
   appPage: page,
 }) => {
   const changedRevision = "b".repeat(64);
@@ -379,7 +379,7 @@ test("预检后且 PUT 前目标变化时再次确认并只采用服务器新 re
   });
 });
 
-test("可信普通冲突选择 Skip 时使列表失效且不覆盖", async ({
+test("Skip on a trusted ordinary conflict invalidates the listing without overwriting", async ({
   appPage: page,
 }) => {
   const changedRevision = "8".repeat(64);
@@ -449,7 +449,7 @@ test("可信普通冲突选择 Skip 时使列表失效且不覆盖", async ({
   ).toBe("downloaded by browser test");
 });
 
-test("刷新后再次收到可信上传冲突时会重新使列表失效", async ({
+test("A trusted upload conflict received again after refresh invalidates the listing again", async ({
   appPage: page,
 }) => {
   const revisions = ["7".repeat(64), "6".repeat(64)];
@@ -540,7 +540,7 @@ test("刷新后再次收到可信上传冲突时会重新使列表失效", async
   });
 });
 
-test("提交时的重名确认用空 PATCH 发布已上传的暂存内容", async ({
+test("Commit-time conflict confirmation publishes uploaded staging content with an empty PATCH", async ({
   appPage: page,
 }) => {
   const revision = "c".repeat(64);
@@ -617,7 +617,7 @@ test("提交时的重名确认用空 PATCH 发布已上传的暂存内容", asyn
   });
 });
 
-test("确认 PATCH 返回可查询待确认状态时自动核对 checkpoint", async ({
+test("A queryable awaiting-confirmation response to confirmation PATCH automatically checks the checkpoint", async ({
   appPage: page,
 }) => {
   const initialRevision = "1".repeat(64);
@@ -745,7 +745,7 @@ test("确认 PATCH 返回可查询待确认状态时自动核对 checkpoint", as
   });
 });
 
-test("可查询待确认响应的 offset 未到文件尾时仍失败关闭", async ({
+test("A queryable awaiting-confirmation response whose offset is below EOF still fails closed", async ({
   appPage: page,
 }) => {
   const revision = "3".repeat(64);
@@ -808,7 +808,7 @@ test("可查询待确认响应的 offset 未到文件尾时仍失败关闭", asy
   expect(methods).toEqual(["PUT", "PATCH"]);
 });
 
-test("可信暂存冲突丢弃后 Skip 时使列表失效且不覆盖", async ({
+test("Discarding a trusted staging conflict and choosing Skip invalidates the listing without overwrite", async ({
   appPage: page,
 }) => {
   const revision = "9".repeat(64);
@@ -901,7 +901,7 @@ test("可信暂存冲突丢弃后 Skip 时使列表失效且不覆盖", async ({
   }]);
 });
 
-test("缺少可信 revision 的冲突响应进入 unknown 且绝不弹覆盖确认", async ({
+test("Conflict responses without a trusted revision become unknown and never prompt for overwrite", async ({
   appPage: page,
 }) => {
   const methods = [];
@@ -940,7 +940,7 @@ test("缺少可信 revision 的冲突响应进入 unknown 且绝不弹覆盖确�
   expect(methods).toEqual(["PUT"]);
 });
 
-test("提交前目标确认已消失时用 overwrite=false 重新发送完整 PUT", async ({
+test("A target confirmed missing before commit triggers a full PUT with overwrite=false", async ({
   appPage: page,
 }) => {
   const initialRevision = "d".repeat(64);
@@ -1029,7 +1029,7 @@ test("提交前目标确认已消失时用 overwrite=false 重新发送完整 PU
   ]);
 });
 
-test("服务器拒绝复用旧元数据 stage 时丢弃并以新 ID 完整 PUT", async ({
+test("Server rejection of reused stage metadata discards it and uploads a full PUT with a new ID", async ({
   appPage: page,
 }) => {
   const initialRevision = "e".repeat(64);
@@ -1157,7 +1157,7 @@ test("服务器拒绝复用旧元数据 stage 时丢弃并以新 ID 完整 PUT",
   }]);
 });
 
-test("超出单批文件上限时不创建上传行", async ({ appPage: page }) => {
+test("Exceeding the per-batch file limit creates no upload rows", async ({ appPage: page }) => {
   await page.locator("#file").evaluate(input => {
     const transfer = new DataTransfer();
     for (let index = 0; index < 513; index++) {
@@ -1175,7 +1175,7 @@ test("超出单批文件上限时不创建上传行", async ({ appPage: page }) 
   })).toBeHidden();
 });
 
-test("多个合法批次合计超过全局上限时不创建额外上传行", async ({
+test("Valid batches exceeding the global limit create no additional upload rows", async ({
   appPage: page,
 }) => {
   test.setTimeout(60_000);
@@ -1211,7 +1211,7 @@ test("多个合法批次合计超过全局上限时不创建额外上传行", as
   })).toBeHidden();
 });
 
-test("预检中的文件会同步占用全局上传容量", async ({ appPage: page }) => {
+test("Preflight files immediately consume global upload capacity", async ({ appPage: page }) => {
   test.setTimeout(60_000);
   await page.evaluate(() => {
     XMLHttpRequest.prototype.send = function () {
@@ -1279,7 +1279,7 @@ test("预检中的文件会同步占用全局上传容量", async ({ appPage: pa
   await expect(page.locator("#upload300")).toHaveCount(0);
 });
 
-test("预检失败会释放为该选择预留的上传容量", async ({ appPage: page }) => {
+test("Preflight failure releases upload capacity reserved for the selection", async ({ appPage: page }) => {
   await page.evaluate(() => {
     XMLHttpRequest.prototype.send = function () {
       // Keep the later admitted row non-terminal without sending file data.
@@ -1331,7 +1331,7 @@ test("预检失败会释放为该选择预留的上传容量", async ({ appPage:
   expect(preflightCount).toBe(2);
 });
 
-test("终态历史淘汰聚焦行时把焦点移到相邻结果或历史摘要", async ({
+test("Evicting a focused terminal-history row moves focus to an adjacent result or the history summary", async ({
   appPage: page,
 }) => {
   let releaseSecond;
@@ -1453,7 +1453,7 @@ test("终态历史淘汰聚焦行时把焦点移到相邻结果或历史摘要",
   );
 });
 
-test("待处理队列已满时保留失败上传的可恢复终态", async ({
+test("A full pending queue retains recoverable terminal states for failed uploads", async ({
   appPage: page,
 }) => {
   test.setTimeout(60_000);
@@ -1508,7 +1508,7 @@ test("待处理队列已满时保留失败上传的可恢复终态", async ({
   await expect(page.locator(".upload-status")).toHaveCount(513);
 });
 
-test("网络失败后将结果标记未知并冻结后续队列", async ({
+test("Network failure marks the result unknown and freezes subsequent queue entries", async ({
   appPage: page,
 }) => {
   let secondStarted = false;
@@ -1561,7 +1561,7 @@ test("网络失败后将结果标记未知并冻结后续队列", async ({
   })).toBeVisible();
 });
 
-test("XHR 对超限错误响应立即中止且不读取无界 responseText", async ({
+test("XHR immediately aborts oversized error responses without reading unbounded responseText", async ({
   appPage: page,
 }) => {
   await page.route("**/oversized-upload-error.txt", async route => {
@@ -1590,7 +1590,7 @@ test("XHR 对超限错误响应立即中止且不读取无界 responseText", asy
   })).toBeVisible();
 });
 
-test("XHR 在超限认证正文前按响应头刷新会话", async ({
+test("XHR refreshes the session from response headers before reading an oversized authentication body", async ({
   appPage: page,
 }) => {
   let putCount = 0;
@@ -1622,7 +1622,7 @@ test("XHR 在超限认证正文前按响应头刷新会话", async ({
   expect(putCount).toBe(1);
 });
 
-test("Retry-After 到期后先查询原会话再按 not-seen 新建", async ({
+test("After Retry-After expires, the original session is queried before not-seen creates a new session", async ({
   appPage: page,
 }) => {
   await page.clock.install();
@@ -1696,7 +1696,7 @@ test("Retry-After 到期后先查询原会话再按 not-seen 新建", async ({
   expect(uploadIds[1]).not.toBe(uploadIds[0]);
 });
 
-test("无 recovery 或 refresh_target 时不提供或执行上传重试", async ({
+test("Missing recovery or refresh_target neither offers nor executes upload retry", async ({
   appPage: page,
 }) => {
   await page.route("**/no-upload-recovery.txt", route => route.fulfill({
@@ -1737,7 +1737,7 @@ test("无 recovery 或 refresh_target 时不提供或执行上传重试", async 
   await expect(page.locator(".retry-btn")).toHaveCount(0);
 });
 
-test("非法 Retry-After 响应头不会回退到正文延迟", async ({
+test("An invalid Retry-After header must not fall back to a delay in the body", async ({
   appPage: page,
 }) => {
   await page.route("**/invalid-retry-after.txt", route => route.fulfill({
@@ -1766,7 +1766,7 @@ test("非法 Retry-After 响应头不会回退到正文延迟", async ({
   })).toBeEnabled();
 });
 
-test("Problem status 冲突时进入 unknown 且不采纳重放 recovery", async ({
+test("Conflicting Problem status becomes unknown without accepting replay recovery", async ({
   appPage: page,
 }) => {
   let requestCount = 0;
@@ -1797,7 +1797,7 @@ test("Problem status 冲突时进入 unknown 且不采纳重放 recovery", async
   expect(requestCount).toBe(1);
 });
 
-test("重试 HEAD 缺少绑定长度时暂停队列且不启动新会话", async ({
+test("Retry HEAD without a bound length pauses the queue and creates no new session", async ({
   appPage: page,
 }) => {
   let putCount = 0;
@@ -1847,7 +1847,7 @@ test("重试 HEAD 缺少绑定长度时暂停队列且不启动新会话", async
   expect({ putCount, headCount }).toEqual({ putCount: 1, headCount: 1 });
 });
 
-test("同页重试读取非零检查点并只 PATCH 剩余内容", async ({
+test("Retry on the same page reads the nonzero checkpoint and PATCHes only remaining content", async ({
   appPage: page,
 }) => {
   let shortenFirstPut = true;
@@ -1896,7 +1896,7 @@ test("同页重试读取非零检查点并只 PATCH 剩余内容", async ({
   ).toBe("AAAABBBB");
 });
 
-test("状态查询发现完整 running 检查点时用空 PATCH 重入提交", async ({
+test("A complete running checkpoint found by status query reenters commit with an empty PATCH", async ({
   appPage: page,
 }) => {
   const requests = [];
@@ -1957,7 +1957,7 @@ test("状态查询发现完整 running 检查点时用空 PATCH 重入提交", a
   ]);
 });
 
-test("上传槽占用时重试会排队而不是静默失效", async ({
+test("Retry queues when upload slots are occupied instead of failing silently", async ({
   appPage: page,
 }) => {
   let firstPut = true;
@@ -2046,7 +2046,7 @@ test("上传槽占用时重试会排队而不是静默失效", async ({
   expect(firstUploadIds[2]).not.toBe(firstUploadIds[0]);
 });
 
-test("取消只读续传状态查询不会误报提交结果未知", async ({
+test("Cancelling a read-only resume status query does not report an unknown commit outcome", async ({
   appPage: page,
 }) => {
   let releaseStatus;
@@ -2111,7 +2111,7 @@ test("取消只读续传状态查询不会误报提交结果未知", async ({
   );
 });
 
-test("上传进度更新保留取消按钮焦点且发送后的取消保守标记未知", async ({
+test("Upload progress preserves cancel-button focus and conservatively marks cancellation after sending as unknown", async ({
   appPage: page,
 }) => {
   let releaseRequest;
@@ -2194,7 +2194,7 @@ test("上传进度更新保留取消按钮焦点且发送后的取消保守标�
   })).toBeFocused();
 });
 
-test("正文发送后停止空闲计时并将提交确认超时标记为结果未知", async ({
+test("Sending the body stops the idle timer and a commit-confirmation timeout becomes unknown", async ({
   appPage: page,
 }) => {
   await page.clock.install();
@@ -2257,7 +2257,7 @@ test("正文发送后停止空闲计时并将提交确认超时标记为结果�
   releaseRequest();
 });
 
-test("服务端提交结果未知时不提供上传重试", async ({ appPage: page }) => {
+test("An unknown server commit outcome does not offer upload retry", async ({ appPage: page }) => {
   await page.route("**/server-unknown.txt", route => route.fulfill({
     status: 500,
     contentType: "application/problem+json",
@@ -2297,7 +2297,7 @@ test("服务端提交结果未知时不提供上传重试", async ({ appPage: pa
   })).toHaveCount(0);
 });
 
-test("unknown 的 query_upload 只查询状态而不重放上传", async ({
+test("query_upload for unknown results queries status without replaying the upload", async ({
   appPage: page,
 }) => {
   const methods = [];
@@ -2341,7 +2341,7 @@ test("unknown 的 query_upload 只查询状态而不重放上传", async ({
   await expect(page.locator(".upload-queue-message")).toBeHidden();
 });
 
-test("状态查询繁忙时按 Retry-After 只重试 HEAD", async ({ appPage: page }) => {
+test("Busy status queries retry only HEAD according to Retry-After", async ({ appPage: page }) => {
   await page.clock.install();
   const methods = [];
   let headCount = 0;
@@ -2416,7 +2416,7 @@ test("状态查询繁忙时按 Retry-After 只重试 HEAD", async ({ appPage: pa
   expect(methods).toEqual(["PUT", "HEAD", "HEAD"]);
 });
 
-test("状态服务 503 有无 Retry-After 都只允许重试 HEAD", async ({
+test("Status service 503 allows only HEAD retry with or without Retry-After", async ({
   appPage: page,
 }) => {
   await page.clock.install();
@@ -2496,7 +2496,7 @@ test("状态服务 503 有无 Retry-After 都只允许重试 HEAD", async ({
   }
 });
 
-test("状态查询返回持久 unknown 时停止重复查询", async ({ appPage: page }) => {
+test("A persistent unknown status response stops repeated queries", async ({ appPage: page }) => {
   const methods = [];
   await page.route("**/persisted-unknown-upload.txt", route => {
     const request = route.request();
@@ -2546,7 +2546,7 @@ test("状态查询返回持久 unknown 时停止重复查询", async ({ appPage:
   expect(methods).toEqual(["PUT", "HEAD"]);
 });
 
-test("重试状态查询发现已提交终态时不会再次 PUT", async ({ appPage: page }) => {
+test("Retry status queries finding a committed terminal state never PUT again", async ({ appPage: page }) => {
   let putCount = 0;
   await page.route("**/terminal-replay.txt", route => {
     const request = route.request();
@@ -2588,7 +2588,7 @@ test("重试状态查询发现已提交终态时不会再次 PUT", async ({ appP
   expect(putCount).toBe(1);
 });
 
-test("成功状态缺少绑定头时标记未知而不是误报完成", async ({
+test("Success responses without binding headers become unknown rather than falsely complete", async ({
   appPage: page,
 }) => {
   await page.route("**/invalid-success.txt", route => route.fulfill({
@@ -2605,7 +2605,7 @@ test("成功状态缺少绑定头时标记未知而不是误报完成", async ({
   );
 });
 
-test("同一页面重复逻辑目标只会排入一次", async ({ appPage: page }) => {
+test("The same logical destination is queued only once on one page", async ({ appPage: page }) => {
   let putCount = 0;
   await page.route("**/duplicate-target.txt", route => {
     putCount++;
@@ -2638,7 +2638,7 @@ test("同一页面重复逻辑目标只会排入一次", async ({ appPage: page 
   expect(putCount).toBe(1);
 });
 
-test("同路径的新上传占用期间旧失败行不能重试", async ({
+test("A failed old upload cannot retry while a new upload occupies the same path", async ({
   appPage: page,
 }) => {
   let putCount = 0;
@@ -2712,7 +2712,7 @@ test("同路径的新上传占用期间旧失败行不能重试", async ({
   );
 });
 
-test("上传预检等待期间的旧失败重试仍保持目标唯一", async ({
+test("Retrying an old failed upload during preflight still preserves destination uniqueness", async ({
   appPage: page,
 }) => {
   let preflightCount = 0;
@@ -2819,7 +2819,7 @@ test("上传预检等待期间的旧失败重试仍保持目标唯一", async ({
   );
 });
 
-test("认证失效会暂停队列并允许直接刷新恢复", async ({ appPage: page }) => {
+test("Authentication expiry pauses the queue and permits direct refresh recovery", async ({ appPage: page }) => {
   const files = [
     {
       name: "queue-auth-a.txt",
@@ -2854,7 +2854,7 @@ test("认证失效会暂停队列并允许直接刷新恢复", async ({ appPage:
   await expect(page.locator('.upload-status[aria-label$="upload complete"]')).toHaveCount(2);
 });
 
-test("刷新后不会按同名同大小同 mtime 自动续传另一份内容", async ({
+test("Refresh does not automatically resume different content with the same name, size, and mtime", async ({
   appPage: page,
 }) => {
   const target = currentLogicalChild(page, "resume-identity.txt");
@@ -2912,7 +2912,7 @@ test("刷新后不会按同名同大小同 mtime 自动续传另一份内容", a
   ).toBe("BBBB2222");
 });
 
-test("选择超过 128 个文件不会创建或截断浏览器续传记录", async ({
+test("Selecting more than 128 files neither creates nor truncates browser resume records", async ({
   appPage: page,
 }) => {
   test.setTimeout(60_000);
@@ -2937,7 +2937,7 @@ test("选择超过 128 个文件不会创建或截断浏览器续传记录", asy
   expect(await page.evaluate(() => localStorage.length)).toBe(0);
 });
 
-test("拖放被阻止，文件夹选择器保留相对目录", async ({ appPage: page }) => {
+test("Drag and drop is blocked while the directory picker preserves relative paths", async ({ appPage: page }) => {
   const dropPrevented = await page.evaluate(() => {
     const transfer = new DataTransfer();
     transfer.items.add(new File(["ignored"], "dropped.txt"));
@@ -2966,7 +2966,7 @@ test("拖放被阻止，文件夹选择器保留相对目录", async ({ appPage:
   ).toBe("folder content");
 });
 
-test("等待中的上传可取消且不会阻塞后续重新选择", async ({
+test("Pending uploads can be cancelled without blocking subsequent selection", async ({
   appPage: page,
 }) => {
   let releaseFirst;

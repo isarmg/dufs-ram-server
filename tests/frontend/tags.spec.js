@@ -46,7 +46,7 @@ async function expectSharedNavigation(page) {
   ).toEqual(["#files", "#tags", "#status"]);
 }
 
-test("目录表直接显示标签列，搜索内的标签条件在窄屏也不溢出", async ({
+test("The directory table displays a tag column and tag search conditions fit narrow screens", async ({
   appPage: page,
 }, testInfo) => {
   await expectSharedNavigation(page);
@@ -80,7 +80,7 @@ test("目录表直接显示标签列，搜索内的标签条件在窄屏也不�
   }
 });
 
-test("文件行编辑标签、组合搜索与历史导航使用同一目录表", async ({
+test("File tag editing, combined search, and history navigation use the same directory table", async ({
   appPage: page,
 }, testInfo) => {
   const tagName = `目录标签-${randomUUID().slice(0, 8)}`;
@@ -208,7 +208,7 @@ test("文件行编辑标签、组合搜索与历史导航使用同一目录表",
   expect((await downloaded).suggestedFilename()).toBe("download-me.txt");
 });
 
-test("标签行连续添加多个标签，切换文件后仅修改当前文件", async ({ appPage: page }) => {
+test("Adding multiple tags consecutively and switching files modifies only the current file", async ({ appPage: page }) => {
   const names = ["多个标签甲-", "多个标签乙-"].map(prefix => prefix + randomUUID().slice(0, 8));
   await page.locator('.xcss-header-navigation a[href="#tags"]').click();
   for (const name of names) {
@@ -248,7 +248,7 @@ test("标签行连续添加多个标签，切换文件后仅修改当前文件",
   await expect(page.locator(".is-tag-selected")).toHaveCount(0);
 });
 
-test("子目录及特殊文件名的标签行仍指向当前目录的原文件", async ({ appPage: page }) => {
+test("Tag rows in subdirectories and for special filenames still target the original file in the current directory", async ({ appPage: page }) => {
   const directory = new URL(page.url()).pathname;
   const special = "special & # + 中文.txt";
   await page.locator('[data-file-action="tags"]').click();

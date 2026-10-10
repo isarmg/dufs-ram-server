@@ -3,7 +3,7 @@ const { defineConfig } = require("@playwright/test");
 function requiredPort(name) {
   const port = Number(process.env[name]);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`请通过 tests/frontend/run.mjs 分配 ${name}`);
+    throw new Error(`Use tests/frontend/run.mjs to allocate ${name}`);
   }
   return port;
 }
@@ -11,7 +11,7 @@ function requiredPort(name) {
 const port = requiredPort("XCZS_FRONTEND_TEST_PORT");
 const projectName = process.env.XCZS_FRONTEND_TEST_PROJECT;
 if (!["chromium", "firefox", "edge"].includes(projectName)) {
-  throw new Error("请通过 tests/frontend/run.mjs 选择浏览器测试项目");
+  throw new Error("Use tests/frontend/run.mjs to select browser test projects");
 }
 
 const browser = projectName === "edge"

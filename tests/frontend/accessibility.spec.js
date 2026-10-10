@@ -31,7 +31,7 @@ function walkJavaScript(root) {
   });
 }
 
-test("主要文件管理控件使用原生语义和键盘操作", async ({ appPage: page }) => {
+test("Primary file controls use native semantics and keyboard interaction", async ({ appPage: page }) => {
   const root = page.getByRole("link", { name: "Root", exact: true });
   await expect(root).toBeVisible();
   await expect(root).toHaveAttribute("href", "/");
@@ -160,7 +160,7 @@ test("主要文件管理控件使用原生语义和键盘操作", async ({ appPa
   }
 });
 
-test("二级菜单包含五个模式按钮，目录表不再包含操作列", async ({ appPage: page }) => {
+test("The secondary menu has five mode buttons and the directory table has no action column", async ({ appPage: page }) => {
   await expect(page.locator(".paths-table .cell-actions")).toHaveCount(0);
   const actions = page.locator(".xczs-file-actions [data-file-action]");
   await expect(actions).toHaveCount(5);
@@ -177,7 +177,7 @@ test("二级菜单包含五个模式按钮，目录表不再包含操作列", as
   }
 });
 
-test("1280px 桌面在 400% 缩放时可在 320 CSS 像素内回流", async ({
+test("A 1280px desktop at 400% zoom reflows within 320 CSS pixels", async ({
   appPage: page,
 }) => {
   await page.setViewportSize({ width: 320, height: 800 });
@@ -238,7 +238,7 @@ test("1280px 桌面在 400% 缩放时可在 320 CSS 像素内回流", async ({
   expect(layout.actionRight).toBeLessThanOrEqual(layout.clientWidth);
 });
 
-test("强制颜色模式保留行内编辑器焦点与对话框语义", async ({
+test("Forced colors preserve inline editor focus and dialog semantics", async ({
   appPage: page,
 }) => {
   await page.emulateMedia({ forcedColors: "active" });
@@ -270,13 +270,13 @@ test("强制颜色模式保留行内编辑器焦点与对话框语义", async ({
   await expect(trigger).toBeFocused();
 });
 
-test("登录页通过 axe WCAG A/AA 自动扫描", async ({ axePage: page }) => {
+test("The login page passes the axe WCAG A/AA scan", async ({ axePage: page }) => {
   await page.goto("/__xczs__/login");
   const results = await axe(page).analyze();
   expect(results.violations).toEqual([]);
 });
 
-test("文件页、行内编辑器和操作对话框通过 axe WCAG A/AA 自动扫描", async ({
+test("File pages, inline editors, and operation dialogs pass the axe WCAG A/AA scan", async ({
   axePage: page,
 }, testInfo) => {
   // This case deliberately runs three axe analyses. On the fully-parallel
@@ -303,7 +303,7 @@ test("文件页、行内编辑器和操作对话框通过 axe WCAG A/AA 自动�
   await page.keyboard.press("Escape");
 });
 
-test("生产前端源码不包含动态 HTML 注入接口或浏览器原生模态调用", async () => {
+test("Production frontend source has no dynamic HTML injection or native browser modal calls", async () => {
   const modulesDir = resolve(__dirname, "../../web/modules");
   const files = [
     resolve(__dirname, "../../web/index.ts"),
@@ -321,7 +321,7 @@ test("生产前端源码不包含动态 HTML 注入接口或浏览器原生模�
   }
 });
 
-test("中英文界面一致，切换保留会话、文件类型及用户文件名", async ({ appPage: page }) => {
+test("Chinese and English interfaces stay consistent while language switching preserves sessions, file types, and user filenames", async ({ appPage: page }) => {
   const switchToChinese = page.getByRole("button", { name: "Switch to Chinese", exact: true });
   await switchToChinese.click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");

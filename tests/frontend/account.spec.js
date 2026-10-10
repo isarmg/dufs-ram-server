@@ -1,6 +1,6 @@
 const { test, expect } = require('./fixtures');
 
-test('人物图标修改单一管理员并保留文件访问', async ({ appPage: page }) => {
+test('The person icon updates the single administrator while preserving file access', async ({ appPage: page }) => {
   test.slow();
   const originalUrl = page.url();
   const entry = page.getByRole('button', { name: 'Account settings', exact: true });

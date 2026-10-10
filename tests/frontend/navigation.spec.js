@@ -1,7 +1,7 @@
 const { randomUUID } = require("node:crypto");
 const { test, expect, selectFiles } = require("./fixtures.js");
 
-test("菜单和浏览器历史保留同一文档、目录列表及输入状态", async ({
+test("Menus and browser history preserve the same document, directory listing, and input state", async ({
   appPage: page,
 }) => {
   const originalUrl = new URL(page.url());
@@ -73,7 +73,7 @@ test("菜单和浏览器历史保留同一文档、目录列表及输入状态",
   await expect(page.locator("#xczs-root > header")).toHaveCount(1);
 });
 
-test("上传期间切换所有菜单不会卸载任务或触发离开页面确认", async ({
+test("Switching every menu during upload neither unmounts tasks nor prompts to leave the page", async ({
   appPage: page,
 }) => {
   const originalPath = new URL(page.url()).pathname;
@@ -152,7 +152,7 @@ test("上传期间切换所有菜单不会卸载任务或触发离开页面确�
   expect(requests).toHaveLength(1);
 });
 
-test("旧标签书签和新的菜单深链接进入同一个应用", async ({ appPage: page }) => {
+test("Old tag bookmarks and new menu deep links enter the same application", async ({ appPage: page }) => {
   const directory = new URL(page.url()).pathname;
   for (const [legacy, canonical, selector] of [
     ["files", "files", ".paths-table"],
@@ -186,7 +186,7 @@ test("旧标签书签和新的菜单深链接进入同一个应用", async ({ ap
   ).toBeVisible();
 });
 
-test("旧的标签浏览地址仍显示同一目录列表且可以新建文件", async ({
+test("Old tag browsing URLs retain the same directory listing and allow creating files", async ({
   appPage: page,
 }) => {
   const directory = new URL(page.url()).pathname;
@@ -204,7 +204,7 @@ test("旧的标签浏览地址仍显示同一目录列表且可以新建文件",
   expect(new URL(page.url()).pathname).toBe(directory);
 });
 
-test("统一应用的标签请求在会话失效后返回登录页", async ({ appPage: page }) => {
+test("Unified application tag requests return to login when the session expires", async ({ appPage: page }) => {
   await page.context().clearCookies();
   await page
     .getByRole("navigation", { name: "Main navigation" })

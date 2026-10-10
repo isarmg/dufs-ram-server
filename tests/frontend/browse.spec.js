@@ -11,7 +11,7 @@ const {
 const dangerousName = `危险 <img src=x onerror=alert(1)> & "'.txt`;
 const listingRevision = "a".repeat(64);
 
-test("危险文件名始终作为纯文本节点显示", async ({ appPage: page }) => {
+test("Dangerous filenames always render as plain text nodes", async ({ appPage: page }) => {
   const link = page.getByRole("link", { name: dangerousName, exact: true });
   await expect(link).toBeVisible();
   expect(await link.textContent()).toBe(dangerousName);
@@ -23,7 +23,7 @@ test("危险文件名始终作为纯文本节点显示", async ({ appPage: page 
   ).toBe(false);
 });
 
-test("特殊字符搜索保持完整查询词", async ({ appPage: page }) => {
+test("Search preserves the entire query containing special characters", async ({ appPage: page }) => {
   const query = "special & # + 中文";
   await page.getByLabel("Search files or folders").fill(query);
   await Promise.all([
@@ -35,7 +35,7 @@ test("特殊字符搜索保持完整查询词", async ({ appPage: page }) => {
   ).toBeVisible();
 });
 
-test("排序链接只传播支持的参数并暴露排序状态", async ({ appPage: page }) => {
+test("Sort links propagate only supported parameters and expose the sort state", async ({ appPage: page }) => {
   const target = new URL(page.url());
   target.search = "?q=existing&unused=1";
   await page.goto(target.href);
@@ -49,7 +49,7 @@ test("排序链接只传播支持的参数并暴露排序状态", async ({ appPa
   await expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
 });
 
-test("目录 API 每页最多加载 200 项并可继续追加", async ({ page }, testInfo) => {
+test("The directory API loads at most 200 entries per page and supports appending more pages", async ({ page }, testInfo) => {
   let calls = 0;
   await page.route("**/__xczs__/api/list?**", async route => {
     calls++;
@@ -92,7 +92,7 @@ test("目录 API 每页最多加载 200 项并可继续追加", async ({ page },
   expect(calls).toBe(2);
 });
 
-test("目录请求超时后中止并提供可重试状态", async ({ appPage: page }) => {
+test("Directory requests abort on timeout and expose a retryable state", async ({ appPage: page }) => {
   let calls = 0;
   let releaseRequest;
   const requestGate = new Promise(resolve => {
@@ -142,7 +142,7 @@ test("目录请求超时后中止并提供可重试状态", async ({ appPage: pa
   releaseRequest();
 });
 
-test("不存在的目录直接显示可上传空态且不请求列表", async ({
+test("Missing directories display an uploadable empty state without requesting a listing", async ({
   appPage: page,
 }) => {
   let listRequests = 0;
@@ -159,7 +159,7 @@ test("不存在的目录直接显示可上传空态且不请求列表", async ({
   expect(listRequests).toBe(0);
 });
 
-test("搜索支持 128 个多字节字符", async ({ appPage: page }) => {
+test("Search accepts 128 multibyte characters", async ({ appPage: page }) => {
   const query = "文".repeat(128);
   const responsePromise = page.waitForResponse(response => {
     const url = new URL(response.url());
@@ -173,7 +173,7 @@ test("搜索支持 128 个多字节字符", async ({ appPage: page }) => {
   await expect(page.locator(".list-status")).not.toContainText("Unable to load");
 });
 
-test("文件链接下载附件且 Range 下载保持可用", async ({ appPage: page }) => {
+test("File links download attachments and preserve Range downloads", async ({ appPage: page }) => {
   const target = currentUrl(page, "download-me.txt");
   const fileLink = page.getByRole("link", {
     name: "download-me.txt",
@@ -206,7 +206,7 @@ test("文件链接下载附件且 Range 下载保持可用", async ({ appPage: p
   });
 });
 
-test("目录页在整页校验失败时不提交部分 DOM", async ({ appPage: page }) => {
+test("A directory page does not commit partial DOM when whole-page validation fails", async ({ appPage: page }) => {
   await page.route("**/__xczs__/api/list?**", route => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -228,7 +228,7 @@ test("目录页在整页校验失败时不提交部分 DOM", async ({ appPage: p
   await expect(page.locator(".paths-table tbody tr")).toHaveCount(0);
 });
 
-test("目录页拒绝重复游标且保留上一页", async ({ appPage: page }) => {
+test("Directory pagination rejects duplicate cursors and preserves the previous page", async ({ appPage: page }) => {
   let calls = 0;
   await page.route("**/__xczs__/api/list?**", route => {
     calls++;
@@ -262,7 +262,7 @@ test("目录页拒绝重复游标且保留上一页", async ({ appPage: page }) 
   })).toHaveCount(0);
 });
 
-test("大量目录项使用可访问窗口限制 DOM 数量", async ({ appPage: page }) => {
+test("Large directories limit DOM entries with an accessible window", async ({ appPage: page }) => {
   test.slow();
   let created = false;
   await page.route("**/__xczs__/api/list?**", route => {

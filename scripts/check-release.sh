@@ -80,14 +80,14 @@ else
   run cargo audit --deny yanked
 fi
 
-# 发布自测统一聚合 normalize-sbom、third-party notices 与 npm cache seed，
-# 避免在总检查入口重复执行或让三者的验证范围发生漂移。
+# The release self-test covers normalize-sbom, third-party notices and npm cache seeds
+# together, avoiding duplicate execution or inconsistent coverage in this entry point.
 run ./scripts/package-release.sh --self-test
 # Deployment smoke compiles the real binary and therefore needs embedded Web
 # assets even in a freshly extracted, isolated quality-gate source tree.
 if [[ "${XCZS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then
-  # 发布输出路径可以包含 shell 元字符，但 Nginx/sed 部署夹具的临时路径
-  # 只接受安全字符。部署脚本仍会在 /tmp 下创建并清理私有随机目录。
+  # Release output paths may contain shell metacharacters, but the Nginx/sed
+  # deployment fixture requires safe temporary paths. It creates and removes private random directories in /tmp.
   run env TMPDIR=/tmp ./scripts/check-deployment.sh
 else
   run ./scripts/check-deployment.sh
@@ -105,11 +105,11 @@ run bash scripts/check-release-runtime.sh "$release_binary"
 run ./node_modules/.bin/tsc --version
 run env XCZS_FRONTEND_BINARY="$release_binary" npm run test:frontend:run
 if [[ "${XCZS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then
-  printf '\n==> SKIP: 隔离正式发布门不运行未固定的宿主 Microsoft Edge；Chromium 与 Firefox 已作为必需矩阵执行。\n'
+  printf '\n==> SKIP: The isolated release gate does not run an unpinned host Microsoft Edge; Chromium and Firefox are required matrix entries.\n'
 elif command -v microsoft-edge >/dev/null 2>&1 || command -v microsoft-edge-stable >/dev/null 2>&1; then
   run env XCZS_FRONTEND_BINARY="$release_binary" npm run test:frontend:run -- --edge --project=edge
 else
-  printf '\n==> SKIP: 未安装 Microsoft Edge；Chromium 与 Firefox 已作为必需矩阵执行。\n'
+  printf '\n==> SKIP: Microsoft Edge is not installed; Chromium and Firefox are required matrix entries.\n'
 fi
 
 if [[ "${XCZS_ISOLATED_QUALITY_GATE:-}" == "1" ]]; then

@@ -162,7 +162,7 @@ systemctl start xczs
 
 ## 6. 构建输入与发行校验
 
-xcss 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 1.0.0 / `9637806055b7d7a18be206f0b83e9b22b73902db`，一个 @xcss/web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Xczs 1.0.0 的独立源码树构建、浏览器回归和发行核验由当前提交的 CI 与标签工作流执行。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
+xcss 是编译期供应链输入，不是运行时共享服务。当前 Rust 固定正式 1.0.0 / `627d988a4ed471469ed4fdce8af0ea6b5c131ce6`，一个 @xcss/web 包使用同版 GitHub Release tarball 和锁文件 integrity，无相邻工作区依赖。Xczs 1.0.0 的独立源码树构建、浏览器回归和发行核验由当前提交的 CI 与标签工作流执行。后续发行仍须执行同样门禁；依赖不可取得或身份不符时停止，不能复制共享类型、目标守卫或认证实现继续构建。
 
 `xcss-web-build.json` 声明根 Web、`build:platform`、`web/runtime-dist` 和 Xczs Cargo package。
 正式源码构建通过 `npm run build:server:release` 完成前端→Rust→实际 binary 资源验收。`build:platform`
@@ -259,7 +259,7 @@ test ! -L "$release_dir"
 expected_version=1.0.0
 expected_sha=0123456789abcdef0123456789abcdef01234567
 expected_target=x86_64-unknown-linux-gnu
-expected_common_revision=9637806055b7d7a18be206f0b83e9b22b73902db
+expected_common_revision=627d988a4ed471469ed4fdce8af0ea6b5c131ce6
 test "$("$release_dir/xczs" --version)" = \
   "xczs $expected_version (git $expected_sha) xcss=$expected_common_revision"
 grep -Fx "format=xczs-build-environment-v1" \

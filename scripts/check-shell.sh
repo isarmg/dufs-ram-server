@@ -56,5 +56,5 @@ elif [[ "${XCZS_REQUIRE_SHELLCHECK:-}" == "1" ]]; then
   printf 'required command is unavailable: shellcheck\n' >&2
   exit 1
 else
-  printf 'SKIP: 未安装 ShellCheck；CI 会固定使用 0.11.0 并强制执行。\n'
+  printf 'SKIP: ShellCheck is not installed; CI requires and pins version 0.11.0.\n'
 fi

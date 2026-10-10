@@ -134,7 +134,7 @@ async function seedEmptyFile(page, name) {
   expect(response.status()).toBe(201);
 }
 
-test("立即新建空文件遇到 429 not-started 不查询也不重放 PUT", async ({
+test("Immediate empty-file creation neither queries nor replays PUT after 429 not-started", async ({
   appPage: page,
 }) => {
   let putCount = 0;
@@ -181,7 +181,7 @@ test("立即新建空文件遇到 429 not-started 不查询也不重放 PUT", as
   await errorDialog.getByRole("button", { name: "Close" }).click();
 });
 
-test("立即新建空文件异常 2xx 只用同一 upload ID 做一次 HEAD 确认", async ({
+test("Unexpected 2xx on immediate empty-file creation permits one HEAD confirmation with the same upload ID", async ({
   appPage: page,
 }) => {
   let putCount = 0;
@@ -235,7 +235,7 @@ test("立即新建空文件异常 2xx 只用同一 upload ID 做一次 HEAD 确�
   await expect(actionDialog(page, "Create file failed")).toBeHidden();
 });
 
-test("新建文件夹立即创建 newfolder 并进入原位编辑", async ({
+test("New folders immediately create newfolder and enter inline editing", async ({
   appPage: page,
 }) => {
   const root = currentDirectoryPath(page);
@@ -279,7 +279,7 @@ test("新建文件夹立即创建 newfolder 并进入原位编辑", async ({
   await expect(rowByName(page, "created-by-browser")).toBeVisible();
 });
 
-test("新建空文件立即 PUT newfile 并进入原位编辑", async ({
+test("New empty files immediately PUT newfile and enter inline editing", async ({
   appPage: page,
 }) => {
   const responsePromise = page.waitForResponse(
@@ -305,7 +305,7 @@ test("新建空文件立即 PUT newfile 并进入原位编辑", async ({
   await expect(rowByName(page, "newfile")).toBeVisible();
 });
 
-test("新建完成时清除并发启动的旧行编辑器", async ({ appPage: page }) => {
+test("Completed creation clears an older row editor started concurrently", async ({ appPage: page }) => {
   let releasePreflight;
   let markPreflightStarted;
   const preflightGate = new Promise(resolve => {
@@ -337,7 +337,7 @@ for (const [label, createdName] of [
   ["New folder", "newfolder"],
   ["New empty file", "newfile"],
 ]) {
-  test(`${label} 提交后无需等待 revision 查询就使列表失效`, async ({
+  test(`${label} invalidates the listing immediately after submission without waiting for the revision query`, async ({
     appPage: page,
   }) => {
     let releasePreflight;
@@ -368,7 +368,7 @@ for (const [label, createdName] of [
   });
 }
 
-test("文件夹默认名仅在可信冲突后递增且每个候选使用新操作 ID", async ({
+test("Default folder names increment only after trusted conflicts and each candidate uses a new operation ID", async ({
   appPage: page,
 }) => {
   await seedFolder(page, "newfolder");
@@ -402,7 +402,7 @@ test("文件夹默认名仅在可信冲突后递增且每个候选使用新操�
   expect(new Set(requests.map(request => request.operationId)).size).toBe(3);
 });
 
-test("job 中错误状态的 path_exists 不得递增文件夹默认名", async ({
+test("A job error with path_exists must not increment the default folder name", async ({
   appPage: page,
 }) => {
   const requests = [];
@@ -464,7 +464,7 @@ test("job 中错误状态的 path_exists 不得递增文件夹默认名", async 
   await expect(inlineNameInput(page)).toHaveCount(0);
 });
 
-test("两种新建共享单一 pending，快速连点不会并发创建或覆盖编辑器", async ({
+test("Both creation actions share one pending state so rapid clicks neither create concurrently nor replace the editor", async ({
   appPage: page,
 }) => {
   let releaseFolder;
@@ -506,7 +506,7 @@ test("两种新建共享单一 pending，快速连点不会并发创建或覆盖
   expect(filePuts).toBe(0);
 });
 
-test("空文件普通现存目标在 not-started 冲突后直接递增且不 discard", async ({
+test("An existing empty-file target increments immediately after a not-started conflict without discard", async ({
   appPage: page,
 }) => {
   await seedEmptyFile(page, "newfile");
@@ -545,7 +545,7 @@ test("空文件普通现存目标在 not-started 冲突后直接递增且不 dis
   expect(discards).toEqual([]);
 });
 
-test("空文件 awaiting-confirmation 冲突先 discard 成功再递增", async ({
+test("An empty-file awaiting-confirmation conflict increments only after successful discard", async ({
   appPage: page,
 }) => {
   const puts = [];
@@ -621,7 +621,7 @@ test("空文件 awaiting-confirmation 冲突先 discard 成功再递增", async 
   }]);
 });
 
-test("空文件 rejected 冲突无需 discard 即可用新 ID 尝试下一候选", async ({
+test("An empty-file rejected conflict tries the next candidate with a new ID without discard", async ({
   appPage: page,
 }) => {
   const puts = [];
@@ -689,7 +689,7 @@ test("空文件 rejected 冲突无需 discard 即可用新 ID 尝试下一候选
   expect(discards).toBe(0);
 });
 
-test("HTTP 500 的 destination_exists 不得递增空文件默认名", async ({
+test("HTTP 500 destination_exists must not increment the default empty-file name", async ({
   appPage: page,
 }) => {
   const puts = [];
@@ -735,7 +735,7 @@ test("HTTP 500 的 destination_exists 不得递增空文件默认名", async ({
   await expect(inlineNameInput(page)).toHaveCount(0);
 });
 
-test("新建文件夹 outcome unknown 时不尝试下一个候选名", async ({
+test("Unknown folder creation outcomes must not try the next candidate name", async ({
   appPage: page,
 }) => {
   const requests = [];
@@ -793,7 +793,7 @@ test("新建文件夹 outcome unknown 时不尝试下一个候选名", async ({
   })).toBeVisible();
 });
 
-test("discard 结果不可信时不再 PUT 下一个空文件候选", async ({
+test("Untrusted discard results prevent PUT of the next empty-file candidate", async ({
   appPage: page,
 }) => {
   const puts = [];
@@ -842,7 +842,7 @@ test("discard 结果不可信时不再 PUT 下一个空文件候选", async ({
   );
 });
 
-test("使用独立重命名接口并刷新当前目录", async ({ appPage: page }) => {
+test("Renaming uses the dedicated endpoint and refreshes the current directory", async ({ appPage: page }) => {
   const source = currentLogicalChild(page, "rename-me.txt");
   const directoryUrl = page.url();
   const responsePromise = page.waitForResponse(
@@ -878,7 +878,7 @@ test("使用独立重命名接口并刷新当前目录", async ({ appPage: page 
   await expect(rowByName(page, "rename-me.txt")).toHaveCount(0);
 });
 
-test("慢重命名进入 busy 时同步 blur 不会重复提交", async ({
+test("Synchronous blur during a slow busy rename must not submit twice", async ({
   appPage: page,
 }) => {
   let releaseRename;
@@ -920,7 +920,7 @@ test("慢重命名进入 busy 时同步 blur 不会重复提交", async ({
   expect(renameRequests).toBe(1);
 });
 
-test("行内重命名支持 Tab、失焦提交和 Escape 取消且全局只有一个编辑器", async ({
+test("Inline rename supports Tab, blur submission, and Escape cancellation with only one editor globally", async ({
   appPage: page,
 }) => {
   const requests = [];
@@ -969,7 +969,7 @@ test("行内重命名支持 Tab、失焦提交和 Escape 取消且全局只有�
   ]);
 });
 
-test("进入原位编辑时不自动选中文本并将光标放在名称编辑位置", async ({
+test("Entering inline editing avoids automatic selection and places the caret at the name editing position", async ({
   appPage: page,
 }) => {
   await chooseFileAction(page, "rename", "existing-folder");
@@ -989,7 +989,7 @@ test("进入原位编辑时不自动选中文本并将光标放在名称编辑�
   await inlineNameInput(page).press("Escape");
 });
 
-test("IME 组合输入中的 Escape 不取消编辑，普通 Escape 才取消", async ({
+test("Escape during IME composition preserves editing while ordinary Escape cancels it", async ({
   appPage: page,
 }) => {
   let renameRequests = 0;
@@ -1019,7 +1019,7 @@ test("IME 组合输入中的 Escape 不取消编辑，普通 Escape 才取消", 
   expect(renameRequests).toBe(0);
 });
 
-test("搜索和排序状态下仍先原位改名，结束后按过滤器刷新", async ({
+test("Search and sort states still rename inline before refreshing through the active filters", async ({
   appPage: page,
 }) => {
   const url = new URL(page.url());
@@ -1048,7 +1048,7 @@ test("搜索和排序状态下仍先原位改名，结束后按过滤器刷新",
   await expect(trigger).toBeFocused();
 });
 
-test("使用独立移动接口保留名称并进入目标目录", async ({
+test("Moving uses the dedicated endpoint, preserves the name, and enters the destination directory", async ({
   appPage: page,
 }) => {
   const source = currentLogicalChild(page, "rename-me.txt");
@@ -1082,7 +1082,7 @@ test("使用独立移动接口保留名称并进入目标目录", async ({
   ).toBeVisible();
 });
 
-test("重命名目标存在时只有确认后才显式覆盖", async ({
+test("An existing rename target permits explicit overwrite only after confirmation", async ({
   appPage: page,
   context,
 }) => {
@@ -1147,7 +1147,7 @@ test("重命名目标存在时只有确认后才显式覆盖", async ({
   expect(await contentResponse.text()).toBe("replacement content");
 });
 
-test("重命名冲突缺少目标 revision 时拒绝覆盖确认", async ({
+test("Rename conflicts without a destination revision reject overwrite confirmation", async ({
   appPage: page,
 }) => {
   let renameRequests = 0;
@@ -1183,7 +1183,7 @@ test("重命名冲突缺少目标 revision 时拒绝覆盖确认", async ({
   expect(renameRequests).toBe(1);
 });
 
-test("HTTP 500 的 destination_exists 不得授权重命名覆盖", async ({
+test("HTTP 500 destination_exists must not authorize rename overwrite", async ({
   appPage: page,
 }) => {
   let renameRequests = 0;
@@ -1220,7 +1220,7 @@ test("HTTP 500 的 destination_exists 不得授权重命名覆盖", async ({
   expect(renameRequests).toBe(1);
 });
 
-test("重命名源 revision 过期时关闭编辑器并刷新列表", async ({
+test("An expired rename source revision closes the editor and refreshes the listing", async ({
   appPage: page,
 }) => {
   let listRequests = 0;
@@ -1258,7 +1258,7 @@ test("重命名源 revision 过期时关闭编辑器并刷新列表", async ({
   expect(renameRequests).toBe(1);
 });
 
-test("覆盖确认后目标 revision 过期时不重试并刷新列表", async ({
+test("An expired destination revision after overwrite confirmation refreshes without retry", async ({
   appPage: page,
 }) => {
   let listRequests = 0;
@@ -1308,7 +1308,7 @@ test("覆盖确认后目标 revision 过期时不重试并刷新列表", async (
   expect(renameRequests).toBe(2);
 });
 
-test("重命名结果 unknown 时不采纳正文冲突码发起覆盖", async ({
+test("An unknown rename result must not use the body conflict code to initiate overwrite", async ({
   appPage: page,
 }) => {
   const source = currentLogicalChild(page, "overwrite-source.txt");
@@ -1370,7 +1370,7 @@ test("重命名结果 unknown 时不采纳正文冲突码发起覆盖", async ({
   await expect(actionDialog(page, "Overwrite destination?")).toBeHidden();
 });
 
-test("删除失败时显示错误并保留目录行", async ({ appPage: page }) => {
+test("Failed deletion displays an error and retains the directory row", async ({ appPage: page }) => {
   await page.route("**/delete-me.txt", async route => {
     if (route.request().method() === "DELETE") {
       await route.fulfill({
@@ -1408,7 +1408,7 @@ test("删除失败时显示错误并保留目录行", async ({ appPage: page }) 
   await errorDialog.getByRole("button", { name: "Close" }).click();
 });
 
-test("删除目标 revision 过期时不删除并刷新列表", async ({
+test("An expired deletion target revision refreshes without deleting", async ({
   appPage: page,
 }) => {
   let deleteRequests = 0;
@@ -1446,7 +1446,7 @@ test("删除目标 revision 过期时不删除并刷新列表", async ({
   expect(deleteRequests).toBe(1);
 });
 
-test("会话轮换后的 CSRF 响应直接刷新且不查询未登记操作", async ({
+test("A CSRF response after session rotation refreshes directly without querying an unregistered operation", async ({
   appPage: page,
 }) => {
   let statusQueries = 0;
@@ -1470,7 +1470,7 @@ test("会话轮换后的 CSRF 响应直接刷新且不查询未登记操作", as
   expect(statusQueries).toBe(0);
 });
 
-test("取消认证重载后下一次 401 仍会再次请求重载", async ({
+test("After cancelled authentication reload, the next 401 requests reload again", async ({
   appPage: page,
 }) => {
   let releaseUpload;
@@ -1542,7 +1542,7 @@ test("取消认证重载后下一次 401 仍会再次请求重载", async ({
   );
 });
 
-test("提交结果不确定时只查询一次且不盲目重试", async ({ appPage: page }) => {
+test("An uncertain submission outcome is queried once without blind retries", async ({ appPage: page }) => {
   await page.clock.install();
   let releaseRequest;
   let operationId = "";
@@ -1606,7 +1606,7 @@ test("提交结果不确定时只查询一次且不盲目重试", async ({ appPa
   releaseRequest();
 });
 
-test("状态查询确认成功后安全更新页面", async ({ appPage: page }) => {
+test("A successful status query updates the page safely", async ({ appPage: page }) => {
   await page.clock.install();
   let releaseRequest;
   let operationId = "";
@@ -1648,7 +1648,7 @@ test("状态查询确认成功后安全更新页面", async ({ appPage: page }) 
   releaseRequest();
 });
 
-test("作业查询拒绝矛盾头和非法成功状态码", async ({ appPage: page }) => {
+test("Job queries reject contradictory headers and invalid success status codes", async ({ appPage: page }) => {
   let responseVariant = 0;
   await page.route("**/__xczs__/api/jobs/*", route => {
     const operationId = new URL(route.request().url()).pathname.split("/").pop();
@@ -1690,7 +1690,7 @@ test("作业查询拒绝矛盾头和非法成功状态码", async ({ appPage: pa
   }
 });
 
-test("删除成功后更新已加载数量并移动焦点", async ({ appPage: page }) => {
+test("Successful deletion updates the loaded count and moves focus", async ({ appPage: page }) => {
   let listingRequests = 0;
   await page.route("**/__xczs__/api/list?**", route => {
     listingRequests++;
@@ -1725,7 +1725,7 @@ test("删除成功后更新已加载数量并移动焦点", async ({ appPage: pa
   ).toBe(true);
 });
 
-test("连续目录变化冲突只自动重试一次", async ({ appPage: page }) => {
+test("Consecutive directory-change conflicts retry automatically only once", async ({ appPage: page }) => {
   let listingRequests = 0;
   await page.route("**/__xczs__/api/list?**", route => {
     listingRequests++;
@@ -1740,7 +1740,7 @@ test("连续目录变化冲突只自动重试一次", async ({ appPage: page }) 
   expect(listingRequests).toBe(2);
 });
 
-test("写入挂起期间新建置顶不会让旧 index 删除错误行", async ({
+test("Creating a pinned entry during pending writes must not let an old index delete the wrong row", async ({
   appPage: page,
 }) => {
   let releaseDelete;
@@ -1799,7 +1799,7 @@ test("写入挂起期间新建置顶不会让旧 index 删除错误行", async (
   expect(renameRequests).toBe(0);
 });
 
-test("非法行内名称就地标错且不产生重命名请求", async ({ appPage: page }) => {
+test("Invalid inline names show an inline error without rename requests", async ({ appPage: page }) => {
   let renameRequests = 0;
   page.on("request", request => {
     if (
@@ -1837,7 +1837,7 @@ test("非法行内名称就地标错且不产生重命名请求", async ({ appPa
   expect(renameRequests).toBe(0);
 });
 
-test("长时间操作暴露忙碌状态且保留触发控件焦点能力", async ({
+test("Long-running operations expose busy state and retain focus capability for the triggering control", async ({
   appPage: page,
 }) => {
   let releaseDelete;

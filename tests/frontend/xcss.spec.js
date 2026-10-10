@@ -2,7 +2,7 @@ const { readFileSync } = require("node:fs");
 const AxeBuilder = require("@axe-core/playwright").default;
 const { test, expect, pageData, login, selectFiles } = require("./fixtures.js");
 
-test("React Profile 的实际嵌入字体、许可证和恢复会话来自 xcss", async ({ appPage: page }) => {
+test("React Profile uses embedded fonts, licenses, and session recovery supplied by xcss", async ({ appPage: page }) => {
   await pageData(page);
   const platformCss = page.locator('link[rel="stylesheet"][href$="/dist/platform.css"]');
   const prefix = new URL("./", await platformCss.evaluate(link => link.href));
@@ -57,7 +57,7 @@ test("React Profile 的实际嵌入字体、许可证和恢复会话来自 xcss"
   expect(await page.locator("#xczs-root").evaluate(root => Object.keys(root).some(key => key.startsWith("__reactContainer$")))).toBe(true);
 });
 
-test("React Profile 的移动明暗主题通过 WCAG AA", async ({ axePage: page }) => {
+test("React Profile mobile light and dark themes pass WCAG AA", async ({ axePage: page }) => {
   await login(page);
   await page.setViewportSize({ width: 390, height: 844 });
   for (const colorScheme of ["light", "dark"]) {
@@ -68,7 +68,7 @@ test("React Profile 的移动明暗主题通过 WCAG AA", async ({ axePage: page
   }
 });
 
-test("xcss 外观统一顶部项目名、等高图标和全宽文件内容", async ({ appPage: page }, testInfo) => {
+test("The xcss appearance unifies the top product name, equal-height icons, and full-width file content", async ({ appPage: page }, testInfo) => {
   await expect(page.locator(".xcss-page-header .xcss-product-identity")).toHaveText("xczs");
   await expect(page.locator(".xcss-header-navigation a[aria-current=page]")).toHaveText("Files");
   await expect(page.locator(".xcss-instance-sidebar")).toHaveCount(0);
@@ -128,7 +128,7 @@ test("xcss 外观统一顶部项目名、等高图标和全宽文件内容", asy
   await page.screenshot({ path: testInfo.outputPath("react-xcss-desktop.png") });
 });
 
-test("React 主题更新不重建上传队列或重复发送上传", async ({ appPage: page }) => {
+test("React theme updates neither rebuild the upload queue nor resend uploads", async ({ appPage: page }) => {
   let releaseUpload;
   let reachedUpload;
   const gate = new Promise(resolve => { releaseUpload = resolve; });
