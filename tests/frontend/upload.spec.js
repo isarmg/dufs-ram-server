@@ -165,23 +165,27 @@ test("Cancellation during a large batch includes trailing files whose DOM rows d
     });
   });
 
-  // Hold the first enqueue yield after 50 rows. The first upload may resolve
-  // and offer Cancel remaining while the 51st logical batch entry has not yet
-  // been represented by an Uploader or DOM row.
+  // Hold the first zero-delay enqueue task after 50 rows. The first upload
+  // may offer Cancel remaining before the 51st entry has an Uploader/DOM row.
   await page.evaluate(() => {
-    const requestFrame = window.requestAnimationFrame.bind(window);
+    const scheduleTimeout = window.setTimeout.bind(window);
     let captured = false;
-    window.__xczsBatchFrameReady = false;
-    window.__xczsBatchFrameSettled = false;
-    window.requestAnimationFrame = callback => {
-      if (captured) return requestFrame(callback);
+    window.__xczsBatchYieldReady = false;
+    window.__xczsBatchYieldSettled = false;
+    window.setTimeout = (callback, delay, ...args) => {
+      if (
+        captured ||
+        delay !== 0 ||
+        typeof callback !== "function" ||
+        document.querySelectorAll(".uploaders-table .uploader").length !== 50
+      ) return scheduleTimeout(callback, delay, ...args);
       captured = true;
-      window.__xczsBatchFrameReady = true;
-      window.__xczsReleaseBatchFrame = () => {
-        window.requestAnimationFrame = requestFrame;
-        callback(window.performance.now());
+      window.__xczsBatchYieldReady = true;
+      window.__xczsReleaseBatchYield = () => {
+        window.setTimeout = scheduleTimeout;
+        callback.apply(window, args);
         window.queueMicrotask(() => {
-          window.__xczsBatchFrameSettled = true;
+          window.__xczsBatchYieldSettled = true;
         });
       };
       return 2_147_483_647;
@@ -192,10 +196,10 @@ test("Cancellation during a large batch includes trailing files whose DOM rows d
     name,
     buffer: Buffer.from(name),
   })));
-  // This test deliberately intercepts requestAnimationFrame. Use timer polling
-  // so Playwright's waiter cannot consume the frame that the batch owns.
+  // Only the zero-delay task after row 50 is held; 25ms timer polling and
+  // animation frames remain available to Playwright and the dialog.
   await page.waitForFunction(
-    () => window.__xczsBatchFrameReady === true,
+    () => window.__xczsBatchYieldReady === true,
     undefined,
     { polling: 25 },
   );
@@ -213,8 +217,12 @@ test("Cancellation during a large batch includes trailing files whose DOM rows d
   await expect(page.locator(".upload-queue-message")).toContainText(
     "Cancelled 50 remaining queued uploads",
   );
-  await page.evaluate(() => window.__xczsReleaseBatchFrame());
-  await page.waitForFunction(() => window.__xczsBatchFrameSettled === true);
+  await page.evaluate(() => window.__xczsReleaseBatchYield());
+  await page.waitForFunction(
+    () => window.__xczsBatchYieldSettled === true,
+    undefined,
+    { polling: 25 },
+  );
 
   await expect(page.locator(".upload-status")).toHaveCount(50);
   await expect(page.locator('.upload-status[aria-label$="upload cancelled"]'))
