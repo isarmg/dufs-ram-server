@@ -161,31 +161,30 @@ function generateNotices(metadataDocument, vendorPath, licensePath) {
   });
 
   const lines = [
-    "THIRD-PARTY LICENSES AND NOTICES",
+    "第三方许可证与声明",
     "",
-    "This file is generated from Cargo's locked, non-development dependency " +
-      "graph. Each package entry names the declared SPDX expression and the " +
-      "SHA-256 digest of the included license text.",
+    "本文件根据 Cargo 已锁定的非开发依赖图生成。每个包条目列出其声明的 " +
+      "SPDX 许可证表达式，以及所附许可证原文的 SHA-256 摘要。",
     "",
-    "PACKAGE INDEX",
+    "依赖包索引",
     "",
   ];
   for (const record of packageRecords) {
     lines.push(
       `${record.name} ${record.version}`,
-      `  Declared license: ${record.license}`,
-      ...record.digests.map(digest => `  License text SHA-256: ${digest}`),
+      `  声明的许可证：${record.license}`,
+      ...record.digests.map(digest => `  许可证原文 SHA-256：${digest}`),
       "",
     );
   }
-  lines.push("LICENSE TEXTS", "");
+  lines.push("许可证原文", "");
   for (const record of [...textsByDigest.values()].sort(
     (left, right) => left.digest.localeCompare(right.digest),
   )) {
     lines.push(
       `SHA-256: ${record.digest}`,
-      `Source names: ${[...record.names].sort().join(", ")}`,
-      `Used by: ${[...record.packages].sort().join(", ")}`,
+      `来源文件名：${[...record.names].sort().join(", ")}`,
+      `使用此许可证的包：${[...record.packages].sort().join(", ")}`,
       "",
       record.text.trimEnd(),
       "",
