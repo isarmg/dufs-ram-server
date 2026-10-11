@@ -875,7 +875,7 @@ export function FileLibrary({
             void perform(
               async () => {
                 await request(`/tags/${dialog.tag.id}`, empty, "DELETE");
-                setDialog(null);
+                setDialog((current) => current === dialog ? null : current);
               },
               t("标签已删除。", "Tag deleted."),
             )
@@ -899,7 +899,7 @@ export function FileLibrary({
                     name: dialog.name,
                     color: dialog.color,
                   });
-                  setDialog(null);
+                  setDialog((current) => current === dialog ? null : current);
                 },
                 t("标签已更新。", "Tag updated."),
               );
