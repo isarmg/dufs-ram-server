@@ -141,6 +141,14 @@ impl Database {
                 .fetch_one(&mut *tx)
                 .await?;
             for file in file_ids {
+                let mut file_count: i64 = if add {
+                    sqlx::query_scalar("SELECT COUNT(*) FROM file_tags WHERE file_id=?")
+                        .bind(file)
+                        .fetch_one(&mut *tx)
+                        .await?
+                } else {
+                    0
+                };
                 for tag in tag_ids {
                     if add {
                         let exists: bool = sqlx::query_scalar(
@@ -153,6 +161,9 @@ impl Database {
                         if exists {
                             continue;
                         }
+                        if file_count >= MAX_FILE_TAGS {
+                            return Err(TagLimitExceeded.into());
+                        }
                         if retained >= self.limits.relations {
                             return Err(Exhausted.into());
                         }
@@ -163,6 +174,7 @@ impl Database {
                             .execute(&mut *tx)
                             .await?;
                         retained += 1;
+                        file_count += 1;
                     } else {
                         sqlx::query("DELETE FROM file_tags WHERE file_id=? AND tag_id=?")
                             .bind(file)
@@ -193,6 +205,12 @@ impl Database {
                     && matches!(new.as_deref(), Some("present" | "suspect")),
                 "relink requires a missing source and a current target"
             );
+            let (current, additional): (i64, i64) = sqlx::query_as(
+                "SELECT (SELECT COUNT(*) FROM file_tags WHERE file_id=?),(SELECT COUNT(*) FROM file_tags old WHERE old.file_id=? AND NOT EXISTS(SELECT 1 FROM file_tags new WHERE new.file_id=? AND new.tag_id=old.tag_id))",
+            ).bind(new_id).bind(old_id).bind(new_id).fetch_one(&mut *tx).await?;
+            if additional > 0 && current + additional > MAX_FILE_TAGS {
+                return Err(TagLimitExceeded.into());
+            }
             sqlx::query("INSERT OR IGNORE INTO file_tags(file_id,tag_id) SELECT ?,tag_id FROM file_tags WHERE file_id=?").bind(new_id).bind(old_id).execute(&mut *tx).await?;
             sqlx::query("DELETE FROM file_tags WHERE file_id=?")
                 .bind(old_id)

@@ -186,6 +186,107 @@ mod resource_tests {
             page_size: 100,
         }
     }
+    // Model pre-limit data without bypassing the production mutation checks.
+    fn legacy_tags(db: &Database, file: i64, tags: &[i64]) -> Result<()> {
+        database_operation!(db, 3, connection, {
+            for tag in tags {
+                sqlx::query("INSERT INTO file_tags(file_id,tag_id) VALUES(?,?)")
+                    .bind(file)
+                    .bind(tag)
+                    .execute(&mut *connection)
+                    .await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+    }
+
+    #[test]
+    fn sixteen_tag_limit_is_net_new_and_batch_atomic() {
+        let (_root, db) = fixture();
+        db.scan_complete(vec![sample("first", 1), sample("second", 2)])
+            .unwrap();
+        let files = db.list(&query()).unwrap().files;
+        let first = files.iter().find(|f| f.path == "first").unwrap().id;
+        let second = files.iter().find(|f| f.path == "second").unwrap().id;
+        let tags = (0..18)
+            .map(|i| db.create_tag(&format!("tag-{i:02}"), None).unwrap())
+            .collect::<Vec<_>>();
+        db.mutate_tags(&[first], &tags[..15], true).unwrap();
+        db.mutate_tags(&[first, first], &[tags[15], tags[15]], true)
+            .unwrap();
+        assert_eq!(db.file_tags_page(first, None).unwrap().tags.len(), 16);
+        db.mutate_tags(&[first], &[tags[0], tags[0]], true).unwrap();
+        assert!(
+            db.mutate_tags(&[first], &[tags[16]], true)
+                .unwrap_err()
+                .is::<TagLimitExceeded>()
+        );
+        // First target could accept the new tag, but the later full target rejects the whole transaction.
+        assert!(
+            db.mutate_tags(&[second, first], &[tags[16]], true)
+                .unwrap_err()
+                .is::<TagLimitExceeded>()
+        );
+        assert!(db.file_tags_page(second, None).unwrap().tags.is_empty());
+        assert_eq!(db.file_tags_page(first, None).unwrap().tags.len(), 16);
+        db.mutate_tags(&[first], &[tags[0]], false).unwrap();
+        db.mutate_tags(&[first], &[tags[16]], true).unwrap();
+        assert_eq!(db.file_tags_page(first, None).unwrap().tags.len(), 16);
+    }
+
+    #[test]
+    fn legacy_over_limit_tags_can_be_removed_but_not_increased() {
+        let (_root, db) = fixture();
+        db.scan_complete(vec![sample("file", 1)]).unwrap();
+        let id = db.list(&query()).unwrap().files[0].id;
+        let tags = (0..19)
+            .map(|i| db.create_tag(&format!("tag-{i:02}"), None).unwrap())
+            .collect::<Vec<_>>();
+        legacy_tags(&db, id, &tags[..18]).unwrap();
+        db.mutate_tags(&[id], &[tags[0]], true).unwrap();
+        assert!(
+            db.mutate_tags(&[id], &[tags[18]], true)
+                .unwrap_err()
+                .is::<TagLimitExceeded>()
+        );
+        db.mutate_tags(&[id], &tags[..3], false).unwrap();
+        db.mutate_tags(&[id], &[tags[18]], true).unwrap();
+        assert_eq!(db.file_tags_page(id, None).unwrap().tags.len(), 16);
+    }
+
+    #[test]
+    fn relink_respects_distinct_union_and_rolls_back_over_limit() {
+        let (_root, db) = fixture();
+        db.scan_complete(vec![sample("old", 1), sample("new", 2)])
+            .unwrap();
+        let files = db.list(&query()).unwrap().files;
+        let old = files.iter().find(|f| f.path == "old").unwrap().id;
+        let new = files.iter().find(|f| f.path == "new").unwrap().id;
+        let tags = (0..17)
+            .map(|i| db.create_tag(&format!("tag-{i:02}"), None).unwrap())
+            .collect::<Vec<_>>();
+        db.mutate_tags(&[new], &tags[..16], true).unwrap();
+        db.mutate_tags(&[old], &[tags[0], tags[16]], true).unwrap();
+        db.scan_complete(vec![sample("new", 2)]).unwrap();
+        assert!(db.relink(old, new).unwrap_err().is::<TagLimitExceeded>());
+        assert_eq!(db.file_tags_page(old, None).unwrap().tags.len(), 2);
+        assert_eq!(db.file_tags_page(new, None).unwrap().tags.len(), 16);
+        assert_eq!(
+            db.list(&query())
+                .unwrap()
+                .files
+                .iter()
+                .find(|f| f.id == old)
+                .unwrap()
+                .status,
+            "missing"
+        );
+        db.mutate_tags(&[new], &[tags[1]], false).unwrap();
+        db.relink(old, new).unwrap();
+        assert_eq!(db.file_tags_page(new, None).unwrap().tags.len(), 16);
+        assert!(db.file_tags_page(old, None).unwrap().tags.is_empty());
+    }
+
     #[test]
     fn oversized_optional_fields_are_rejected_without_hiding_saved_facts() -> Result<()> {
         let (_root, db) = fixture();
@@ -230,7 +331,7 @@ mod resource_tests {
         let ids = (0..123)
             .map(|i| db.create_tag(&format!("tag-{i:03}"), None).unwrap())
             .collect::<Vec<_>>();
-        db.mutate_tags(&[id], &ids, true).unwrap();
+        legacy_tags(&db, id, &ids).unwrap();
         let first = db.tags(None).unwrap();
         assert_eq!(first.tags.len(), 50);
         let second = db.tags(first.next_cursor.as_deref()).unwrap();

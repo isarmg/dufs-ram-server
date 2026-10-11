@@ -56,6 +56,8 @@ export function tagRequest<T>(
 }
 
 export function tagFailure(cause: unknown): string {
+  if (cause instanceof ApiClientError && cause.code === "tag_limit_exceeded")
+    return t("每个文件最多添加 16 个标签，请先移除现有标签。", "Each file can have at most 16 tags. Remove an existing tag first.");
   if (cause instanceof ApiClientError && cause.code === "capacity_exhausted")
     return t(
       "已达到持久容量限制，请先整理数据或备份文件。",

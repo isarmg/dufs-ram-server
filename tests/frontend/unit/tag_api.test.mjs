@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ApiClientError } from "@xcss/web/http-client";
-import { tagRequest } from "../../../web/react/tag-api.ts";
+import { tagRequest, tagFailure } from "../../../web/react/tag-api.ts";
 
 const busy = () => new ApiClientError({
   message: "Busy",
@@ -78,4 +78,11 @@ test("obsolete queued tag reads do not issue requests", async () => {
   release();
   await Promise.all([first, cancelled]);
   assert.deepEqual(requests, ["/api/v1/file-tags/tags"]);
+});
+
+
+test("file tag limit has an actionable error message", () => {
+  const message = tagFailure(new ApiClientError({message: "Limit", status: 409, code: "tag_limit_exceeded"}));
+  assert.match(message, /16/);
+  assert.doesNotMatch(message, /Could not read or update tags/);
 });

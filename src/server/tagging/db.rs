@@ -11,6 +11,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+pub const MAX_FILE_TAGS: i64 = 16;
+
+#[derive(Debug, thiserror::Error)]
+#[error("a file can have at most 16 tags")]
+pub struct TagLimitExceeded;
+
 #[derive(Clone, Debug)]
 pub struct Sample {
     pub path: String,

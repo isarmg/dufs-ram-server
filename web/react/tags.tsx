@@ -75,6 +75,8 @@ const fileHref = (path: string) =>
   "/" + path.split("/").map(encodeURIComponent).join("/");
 function failureMessage(cause: unknown) {
   const error = cause instanceof ApiClientError ? cause : null;
+  if (error?.code === "tag_limit_exceeded")
+    return t("每个文件最多添加 16 个标签，请先移除现有标签。", "Each file can have at most 16 tags. Remove an existing tag first.");
   if (error?.code === "capacity_exhausted")
     return t(
       "已达到持久容量限制。现有记录已保留，请先整理数据或备份文件。",

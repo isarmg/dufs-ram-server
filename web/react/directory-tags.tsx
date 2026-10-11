@@ -13,6 +13,7 @@ import {
   tagsPage,
   scanResponse,
   type TagRow,
+  type TagLabel,
   type TagPage,
   type ListedTags,
   listedTags,
@@ -66,6 +67,7 @@ export function FileSearch({ client }: { client: AdministratorApiClient }) {
     )
       .then((value) => {
         if (live) {
+          setError("");
           setPage(value);
           setTags((previous) =>
             [
@@ -297,15 +299,21 @@ function FileTagRow({ client, target }: {
     finally { busy.current = false; setPending(false); }
   }
   const disabled = pending || loading || !file?.file_id;
-  const selected = new Map([...(assigned?.tags ?? []), ...added].map(tag => [tag.id, tag]));
-  const labels = [...selected.values(), ...(choices?.tags ?? []).filter(tag => !selected.has(tag.id))];
+  const atLimit = Boolean(file && (file.tags_has_more || file.tags.length >= 16));
+  const overLimit = Boolean(file && (file.tags_has_more || file.tags.length > 16));
+  const selected = new Map<number, TagLabel>([...(file?.tags ?? []), ...(assigned?.tags ?? []), ...added].map(tag => [tag.id, tag]));
+  const labels = overLimit ? assigned?.tags ?? [] : [...selected.values(), ...(choices?.tags ?? []).filter(tag => !selected.has(tag.id))];
   return <div className="file-tag-editor">
     {error && <ErrorState onRetry={() => setVersion(value => value + 1)}>{error}</ErrorState>}
     {loading && <LoadingState />}
+    {file && <span className="file-tag-count">{file.tags_has_more
+      ? t("标签超过 16 个，请先移除至少于 16 个。", "More than 16 tags. Remove tags until fewer than 16 remain.")
+      : t("标签：{0}/16", "Tags: {0}/16", [String(file.tags.length)])}</span>}
+    {atLimit && !file?.tags_has_more && <span>{t("每个文件最多 16 个标签，请先移除后再添加。", "Each file can have at most 16 tags. Remove a tag before adding another.")}</span>}
     {assigned && choices && <>
       <div className="file-tag-options" role="group" aria-label={t("选择标签", "Select tags")}>
         {labels.map(tag =>
-          <Button key={tag.id} className="file-tag-choice" disabled={disabled} aria-pressed={selected.has(tag.id)}
+          <Button key={tag.id} className="file-tag-choice" disabled={disabled || (atLimit && !selected.has(tag.id))} aria-pressed={selected.has(tag.id)}
             aria-label={selected.has(tag.id)
               ? t("移除标签 {0}", "Remove tag {0}", [tag.name])
               : t("添加标签 {0}", "Add tag {0}", [tag.name])}
@@ -318,7 +326,7 @@ function FileTagRow({ client, target }: {
         <Button disabled={!assigned.previous_cursor || disabled} onClick={() => setCursor(assigned.previous_cursor)}>{t("已添加标签：上一页", "Assigned tags: previous page")}</Button>
         <Button disabled={!assigned.next_cursor || disabled} onClick={() => setCursor(assigned.next_cursor)}>{t("已添加标签：下一页", "Assigned tags: next page")}</Button>
       </div>}
-      {(choices.previous_cursor || choices.next_cursor) && <div className="search-tag-pager" aria-label={t("可用标签分页", "Available tag pages")}>
+      {!overLimit && (choices.previous_cursor || choices.next_cursor) && <div className="search-tag-pager" aria-label={t("可用标签分页", "Available tag pages")}>
         <Button disabled={!choices.previous_cursor || disabled} onClick={() => setChoiceCursor(choices.previous_cursor)}>{t("可用标签：上一页", "Available tags: previous page")}</Button>
         <Button disabled={!choices.next_cursor || disabled} onClick={() => setChoiceCursor(choices.next_cursor)}>{t("可用标签：下一页", "Available tags: next page")}</Button>
       </div>}

@@ -68,6 +68,9 @@ impl IntoResponse for ApiError {
     }
 }
 fn database_error(error: anyhow::Error) -> ApiError {
+    if error.is::<super::db::TagLimitExceeded>() {
+        return ApiError(StatusCode::CONFLICT, "tag_limit_exceeded", false);
+    }
     if error.downcast_ref::<super::capacity::Exhausted>().is_some() {
         return ApiError(StatusCode::SERVICE_UNAVAILABLE, "capacity_exhausted", false);
     }
@@ -448,7 +451,13 @@ async fn relink(
         db.relink(input.source_id, id)
     })
     .await
-    .map_err(|_| ApiError::conflict())?;
+    .map_err(|error| {
+        if error.1 == "tag_limit_exceeded" {
+            error
+        } else {
+            ApiError::conflict()
+        }
+    })?;
     Ok(StatusCode::NO_CONTENT)
 }
 async fn confirm(

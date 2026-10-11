@@ -269,3 +269,68 @@ fn directory_tags_filter_files_preserve_operations_and_bind_cursors(
     assert_eq!(invalid_path.status(), StatusCode::BAD_REQUEST);
     Ok(())
 }
+
+#[rstest]
+fn file_tag_limit_rejects_net_new_tags_and_keeps_batches_atomic(
+    server: TestServer,
+) -> Result<(), Error> {
+    for name in ["tag-limit-first", "tag-limit-second"] {
+        std::fs::write(server.path().join(name), b"tag limit")?;
+    }
+    assert_eq!(
+        server
+            .request(Method::POST, endpoint(&server, "scan")?)
+            .send()?
+            .status(),
+        StatusCode::OK
+    );
+    let first = parse(server.get(endpoint(&server, "file?path=tag-limit-first")?)?)?["file_id"]
+        .as_i64()
+        .ok_or("first id missing")?;
+    let second = parse(server.get(endpoint(&server, "file?path=tag-limit-second")?)?)?["file_id"]
+        .as_i64()
+        .ok_or("second id missing")?;
+    let mut ids = Vec::new();
+    for i in 0..17 {
+        let tag = parse(send_json(
+            server.request(Method::POST, endpoint(&server, "tags")?),
+            json!({"name":format!("limit-{i:02}"),"color":null}),
+        )?)?;
+        ids.push(tag["id"].as_i64().ok_or("tag id missing")?);
+    }
+    let mutate = |files: &[i64], tags: &[i64], action: &str| {
+        send_json(
+            server.request(Method::POST, endpoint(&server, "file-tags")?),
+            json!({"file_ids":files,"tag_ids":tags,"action":action}),
+        )
+    };
+    assert_eq!(
+        mutate(&[first], &ids[..15], "add")?.status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        mutate(&[first, first], &[ids[15], ids[15]], "add")?.status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        mutate(&[first], &[ids[0]], "add")?.status(),
+        StatusCode::NO_CONTENT
+    );
+    let rejected = mutate(&[second, first], &[ids[16]], "add")?;
+    assert_eq!(rejected.status(), StatusCode::CONFLICT);
+    assert_eq!(parse(rejected)?["code"], "tag_limit_exceeded");
+    let rows = |id| -> Result<Value, Error> {
+        parse(server.get(endpoint(&server, &format!("files/{id}/tags"))?)?)
+    };
+    assert!(rows(second)?["tags"].as_array().unwrap().is_empty());
+    assert_eq!(rows(first)?["tags"].as_array().unwrap().len(), 16);
+    assert_eq!(
+        mutate(&[first], &[ids[0]], "remove")?.status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        mutate(&[first], &[ids[16]], "add")?.status(),
+        StatusCode::NO_CONTENT
+    );
+    Ok(())
+}
